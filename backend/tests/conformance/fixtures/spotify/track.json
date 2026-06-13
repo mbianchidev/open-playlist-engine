@@ -1,0 +1,6 @@
+{
+  "id": "t1",
+  "name": "Song One",
+  "uri": "spotify:track:t1",
+  "external_ids": { "isrc": "US0000000001" }
+}

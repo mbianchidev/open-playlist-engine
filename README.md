@@ -9,8 +9,10 @@ This is the first reference implementation of the
 plugin spoke, the universal format is the hub, so adding a provider is O(1) and it
 instantly works with all the others — both as source and target.
 
-> Status: **scaffold**. The structure, contracts, capability matrix and pipeline
-> are in place; provider network calls are stubbed (`NotImplementedError`). See
+> Status: **early**. Structure, contracts, capability matrix and pipeline are in
+> place. First provider primitives are live behind injectable seams and a recorded-
+> fixture conformance suite: **Spotify read + search** and **YouTube Music write**.
+> Remaining provider calls are stubbed (`NotImplementedError`). See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works

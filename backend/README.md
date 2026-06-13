@@ -30,3 +30,14 @@ Implement `ProviderAdapter` (see `app/core/adapter.py`) in `app/providers/<name>
 declare a `CapabilityDescriptor`, call `register(...)`, and pass the conformance
 suite in `tests/conformance/`. Adapters never touch the match graph — they only
 read/search/write; `MatchService` owns matching.
+
+## Provider status
+| Provider | Read / Search | Write | Test seam |
+|---|---|---|---|
+| Spotify | ✅ live (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
+| YouTube Music | stub | ✅ live (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+
+The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
+an injected client object instead of a transport. Real singletons use the network;
+the conformance suite instantiates the adapter classes directly with a seam, so CI
+never makes live calls. See [ADR 0002](../docs/adr/0002-adapter-fixture-testing.md).

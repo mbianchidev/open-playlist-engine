@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "id": "PL_SPOTIFY_1",
+      "name": "Roadtrip",
+      "owner": { "id": "user1" },
+      "tracks": { "total": 2 }
+    }
+  ],
+  "next": null
+}
