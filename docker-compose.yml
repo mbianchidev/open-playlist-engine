@@ -1,0 +1,62 @@
+name: open-playlist-engine
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ope
+      POSTGRES_PASSWORD: ope
+      POSTGRES_DB: ope
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ope"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      OPE_DATABASE_URL: postgresql+psycopg://ope:ope@postgres:5432/ope
+      OPE_VALKEY_URL: redis://valkey:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    env_file: .env
+    environment:
+      OPE_DATABASE_URL: postgresql+psycopg://ope:ope@postgres:5432/ope
+      OPE_VALKEY_URL: redis://valkey:6379/0
+    depends_on:
+      backend:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  pgdata:
