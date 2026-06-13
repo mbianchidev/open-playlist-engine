@@ -1,0 +1,103 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #0d0f12;
+  color: #e6e8eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: #9aa3ad;
+  margin-top: 0;
+}
+
+.lanes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.card {
+  background: #15181d;
+  border: 1px solid #232830;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  margin: 0.35rem 0;
+  border-radius: 8px;
+  border: 1px solid #2a3039;
+  background: #11141a;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.provider[aria-pressed="true"] {
+  border-color: #4f8cff;
+  background: #16243f;
+}
+
+.provider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: #2a3039;
+  color: #c7cdd6;
+}
+
+.warn {
+  color: #f0b450;
+  font-size: 0.75rem;
+}
+
+button.primary {
+  margin-top: 1.25rem;
+  padding: 0.7rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  background: #4f8cff;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.events {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
