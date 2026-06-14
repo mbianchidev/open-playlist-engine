@@ -1,0 +1,377 @@
+openapi: 3.0.3
+info:
+  title: Open Playlist API
+  description: |
+    A universal, open, and interoperable playlist API specification.
+    Enables seamless migration and playback of playlists across all major
+    music platforms—Spotify, Tidal, YouTube Music, Deezer, Apple Music, and beyond.
+  version: 0.1.0
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.example.com/v1
+    description: Example server (replace with your own)
+
+paths:
+  /open-playlists/{userId}:
+    get:
+      summary: List user playlists
+      description: Returns all playlists owned by the specified user in Open Playlist format.
+      operationId: listUserPlaylists
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the user.
+      responses:
+        "200":
+          description: A list of playlists.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Playlist"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /open-playlists/{playlistId}:
+    get:
+      summary: Get a playlist
+      description: Retrieves a single playlist by its unique identifier.
+      operationId: getPlaylist
+      parameters:
+        - name: playlistId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the playlist.
+      responses:
+        "200":
+          description: The requested playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "404":
+          description: Playlist not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /open-playlists/import:
+    post:
+      summary: Import a playlist
+      description: |
+        Imports a playlist from a provider-specific format into the universal
+        Open Playlist format. The request body must include the source provider
+        and the provider-specific playlist data.
+      operationId: importPlaylist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportRequest"
+      responses:
+        "201":
+          description: Playlist imported successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          description: Invalid import data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /open-playlists/export:
+    post:
+      summary: Export a playlist
+      description: |
+        Exports a playlist from the universal Open Playlist format to a
+        target provider. The request body must include the playlist ID and
+        the target provider name.
+      operationId: exportPlaylist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportRequest"
+      responses:
+        "200":
+          description: Playlist exported successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportResponse"
+        "400":
+          description: Invalid export request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Playlist:
+      type: object
+      required:
+        - id
+        - name
+        - tracks
+        - owner_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Provider-agnostic unique playlist identifier.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: The name of the playlist.
+          example: "Summer Vibes 2026"
+        description:
+          type: string
+          description: A short description of the playlist.
+          example: "Upbeat tracks for sunny days."
+        photo:
+          type: string
+          format: uri
+          description: URI to the playlist cover image.
+          example: "https://images.example.com/playlists/summer-vibes.jpg"
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Track"
+          description: Ordered list of tracks in the playlist.
+        owner_id:
+          type: string
+          description: The unique identifier of the playlist owner.
+          example: "user-42"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the playlist was created.
+          example: "2026-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the playlist was last updated.
+          example: "2026-02-01T14:00:00Z"
+
+    Track:
+      type: object
+      required:
+        - id
+        - title
+        - artist
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Universal unique track identifier.
+          example: "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+        title:
+          type: string
+          description: The title of the track.
+          example: "Blinding Lights"
+        artist:
+          type: string
+          description: Primary artist name.
+          example: "The Weeknd"
+        album:
+          type: string
+          description: Album name.
+          example: "After Hours"
+        duration:
+          type: integer
+          description: Track duration in seconds.
+          example: 200
+        release_date:
+          type: string
+          format: date
+          description: Full release (publication) date of the track, when known.
+          example: "2020-03-20"
+        release_year:
+          type: integer
+          description: Year of publication. Useful when only the year is known.
+          example: 2020
+        genre:
+          type: string
+          description: Primary genre of the track.
+          example: "Synth-pop"
+        track_number:
+          type: integer
+          description: Position of the track within its album or disc.
+          example: 9
+        disc_number:
+          type: integer
+          description: Disc number for multi-disc albums.
+          example: 1
+        explicit:
+          type: boolean
+          description: Indicates whether the track contains explicit content.
+          example: false
+        composer:
+          type: string
+          description: Composer or songwriter credited for the track.
+          example: "Abel Tesfaye"
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/Credit"
+          description: |
+            Detailed list of people and entities credited on the track, such as
+            featured artists, producers, composers, lyricists, mixing engineers,
+            and more. Complements the simple `artist` and `composer` fields by
+            capturing the full set of contributors and their roles.
+          example:
+            - role: "featured_artist"
+              name: "Daft Punk"
+            - role: "producer"
+              name: "Max Martin"
+            - role: "lyricist"
+              name: "Savan Kotecha"
+        label:
+          type: string
+          description: Record label that published the track.
+          example: "XO / Republic Records"
+        isrc:
+          type: string
+          description: International Standard Recording Code.
+          example: "USUG12000497"
+        artwork_uri:
+          type: string
+          format: uri
+          description: URI to track or album artwork.
+          example: "https://images.example.com/tracks/blinding-lights.jpg"
+        provider_uris:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of provider names to their corresponding track URIs.
+          example:
+            spotify: "spotify:track:0VjIjW4GlUZAMYd2vXMi3b"
+            apple_music: "https://music.apple.com/us/album/blinding-lights/1499378108?i=1499378612"
+            youtube_music: "https://music.youtube.com/watch?v=4NRXx6U8ABQ"
+            tidal: "https://tidal.com/browse/track/123456789"
+            deezer: "https://www.deezer.com/track/908604462"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Extensible key-value metadata for platform-specific fields.
+          example:
+            genre: "Synth-pop"
+            bpm: 171
+
+    Credit:
+      type: object
+      required:
+        - role
+        - name
+      properties:
+        role:
+          type: string
+          description: |
+            The role this contributor played on the track. Common values include
+            `featured_artist`, `producer`, `composer`, `lyricist`, `songwriter`,
+            `arranger`, `mixing_engineer`, `mastering_engineer`, and `performer`.
+            The list is intentionally open-ended so providers can express any role.
+          example: "producer"
+        name:
+          type: string
+          description: Name of the person or entity credited.
+          example: "Max Martin"
+        instrument:
+          type: string
+          description: |
+            Optional instrument or specialization for performer credits.
+          example: "guitar"
+        uri:
+          type: string
+          format: uri
+          description: Optional URI identifying the contributor (e.g. an artist page).
+          example: "https://music.example.com/artist/max-martin"
+
+    ImportRequest:
+      type: object
+      required:
+        - source_provider
+        - provider_data
+      properties:
+        source_provider:
+          type: string
+          description: The name of the provider to import from.
+          example: "spotify"
+        provider_data:
+          type: object
+          additionalProperties: true
+          description: Provider-specific playlist data. The structure depends on the source provider.
+
+    ExportRequest:
+      type: object
+      required:
+        - playlist_id
+        - target_provider
+      properties:
+        playlist_id:
+          type: string
+          format: uuid
+          description: The ID of the Open Playlist to export.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        target_provider:
+          type: string
+          description: The name of the provider to export to.
+          example: "apple_music"
+
+    ExportResponse:
+      type: object
+      properties:
+        provider:
+          type: string
+          description: The provider the playlist was exported to.
+          example: "apple_music"
+        provider_playlist_url:
+          type: string
+          format: uri
+          description: URL of the exported playlist on the target provider.
+          example: "https://music.apple.com/us/playlist/summer-vibes-2026/pl.abc123"
+        status:
+          type: string
+          description: Status of the export operation.
+          example: "success"
+        tracks_matched:
+          type: integer
+          description: Number of tracks successfully matched on the target provider.
+          example: 18
+        tracks_unmatched:
+          type: integer
+          description: Number of tracks that could not be matched on the target provider.
+          example: 2
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP status code.
+          example: 404
+        message:
+          type: string
+          description: Human-readable error message.
+          example: "Playlist not found."

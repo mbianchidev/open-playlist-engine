@@ -1,13 +1,14 @@
 """The universal interchange model — the hub of the hub-and-spoke design.
 
-Mirrors the open-playlist OpenAPI spec (Playlist/Track) and adds the
-item-level fidelity fields the design doc requires so lossy migrations can be
-reported instead of silently dropping data.
+Mirrors the open-playlist OpenAPI spec (Playlist/Track), vendored at
+``openapi/open-playlist.yaml``, and adds the item-level fidelity fields the
+design doc requires so lossy migrations can be reported instead of silently
+dropping data.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -21,6 +22,13 @@ class MediaType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class Credit(BaseModel):
+    role: str
+    name: str
+    instrument: str | None = None
+    uri: str | None = None
+
+
 class Track(BaseModel):
     """A single playlist item in universal form.
 
@@ -32,7 +40,16 @@ class Track(BaseModel):
     title: str
     artist: str
     album: str | None = None
-    duration_s: int | None = None
+    duration_s: int | None = None  # spec's ``duration`` (seconds), named for clarity
+    release_date: date | None = None
+    release_year: int | None = None
+    genre: str | None = None
+    track_number: int | None = None
+    disc_number: int | None = None
+    explicit: bool | None = None
+    composer: str | None = None
+    credits: list[Credit] = Field(default_factory=list)
+    label: str | None = None
     isrc: str | None = None
     artwork_uri: str | None = None
     provider_uris: dict[str, str] = Field(default_factory=dict)
