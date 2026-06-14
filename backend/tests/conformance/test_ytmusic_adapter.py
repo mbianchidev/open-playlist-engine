@@ -4,13 +4,36 @@ privacy mapping, batching across ``max_add_batch`` and failure reporting."""
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import parse_qs
 
+import httpx
 import pytest
 
-from app.core.adapter import AuthKind, CreatePlaylistSpec, ProviderCredential, ProviderError
+from app.core.adapter import (
+    AuthKind,
+    ChallengeShape,
+    CreatePlaylistSpec,
+    ProviderCredential,
+    ProviderError,
+)
 from app.core.models import Track
-from app.providers.ytmusic.adapter import YTMusicAdapter, _video_id
+from app.providers.ytmusic.adapter import (
+    _PENDING_DEVICE_CODES,
+    YTMusicAdapter,
+    YTMusicAuth,
+    _video_id,
+)
+from app.settings import get_settings
 from tests.conformance.ytmusic_fakes import FakeYTMusic
+
+
+@pytest.fixture(autouse=True)
+def clear_auth_state() -> None:
+    get_settings.cache_clear()
+    _PENDING_DEVICE_CODES.clear()
+    yield
+    get_settings.cache_clear()
+    _PENDING_DEVICE_CODES.clear()
 
 
 def _cred() -> ProviderCredential:
@@ -26,11 +49,153 @@ def _adapter(client: Any) -> YTMusicAdapter:
     return YTMusicAdapter(client_factory=lambda cred: client)
 
 
+def _oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPE_YTMUSIC_CLIENT_ID", "client-id")
+    monkeypatch.setenv("OPE_YTMUSIC_CLIENT_SECRET", "client-secret")
+    get_settings.cache_clear()
+
+
+def _form(request: httpx.Request) -> dict[str, str]:
+    values = parse_qs(request.content.decode())
+    return {key: value[-1] for key, value in values.items()}
+
+
 def test_video_id_parsing() -> None:
     assert _video_id("https://music.youtube.com/watch?v=abc123") == "abc123"
     assert _video_id("https://www.youtube.com/watch?v=abc123&list=PL1") == "abc123"
     assert _video_id("ytmusic:video:abc123") == "abc123"
     assert _video_id("abc123") == "abc123"
+
+
+async def test_device_auth_begin_is_default_when_oauth_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _oauth_env(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = _form(request)
+        assert data["client_id"] == "client-id"
+        assert data["scope"] == "https://www.googleapis.com/auth/youtube"
+        return httpx.Response(
+            200,
+            json={
+                "device_code": "device-code",
+                "user_code": "ABC-123",
+                "verification_url": "https://www.google.com/device",
+                "expires_in": 1800,
+                "interval": 7,
+            },
+        )
+
+    challenge = await YTMusicAuth(transport=httpx.MockTransport(handler)).begin(user_id="local")
+
+    assert challenge.shape is ChallengeShape.DEVICE_CODE
+    assert challenge.user_code == "ABC-123"
+    assert challenge.verification_url == "https://www.google.com/device"
+    assert challenge.poll_interval_s == 7
+    assert challenge.state in _PENDING_DEVICE_CODES
+
+
+async def test_device_auth_complete_polls_until_token_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _oauth_env(monkeypatch)
+    token_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal token_calls
+        data = _form(request)
+        if request.url.path.endswith("/device/code"):
+            return httpx.Response(
+                200,
+                json={
+                    "device_code": "device-code",
+                    "user_code": "ABC-123",
+                    "verification_url": "https://www.google.com/device",
+                    "expires_in": 1800,
+                    "interval": 1,
+                },
+            )
+        token_calls += 1
+        assert data["client_id"] == "client-id"
+        assert data["client_secret"] == "client-secret"
+        assert data["code"] == "device-code"
+        if token_calls == 1:
+            return httpx.Response(428, json={"error": "authorization_pending"})
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "scope": "https://www.googleapis.com/auth/youtube",
+                "token_type": "Bearer",
+            },
+        )
+
+    auth = YTMusicAuth(transport=httpx.MockTransport(handler))
+    challenge = await auth.begin(user_id="local")
+
+    with pytest.raises(ProviderError, match="authorization_pending"):
+        await auth.complete(user_id="local", callback={"state": challenge.state})
+
+    cred = await auth.complete(user_id="local", callback={"state": challenge.state})
+
+    assert cred.auth_kind is AuthKind.OAUTH_DEVICE
+    assert cred.access_token == "access-token"
+    assert cred.refresh_token == "refresh-token"
+    assert cred.scopes == ["https://www.googleapis.com/auth/youtube"]
+    assert cred.extra["auth"]["token_type"] == "Bearer"
+    assert challenge.state not in _PENDING_DEVICE_CODES
+
+
+async def test_device_auth_refresh_updates_oauth_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    _oauth_env(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = _form(request)
+        assert data["grant_type"] == "refresh_token"
+        assert data["refresh_token"] == "refresh-token"
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "new-access-token",
+                "expires_in": 3600,
+                "scope": "https://www.googleapis.com/auth/youtube",
+                "token_type": "Bearer",
+            },
+        )
+
+    cred = ProviderCredential(
+        account_id="acc",
+        provider="ytmusic",
+        auth_kind=AuthKind.OAUTH_DEVICE,
+        access_token="old-access-token",
+        refresh_token="refresh-token",
+        extra={
+            "auth": {
+                "access_token": "old-access-token",
+                "refresh_token": "refresh-token",
+                "scope": "https://www.googleapis.com/auth/youtube",
+                "token_type": "Bearer",
+                "expires_at": 1,
+                "expires_in": 3600,
+            }
+        },
+    )
+
+    refreshed = await YTMusicAuth(transport=httpx.MockTransport(handler)).refresh(cred)
+
+    assert refreshed.access_token == "new-access-token"
+    assert refreshed.refresh_token == "refresh-token"
+    assert refreshed.extra["auth"]["access_token"] == "new-access-token"
+
+
+async def test_header_auth_is_self_host_fallback_when_oauth_is_not_configured() -> None:
+    challenge = await YTMusicAuth().begin(user_id="local")
+
+    assert challenge.shape is ChallengeShape.FORM
+    assert challenge.form_schema and "headers_raw" in challenge.form_schema
 
 
 async def test_create_playlist_maps_privacy() -> None:
