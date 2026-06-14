@@ -116,30 +116,30 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             if not track.is_migratable:
                 item.status = "skipped"
                 item.reason = track.unsupported_reason or "unsupported playlist item"
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
                 continue
             try:
                 result = await matcher.resolve(track, target, target_cred)
             except ProviderError as exc:
                 item.status = "failed"
                 item.reason = str(exc)
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
                 continue
             item.confidence = result.confidence
             if result.candidate is None:
                 item.status = "failed"
                 item.reason = "no target match found"
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
                 continue
             item.target_uri = result.candidate.uri
             if result.needs_review:
                 item.status = "needs_review"
                 item.reason = f"match confidence {result.confidence:.2f} below review threshold"
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
                 continue
             item.status = "matched"
             matched.append(item)
-            await _commit_counts(session, job)
+            await commit_job_counts(session, job)
 
         if matched:
             try:
@@ -150,7 +150,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 for item in matched:
                     item.status = "failed"
                     item.reason = str(exc)
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
                 continue
             for item, result in zip(matched, results, strict=False):
                 session.add(
@@ -169,13 +169,13 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 else:
                     item.status = "failed"
                     item.reason = result.error or "target rejected track"
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
             for item in matched[len(results) :]:
                 item.status = "failed"
                 item.reason = "target did not return a result for this track"
-                await _commit_counts(session, job)
+                await commit_job_counts(session, job)
 
-    await _commit_counts(session, job)
+    await commit_job_counts(session, job)
     job.status = "done"
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
@@ -207,16 +207,21 @@ async def _create_items(
             position=track.position if track.position is not None else fallback_position,
             title=track.title,
             artist=track.artist,
+            album=track.album,
+            duration_s=track.duration_s,
+            release_year=track.release_year,
+            explicit=track.explicit,
             isrc=track.isrc,
+            source_metadata=track.model_dump(mode="json"),
             status="pending",
         )
         session.add(item)
         pairs.append((item, track))
-    await _commit_counts(session, job)
+    await commit_job_counts(session, job)
     return pairs
 
 
-async def _commit_counts(session: AsyncSession, job: orm.MigrationJob) -> None:
+async def commit_job_counts(session: AsyncSession, job: orm.MigrationJob) -> None:
     await session.flush()
     total = await session.scalar(select(func.count()).where(orm.JobItem.job_id == job.id))
     done = await session.scalar(

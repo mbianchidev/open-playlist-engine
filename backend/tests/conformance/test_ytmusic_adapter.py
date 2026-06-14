@@ -107,6 +107,7 @@ async def test_search_tracks_maps_song_results() -> None:
     assert results[0].provider_track_id == "yt_song_one"
     assert results[0].uri == "ytmusic:video:yt_song_one"
     assert results[0].artist == "Artist One"
+    assert results[0].explicit is False
 
 
 async def test_header_auth_json_returns_credential() -> None:

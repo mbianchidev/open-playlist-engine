@@ -261,6 +261,7 @@ class YTMusicAdapter:
                     if isinstance(item.get("album"), dict)
                     else None,
                     duration_s=item.get("duration_seconds") or _duration_s(item.get("duration")),
+                    explicit=item.get("isExplicit"),
                 )
             )
             if len(candidates) >= limit:

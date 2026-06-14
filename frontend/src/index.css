@@ -75,6 +75,10 @@ h1 {
   color: #c7cdd6;
 }
 
+.badge.inline {
+  margin-left: 0.5rem;
+}
+
 .warn {
   color: #f0b450;
   font-size: 0.75rem;
@@ -122,6 +126,12 @@ button.secondary:disabled {
   cursor: not-allowed;
 }
 
+button.compact {
+  margin-top: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+}
+
 .events {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.8rem;
@@ -155,12 +165,14 @@ textarea {
 }
 
 .playlist-list,
+.track-list,
 .progress-list {
   display: grid;
   gap: 0.5rem;
 }
 
 .playlist-row,
+.track-row,
 .progress-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -170,8 +182,37 @@ textarea {
   border-bottom: 1px solid #232830;
 }
 
+.playlist-card {
+  border-bottom: 1px solid #232830;
+  padding-bottom: 0.6rem;
+}
+
+.track-list {
+  margin: 0.5rem 0 0 1.75rem;
+}
+
+.track-row {
+  border-bottom: none;
+  padding: 0.3rem 0;
+}
+
 .progress-row {
   grid-template-columns: auto 1fr;
+}
+
+.review-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+}
+
+.review-controls input {
+  border-radius: 8px;
+  border: 1px solid #2a3039;
+  background: #0d0f12;
+  color: inherit;
+  padding: 0.5rem;
 }
 
 .status {

@@ -48,4 +48,5 @@ never makes live calls. See [ADR 0002](../docs/adr/0002-adapter-fixture-testing.
 The implemented self-host path uses Spotify as the source and YouTube Music as the
 target. Docker Compose applies Alembic migrations before starting the backend and
 worker. For local development, run `alembic upgrade head` before `uvicorn` and
-`arq`.
+`arq`. Playlist detail and migration item review endpoints support track-level
+selection and low-confidence match correction in the UI.

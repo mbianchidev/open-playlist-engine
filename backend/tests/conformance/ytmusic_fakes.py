@@ -59,5 +59,6 @@ class FakeYTMusic:
                 "artists": [{"name": "Artist One"}],
                 "album": {"name": "Album One"},
                 "duration_seconds": 180,
+                "isExplicit": False,
             }
         ][:limit]

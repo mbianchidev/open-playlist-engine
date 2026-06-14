@@ -4,6 +4,7 @@ import type {
   ConnectionView,
   JobItemView,
   JobView,
+  Playlist,
   PlaylistRef,
   ProviderView,
 } from "./types";
@@ -47,6 +48,15 @@ export async function getPlaylists(provider: string, accountId: string): Promise
   return json<PlaylistRef[]>(await fetch(`/api/playlists?${params}`));
 }
 
+export async function getPlaylist(
+  provider: string,
+  accountId: string,
+  playlistId: string,
+): Promise<Playlist> {
+  const params = new URLSearchParams({ provider, account_id: accountId });
+  return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
 export interface CreateMigrationBody {
   source_provider: string;
   target_provider: string;
@@ -67,6 +77,20 @@ export async function createMigration(body: CreateMigrationBody): Promise<JobVie
 
 export async function getMigrationItems(jobId: string): Promise<JobItemView[]> {
   return json<JobItemView[]>(await fetch(`/api/migrations/${jobId}/items`));
+}
+
+export async function reviewMigrationItem(
+  jobId: string,
+  itemId: string,
+  body: { action: "approve" | "skip"; target_uri?: string | null },
+): Promise<JobItemView> {
+  return json<JobItemView>(
+    await fetch(`/api/migrations/${jobId}/items/${itemId}/review`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 // SSE stream of migration progress. Returns a disposer.

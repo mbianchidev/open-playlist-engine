@@ -17,6 +17,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
+from datetime import date
 
 import httpx
 
@@ -102,6 +103,42 @@ def _join_artists(artists: list[dict]) -> str:
     return ", ".join(names) or "Unknown"
 
 
+def _artist_credit(artists: list[dict]) -> list[dict[str, str]]:
+    credits = []
+    for artist in artists:
+        name = artist.get("name")
+        if not name:
+            continue
+        credit: dict[str, str] = {"role": "artist", "name": name}
+        uri = artist.get("uri") or artist.get("external_urls", {}).get("spotify")
+        if uri:
+            credit["uri"] = uri
+        credits.append(credit)
+    return credits
+
+
+def _image_uri(album: dict) -> str | None:
+    images = album.get("images") or []
+    if not images:
+        return None
+    first = images[0]
+    return first.get("url") if isinstance(first, dict) else None
+
+
+def _release_date(album: dict) -> tuple[date | None, int | None]:
+    raw = album.get("release_date")
+    if not isinstance(raw, str) or not raw:
+        return None, None
+    year = int(raw[:4]) if len(raw) >= 4 and raw[:4].isdigit() else None
+    precision = album.get("release_date_precision")
+    if precision == "day":
+        try:
+            return date.fromisoformat(raw), year
+        except ValueError:
+            return None, year
+    return None, year
+
+
 def _track_from_item(item: dict) -> Track | None:
     """Map one ``/playlists/{id}/tracks`` item to the Open Playlist model."""
     obj = item.get("track")
@@ -111,14 +148,32 @@ def _track_from_item(item: dict) -> Track | None:
     media = _media_type(obj.get("type"), is_local)
     uri = obj.get("uri")
     duration_ms = obj.get("duration_ms") or 0
+    album = obj.get("album") or {}
+    release_date, release_year = _release_date(album)
     track = Track(
         id=obj.get("id"),
         title=obj.get("name") or "",
         artist=_join_artists(obj.get("artists", [])),
-        album=(obj.get("album") or {}).get("name"),
+        album=album.get("name"),
         duration_s=duration_ms // 1000 or None,
+        release_date=release_date,
+        release_year=release_year,
+        track_number=obj.get("track_number"),
+        disc_number=obj.get("disc_number"),
+        explicit=obj.get("explicit"),
+        credits=_artist_credit(obj.get("artists", [])),
         isrc=(obj.get("external_ids") or {}).get("isrc"),
+        artwork_uri=_image_uri(album),
         provider_uris={"spotify": uri} if uri else {},
+        metadata={
+            key: value
+            for key, value in {
+                "spotify_album_id": album.get("id"),
+                "spotify_popularity": obj.get("popularity"),
+                "spotify_preview_url": obj.get("preview_url"),
+            }.items()
+            if value is not None
+        },
         media_type=media,
         is_local=is_local,
         source_item_id=obj.get("id"),

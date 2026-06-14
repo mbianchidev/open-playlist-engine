@@ -62,8 +62,15 @@ async def test_read_maps_isrc_and_provider_uri_and_position() -> None:
     assert [t.position for t in pl.tracks] == [0, 1]
     assert pl.tracks[0].isrc == "US0000000001"
     assert pl.tracks[0].provider_uris["spotify"] == "spotify:track:t1"
+    assert pl.tracks[0].release_year == 2020
+    assert pl.tracks[0].release_date is not None
+    assert pl.tracks[0].artwork_uri == "https://img.example.com/album-one.jpg"
+    assert pl.tracks[0].explicit is False
+    assert pl.tracks[0].credits[0].name == "Artist One"
     # Multiple artists are joined.
     assert pl.tracks[1].artist == "Artist Two, Artist Three"
+    assert pl.tracks[1].release_date is None
+    assert pl.tracks[1].release_year == 2020
     assert all(t.media_type is MediaType.TRACK for t in pl.tracks)
 
 

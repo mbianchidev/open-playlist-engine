@@ -11,9 +11,9 @@ instantly works with all the others — both as source and target.
 
 > Status: **early MVP**. The self-hosted Spotify → YouTube Music path is wired:
 > Spotify OAuth/read/search, YouTube Music header auth/search/write, persisted
-> credentials, playlist selection, migration jobs and SSE progress. Other provider
-> directions remain gated until their adapters advertise implemented capabilities.
-> See [`docs/DESIGN.md`](docs/DESIGN.md).
+> credentials, playlist/track selection, migration jobs, review actions and SSE
+> progress. Other provider directions remain gated until their adapters advertise
+> implemented capabilities. See [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
 
@@ -55,6 +55,7 @@ docker compose up
 # Backend
 cd backend && python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
+alembic upgrade head
 uvicorn app.main:app --reload          # :8000
 arq app.jobs.worker.WorkerSettings     # background worker
 pytest && ruff check .
@@ -82,9 +83,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 4. Connect Spotify in the popup.
 5. For YouTube Music, paste request headers copied from an authenticated
    `music.youtube.com` `/browse` POST request.
-6. Pick playlists and start the migration. Low-confidence matches are skipped as
-   `needs_review`; retry after improving matching or lowering
-   `OPE_REVIEW_CONFIDENCE_THRESHOLD`.
+6. Pick playlists, optionally choose individual tracks, and start the migration.
+7. Review low-confidence matches in the progress panel: approve the suggested
+   YouTube Music URI, paste a corrected URI/video ID, or skip the item.
 
 ## Adding a provider
 

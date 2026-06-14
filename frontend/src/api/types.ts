@@ -45,6 +45,51 @@ export interface PlaylistRef {
   owner_id: string | null;
 }
 
+export interface Credit {
+  role: string;
+  name: string;
+  instrument: string | null;
+  uri: string | null;
+}
+
+export interface Track {
+  id: string | null;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_s: number | null;
+  release_date: string | null;
+  release_year: number | null;
+  genre: string | null;
+  track_number: number | null;
+  disc_number: number | null;
+  explicit: boolean | null;
+  composer: string | null;
+  credits: Credit[];
+  label: string | null;
+  isrc: string | null;
+  artwork_uri: string | null;
+  provider_uris: Record<string, string>;
+  metadata: Record<string, unknown>;
+  position: number | null;
+  media_type: string;
+  is_local: boolean;
+  source_item_id: string | null;
+  added_at: string | null;
+  unsupported_reason: string | null;
+}
+
+export interface Playlist {
+  id: string | null;
+  name: string;
+  description: string | null;
+  photo: string | null;
+  tracks: Track[];
+  owner_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface JobView {
   id: string;
   status: string;
@@ -62,7 +107,12 @@ export interface JobItemView {
   position: number;
   title: string;
   artist: string;
+  album: string | null;
+  duration_s: number | null;
+  release_year: number | null;
+  explicit: boolean | null;
   isrc: string | null;
+  source_metadata: Record<string, unknown>;
   target_uri: string | null;
   confidence: number | null;
   status: string;

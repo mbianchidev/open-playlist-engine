@@ -7,7 +7,11 @@ def test_track_accepts_structured_credits() -> None:
         artist="The Weeknd",
         credits=[
             {"role": "featured_artist", "name": "Daft Punk"},
-            {"role": "producer", "name": "Max Martin", "uri": "https://music.example.com/artist/max-martin"},
+            {
+                "role": "producer",
+                "name": "Max Martin",
+                "uri": "https://music.example.com/artist/max-martin",
+            },
         ],
     )
 

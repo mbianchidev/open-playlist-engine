@@ -4,10 +4,11 @@ import {
   completeAuth,
   createMigration,
   getAccounts,
+  getPlaylist,
   getPlaylists,
   getProviders,
 } from "./api/client";
-import type { AccountView, PlaylistRef, ProviderView } from "./api/types";
+import type { AccountView, PlaylistRef, ProviderView, Track } from "./api/types";
 import ProviderPicker from "./components/ProviderPicker";
 import ProgressBoard from "./components/ProgressBoard";
 
@@ -16,6 +17,8 @@ export default function App() {
   const [accounts, setAccounts] = useState<AccountView[]>([]);
   const [playlists, setPlaylists] = useState<PlaylistRef[]>([]);
   const [selectedPlaylists, setSelectedPlaylists] = useState<Set<string>>(new Set());
+  const [playlistTracks, setPlaylistTracks] = useState<Record<string, Track[]>>({});
+  const [selectedTracks, setSelectedTracks] = useState<Record<string, Set<string>>>({});
   const [ytHeaders, setYtHeaders] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -26,6 +29,11 @@ export default function App() {
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
+  const selectedMigrationPlaylistIds = getSelectedMigrationPlaylistIds(
+    selectedPlaylists,
+    playlistTracks,
+    selectedTracks,
+  );
 
   useEffect(() => {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
@@ -35,6 +43,8 @@ export default function App() {
   useEffect(() => {
     setPlaylists([]);
     setSelectedPlaylists(new Set());
+    setPlaylistTracks({});
+    setSelectedTracks({});
     if (!source || !sourceAccount) return;
     getPlaylists(source, sourceAccount.id)
       .then((rows) => {
@@ -96,6 +106,11 @@ export default function App() {
 
   async function start() {
     if (!source || !target || !sourceAccount || !targetAccount) return;
+    const tracks = Object.fromEntries(
+      selectedMigrationPlaylistIds
+        .filter((id) => playlistTracks[id])
+        .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
+    );
     setBusy(true);
     setError(null);
     try {
@@ -104,7 +119,7 @@ export default function App() {
         target_provider: target,
         source_account_id: sourceAccount.id,
         target_account_id: targetAccount.id,
-        selection: { playlist_ids: [...selectedPlaylists], tracks: {} },
+        selection: { playlist_ids: selectedMigrationPlaylistIds, tracks },
       });
       setJobId(job.id);
     } catch (e: unknown) {
@@ -120,6 +135,33 @@ export default function App() {
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
+    });
+  }
+
+  async function loadTracks(playlist: PlaylistRef) {
+    if (!source || !sourceAccount) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await getPlaylist(source, sourceAccount.id, playlist.id);
+      setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
+      setSelectedTracks((prev) => ({
+        ...prev,
+        [playlist.id]: new Set(detail.tracks.map(trackKey)),
+      }));
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleTrack(playlistId: string, key: string) {
+    setSelectedTracks((prev) => {
+      const next = new Set(prev[playlistId] ?? []);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return { ...prev, [playlistId]: next };
     });
   }
 
@@ -193,17 +235,49 @@ export default function App() {
           ) : (
             <div className="playlist-list">
               {playlists.map((playlist) => (
-                <label key={playlist.id} className="playlist-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedPlaylists.has(playlist.id)}
-                    onChange={() => togglePlaylist(playlist.id)}
-                  />
-                  <span>{playlist.name}</span>
-                  <span className="muted">
-                    {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
-                  </span>
-                </label>
+                <div key={playlist.id} className="playlist-card">
+                  <label className="playlist-row">
+                    <input
+                      type="checkbox"
+                      checked={selectedPlaylists.has(playlist.id)}
+                      onChange={() => togglePlaylist(playlist.id)}
+                    />
+                    <span>{playlist.name}</span>
+                    <span className="muted">
+                      {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
+                    </span>
+                  </label>
+                  {selectedPlaylists.has(playlist.id) ? (
+                    <button
+                      className="secondary compact"
+                      disabled={busy}
+                      onClick={() => loadTracks(playlist)}
+                    >
+                      {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
+                    </button>
+                  ) : null}
+                  {playlistTracks[playlist.id] ? (
+                    <div className="track-list">
+                      {playlistTracks[playlist.id].map((track) => {
+                        const key = trackKey(track);
+                        return (
+                          <label key={key} className="track-row">
+                            <input
+                              type="checkbox"
+                              checked={selectedTracks[playlist.id]?.has(key) ?? false}
+                              onChange={() => toggleTrack(playlist.id, key)}
+                            />
+                            <span>
+                              {track.title} — {track.artist}
+                              {track.explicit ? <span className="badge inline">explicit</span> : null}
+                            </span>
+                            <span className="muted">{track.album ?? ""}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}
@@ -217,7 +291,7 @@ export default function App() {
           !target ||
           !sourceAccount ||
           !targetAccount ||
-          selectedPlaylists.size === 0 ||
+          selectedMigrationPlaylistIds.length === 0 ||
           busy
         }
         onClick={start}
@@ -228,6 +302,22 @@ export default function App() {
       {jobId ? <ProgressBoard jobId={jobId} /> : null}
     </div>
   );
+}
+
+function getSelectedMigrationPlaylistIds(
+  selectedPlaylists: Set<string>,
+  playlistTracks: Record<string, Track[]>,
+  selectedTracks: Record<string, Set<string>>,
+): string[] {
+  return [...selectedPlaylists].filter((id) => {
+    const loaded = playlistTracks[id];
+    if (!loaded) return true;
+    return (selectedTracks[id]?.size ?? 0) > 0;
+  });
+}
+
+function trackKey(track: Track): string {
+  return track.source_item_id ?? track.id ?? String(track.position ?? track.title);
 }
 
 interface AccountPanelProps {

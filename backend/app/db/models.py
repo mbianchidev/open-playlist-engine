@@ -107,7 +107,12 @@ class JobItem(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     title: Mapped[str] = mapped_column(String)
     artist: Mapped[str] = mapped_column(String)
+    album: Mapped[str | None] = mapped_column(String, nullable=True)
+    duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    release_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    explicit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     isrc: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
     target_uri: Mapped[str | None] = mapped_column(String, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     # pending | matched | needs_review | written | skipped | failed
