@@ -138,6 +138,14 @@ export default function App() {
     });
   }
 
+  function selectAllPlaylists() {
+    setSelectedPlaylists(new Set(playlists.map((playlist) => playlist.id)));
+  }
+
+  function deselectAllPlaylists() {
+    setSelectedPlaylists(new Set());
+  }
+
   async function loadTracks(playlist: PlaylistRef) {
     if (!source || !sourceAccount) return;
     setBusy(true);
@@ -229,7 +237,30 @@ export default function App() {
 
       {source && sourceAccount ? (
         <section className="card flow">
-          <h2>Pick playlists</h2>
+          <div className="section-heading">
+            <div>
+              <h2>Pick playlists</h2>
+              <p className="muted">
+                {selectedPlaylists.size} of {playlists.length} selected
+              </p>
+            </div>
+            <div className="toolbar">
+              <button
+                className="secondary compact"
+                disabled={busy || playlists.length === 0 || selectedPlaylists.size === playlists.length}
+                onClick={selectAllPlaylists}
+              >
+                Select all
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy || selectedPlaylists.size === 0}
+                onClick={deselectAllPlaylists}
+              >
+                Deselect all
+              </button>
+            </div>
+          </div>
           {playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
           ) : (

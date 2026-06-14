@@ -51,6 +51,7 @@ _LIST_PAGE = 50
 _ITEMS_PAGE = 100
 
 _SCOPES = [
+    "user-read-private",
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",
