@@ -9,9 +9,15 @@ still advertises the provider's full intended surface for the UI matrix.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
+import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
+from datetime import date
 
 import httpx
 
@@ -45,11 +51,24 @@ _LIST_PAGE = 50
 _ITEMS_PAGE = 100
 
 _SCOPES = [
+    "user-read-private",
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",
     "playlist-modify-public",
 ]
+_TOKEN_URL = "https://accounts.spotify.com/api/token"
+_STATE_TTL_S = 600
+
+
+@dataclass(frozen=True)
+class _PendingState:
+    user_id: str
+    code_verifier: str
+    created_at: float
+
+
+_PENDING_STATES: dict[str, _PendingState] = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -85,23 +104,109 @@ def _join_artists(artists: list[dict]) -> str:
     return ", ".join(names) or "Unknown"
 
 
+def _artist_credit(artists: list[dict]) -> list[dict[str, str]]:
+    credits = []
+    for artist in artists:
+        name = artist.get("name")
+        if not name:
+            continue
+        credit: dict[str, str] = {"role": "artist", "name": name}
+        uri = artist.get("uri") or artist.get("external_urls", {}).get("spotify")
+        if uri:
+            credit["uri"] = uri
+        credits.append(credit)
+    return credits
+
+
+def _image_uri(album: dict) -> str | None:
+    images = album.get("images") or []
+    if not images:
+        return None
+    first = images[0]
+    return first.get("url") if isinstance(first, dict) else None
+
+
+def _release_date(album: dict) -> tuple[date | None, int | None]:
+    raw = album.get("release_date")
+    if not isinstance(raw, str) or not raw:
+        return None, None
+    year = int(raw[:4]) if len(raw) >= 4 and raw[:4].isdigit() else None
+    precision = album.get("release_date_precision")
+    if precision == "day":
+        try:
+            return date.fromisoformat(raw), year
+        except ValueError:
+            return None, year
+    return None, year
+
+
+def _playlist_item_page(payload: dict) -> dict | None:
+    tracks = payload.get("tracks")
+    if isinstance(tracks, dict) and isinstance(tracks.get("items"), list):
+        return tracks
+    items = payload.get("items")
+    if isinstance(items, dict) and isinstance(items.get("items"), list):
+        return items
+    if isinstance(items, list):
+        return payload
+    return None
+
+
+async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> AsyncIterator[Track]:
+    position = 0
+    while True:
+        for item in page.get("items") or []:
+            track = _track_from_item(item)
+            if track is None:
+                continue
+            track.position = position
+            position += 1
+            yield track
+        next_url = page.get("next")
+        if not next_url:
+            break
+        page_resp = _raise_for_status(await client.get(next_url))
+        next_page = _playlist_item_page(page_resp.json())
+        if next_page is None:
+            break
+        page = next_page
+
+
 def _track_from_item(item: dict) -> Track | None:
-    """Map one ``/playlists/{id}/tracks`` item to the Open Playlist model."""
-    obj = item.get("track")
+    """Map one Spotify playlist item to the Open Playlist model."""
+    obj = item.get("track") or item.get("item")
     if not obj:  # null when a track was removed from the catalogue
         return None
     is_local = bool(item.get("is_local") or obj.get("is_local"))
     media = _media_type(obj.get("type"), is_local)
     uri = obj.get("uri")
     duration_ms = obj.get("duration_ms") or 0
+    album = obj.get("album") or {}
+    release_date, release_year = _release_date(album)
     track = Track(
         id=obj.get("id"),
         title=obj.get("name") or "",
         artist=_join_artists(obj.get("artists", [])),
-        album=(obj.get("album") or {}).get("name"),
+        album=album.get("name"),
         duration_s=duration_ms // 1000 or None,
+        release_date=release_date,
+        release_year=release_year,
+        track_number=obj.get("track_number"),
+        disc_number=obj.get("disc_number"),
+        explicit=obj.get("explicit"),
+        credits=_artist_credit(obj.get("artists", [])),
         isrc=(obj.get("external_ids") or {}).get("isrc"),
+        artwork_uri=_image_uri(album),
         provider_uris={"spotify": uri} if uri else {},
+        metadata={
+            key: value
+            for key, value in {
+                "spotify_album_id": album.get("id"),
+                "spotify_popularity": obj.get("popularity"),
+                "spotify_preview_url": obj.get("preview_url"),
+            }.items()
+            if value is not None
+        },
         media_type=media,
         is_local=is_local,
         source_item_id=obj.get("id"),
@@ -139,6 +244,44 @@ def _track_id(uri: str) -> str | None:
     return uri or None
 
 
+def _code_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def _store_state(state: str, pending: _PendingState) -> None:
+    now = time.time()
+    expired = [
+        key for key, value in _PENDING_STATES.items() if now - value.created_at > _STATE_TTL_S
+    ]
+    for key in expired:
+        _PENDING_STATES.pop(key, None)
+    _PENDING_STATES[state] = pending
+
+
+def _consume_state(state: str | None, user_id: str) -> _PendingState:
+    if not state:
+        raise ProviderError("spotify callback is missing state")
+    pending = _PENDING_STATES.pop(state, None)
+    if pending is None:
+        raise ProviderError("spotify callback state is invalid or expired")
+    if pending.user_id != user_id:
+        raise ProviderError("spotify callback state does not match the current user")
+    return pending
+
+
+def _expires_at(expires_in: int | None) -> float | None:
+    if not expires_in:
+        return None
+    return time.time() + max(0, expires_in - 30)
+
+
+def _token_auth(settings) -> tuple[str, str] | None:
+    if settings.spotify_client_secret:
+        return (settings.spotify_client_id, settings.spotify_client_secret)
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
@@ -147,23 +290,99 @@ class SpotifyAuth(AuthStrategy):
 
     async def begin(self, *, user_id: str, account_label: str | None = None) -> AuthChallenge:
         s = get_settings()
+        if not s.spotify_client_id:
+            raise ProviderError("OPE_SPOTIFY_CLIENT_ID is required before connecting Spotify")
         state = uuid.uuid4().hex
+        code_verifier = secrets.token_urlsafe(64)
+        _store_state(
+            state,
+            _PendingState(user_id=user_id, code_verifier=code_verifier, created_at=time.time()),
+        )
         params = {
             "client_id": s.spotify_client_id,
             "response_type": "code",
             "redirect_uri": s.spotify_redirect_uri,
             "scope": " ".join(_SCOPES),
             "state": state,
-            # TODO: attach PKCE code_challenge and persist the verifier for `state`.
+            "code_challenge_method": "S256",
+            "code_challenge": _code_challenge(code_verifier),
         }
         url = "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode(params)
         return AuthChallenge(shape=ChallengeShape.REDIRECT, redirect_url=url, state=state)
 
     async def complete(self, *, user_id: str, callback: dict) -> ProviderCredential:
-        raise NotImplementedError("TODO: exchange auth code (+PKCE verifier) for tokens")
+        if callback.get("error"):
+            raise ProviderError(f"spotify authorization failed: {callback['error']}")
+        code = callback.get("code")
+        if not code:
+            raise ProviderError("spotify callback is missing code")
+        pending = _consume_state(callback.get("state"), user_id)
+        s = get_settings()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                _TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": s.spotify_redirect_uri,
+                    "client_id": s.spotify_client_id,
+                    "code_verifier": pending.code_verifier,
+                },
+                auth=_token_auth(s),
+            )
+            if not resp.is_success:
+                raise ProviderError(f"spotify token exchange failed with HTTP {resp.status_code}")
+            token = resp.json()
+            access_token = token.get("access_token")
+            if not access_token:
+                raise ProviderError("spotify token response did not include an access token")
+            profile_resp = await client.get(
+                f"{_API_BASE}/me", headers={"Authorization": f"Bearer {access_token}"}
+            )
+            _raise_for_status(profile_resp)
+        profile = profile_resp.json()
+        provider_user_id = profile.get("id")
+        if not provider_user_id:
+            raise ProviderError("spotify profile response did not include a user id")
+        return ProviderCredential(
+            account_id=provider_user_id,
+            provider="spotify",
+            auth_kind=self.kind,
+            access_token=access_token,
+            refresh_token=token.get("refresh_token"),
+            expires_at=_expires_at(token.get("expires_in")),
+            scopes=(token.get("scope") or " ".join(_SCOPES)).split(),
+            extra={"display_name": profile.get("display_name") or provider_user_id},
+        )
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
-        raise NotImplementedError("TODO: refresh access token")
+        if not cred.refresh_token:
+            raise AuthExpired("spotify refresh token is missing")
+        s = get_settings()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                _TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": cred.refresh_token,
+                    "client_id": s.spotify_client_id,
+                },
+                auth=_token_auth(s),
+            )
+        if not resp.is_success:
+            raise AuthExpired(f"spotify refresh failed with HTTP {resp.status_code}")
+        token = resp.json()
+        access_token = token.get("access_token")
+        if not access_token:
+            raise AuthExpired("spotify refresh response did not include an access token")
+        return cred.model_copy(
+            update={
+                "access_token": access_token,
+                "refresh_token": token.get("refresh_token") or cred.refresh_token,
+                "expires_at": _expires_at(token.get("expires_in")),
+                "scopes": (token.get("scope") or " ".join(cred.scopes)).split(),
+            }
+        )
 
     async def revoke(self, cred: ProviderCredential) -> None:
         return None
@@ -182,10 +401,6 @@ class SpotifyAdapter:
                 Capability.READ_PLAYLISTS,
                 Capability.READ_TRACKS,
                 Capability.READ_LIBRARY,
-                Capability.CREATE_PLAYLIST,
-                Capability.ADD_TRACKS,
-                Capability.SET_DESCRIPTION,
-                Capability.SET_COVER,
             },
             has_isrc=True,
             search_modes=[SearchMode.ISRC, SearchMode.TEXT],
@@ -236,43 +451,39 @@ class SpotifyAdapter:
     async def iter_playlist_items(
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
-        offset = 0
-        position = 0
         async with self._client(cred) as client:
-            while True:
-                resp = _raise_for_status(
-                    await client.get(
-                        f"/playlists/{ref.id}/tracks",
-                        params={
-                            "limit": _ITEMS_PAGE,
-                            "offset": offset,
-                            "additional_types": "track,episode",
-                        },
-                    )
-                )
-                data = resp.json()
-                items = data.get("items", [])
-                for item in items:
-                    track = _track_from_item(item)
-                    if track is None:
-                        continue
-                    track.position = position
-                    position += 1
+            resp = await client.get(
+                f"/playlists/{ref.id}/tracks",
+                params={
+                    "limit": _ITEMS_PAGE,
+                    "offset": 0,
+                    "additional_types": "track,episode",
+                },
+            )
+            if resp.status_code == 403:
+                meta_resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
+                page = _playlist_item_page(meta_resp.json())
+                if page is None:
+                    _raise_for_status(resp)
+                    return
+                async for track in _iter_tracks_from_page(client, page):
                     yield track
-                if not data.get("next"):
-                    break
-                offset += _ITEMS_PAGE
+                return
+            page = _playlist_item_page(_raise_for_status(resp).json())
+            if page is None:
+                return
+            async for track in _iter_tracks_from_page(client, page):
+                yield track
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         async with self._client(cred) as client:
-            resp = _raise_for_status(
-                await client.get(
-                    f"/playlists/{ref.id}",
-                    params={"fields": "id,name,description,owner(id)"},
-                )
-            )
-        meta = resp.json()
-        tracks = [t async for t in self.iter_playlist_items(cred, ref)]
+            resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
+            meta = resp.json()
+            page = _playlist_item_page(meta)
+            if page is not None:
+                tracks = [track async for track in _iter_tracks_from_page(client, page)]
+            else:
+                tracks = [track async for track in self.iter_playlist_items(cred, ref)]
         return Playlist(
             id=meta.get("id") or ref.id,
             name=meta.get("name") or ref.name,

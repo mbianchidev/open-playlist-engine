@@ -75,9 +75,24 @@ h1 {
   color: #c7cdd6;
 }
 
+.badge.inline {
+  margin-left: 0.5rem;
+}
+
 .warn {
   color: #f0b450;
   font-size: 0.75rem;
+}
+
+.notice,
+.connected {
+  color: #7ddc95;
+  font-size: 0.85rem;
+}
+
+.muted {
+  color: #9aa3ad;
+  font-size: 0.85rem;
 }
 
 button.primary {
@@ -96,8 +111,146 @@ button.primary:disabled {
   cursor: not-allowed;
 }
 
+button.secondary {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #2a3039;
+  background: #11141a;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.compact {
+  margin-top: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+}
+
 .events {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.8rem;
   white-space: pre-wrap;
+}
+
+.flow {
+  margin-top: 1rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-heading h2 {
+  margin-bottom: 0.25rem;
+}
+
+.section-heading .muted {
+  margin-top: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-block {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+textarea {
+  min-height: 9rem;
+  resize: vertical;
+  border-radius: 8px;
+  border: 1px solid #2a3039;
+  background: #0d0f12;
+  color: inherit;
+  padding: 0.75rem;
+}
+
+.playlist-list,
+.track-list,
+.progress-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.playlist-row,
+.track-row,
+.progress-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #232830;
+}
+
+.playlist-card {
+  border-bottom: 1px solid #232830;
+  padding-bottom: 0.6rem;
+}
+
+.track-list {
+  margin: 0.5rem 0 0 1.75rem;
+}
+
+.track-row {
+  border-bottom: none;
+  padding: 0.3rem 0;
+}
+
+.progress-row {
+  grid-template-columns: auto 1fr;
+}
+
+.review-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+}
+
+.review-controls input {
+  border-radius: 8px;
+  border: 1px solid #2a3039;
+  background: #0d0f12;
+  color: inherit;
+  padding: 0.5rem;
+}
+
+.status {
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  background: #2a3039;
+  color: #c7cdd6;
+  font-size: 0.7rem;
+}
+
+.status-written {
+  background: #15321f;
+  color: #7ddc95;
+}
+
+.status-failed,
+.status-needs_review {
+  background: #3a2610;
+  color: #f0b450;
 }

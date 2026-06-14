@@ -81,10 +81,12 @@ class MigrationJob(Base):
     target_provider: Mapped[str] = mapped_column(String)
     source_account_id: Mapped[str] = mapped_column(String)
     target_account_id: Mapped[str] = mapped_column(String)
+    selection: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String, default="pending", index=True)
     total: Mapped[int] = mapped_column(Integer, default=0)
     done: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     items: Mapped[list[JobItem]] = relationship(
@@ -100,15 +102,26 @@ class JobItem(Base):
         ForeignKey("migration_job.id", ondelete="CASCADE"), index=True
     )
     source_playlist_id: Mapped[str] = mapped_column(String)
+    source_playlist_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_playlist_id: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     title: Mapped[str] = mapped_column(String)
     artist: Mapped[str] = mapped_column(String)
+    album: Mapped[str | None] = mapped_column(String, nullable=True)
+    duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    release_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    explicit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     isrc: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
     target_uri: Mapped[str | None] = mapped_column(String, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     # pending | matched | needs_review | written | skipped | failed
     status: Mapped[str] = mapped_column(String, default="pending", index=True)
     reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     job: Mapped[MigrationJob] = relationship(back_populates="items")
 

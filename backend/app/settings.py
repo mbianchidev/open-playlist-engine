@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Infra
     database_url: str = "postgresql+psycopg://ope:ope@localhost:5432/ope"
     valkey_url: str = "redis://localhost:6379/0"
+    frontend_url: str = "http://localhost:8080"
 
     # Secrets. In hosted mode this should come from a KMS-backed KeyProvider.
     secret_key: str = "dev-only-change-me"
@@ -41,7 +42,7 @@ class Settings(BaseSettings):
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
-    spotify_redirect_uri: str = "http://localhost:8000/api/auth/spotify/callback"
+    spotify_redirect_uri: str = "http://127.0.0.1:8000/api/auth/spotify/callback"
 
     @property
     def is_hosted(self) -> bool:

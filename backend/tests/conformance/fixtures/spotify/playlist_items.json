@@ -11,7 +11,13 @@
         "duration_ms": 210000,
         "explicit": false,
         "artists": [{ "name": "Artist One" }],
-        "album": { "name": "Album One" },
+        "album": {
+          "id": "alb1",
+          "name": "Album One",
+          "release_date": "2020-03-20",
+          "release_date_precision": "day",
+          "images": [{ "url": "https://img.example.com/album-one.jpg" }]
+        },
         "external_ids": { "isrc": "US0000000001" }
       }
     },
@@ -26,7 +32,12 @@
         "duration_ms": 180000,
         "explicit": true,
         "artists": [{ "name": "Artist Two" }, { "name": "Artist Three" }],
-        "album": { "name": "Album Two" },
+        "album": {
+          "id": "alb2",
+          "name": "Album Two",
+          "release_date": "2020",
+          "release_date_precision": "year"
+        },
         "external_ids": { "isrc": "US0000000002" }
       }
     }

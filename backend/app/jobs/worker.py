@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from arq.connections import RedisSettings
 
+import app.providers  # noqa: F401  (registers adapters in the worker process)
 from app.jobs.migration import run_migration
 from app.settings import get_settings
 

@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from app.core.adapter import AuthKind, CreatePlaylistSpec, ProviderCredential, ProviderError
+from app.core.models import Track
 from app.providers.ytmusic.adapter import YTMusicAdapter, _video_id
 from tests.conformance.ytmusic_fakes import FakeYTMusic
 
@@ -97,3 +98,23 @@ async def test_add_tracks_failure_reports_per_item() -> None:
     results = await adapter.add_tracks(_cred(), "PL", ["yt:video:a", "yt:video:b"])
     assert [r.ok for r in results] == [False, False]
     assert all(r.error for r in results)
+
+
+async def test_search_tracks_maps_song_results() -> None:
+    adapter = _adapter(FakeYTMusic())
+    results = await adapter.search_tracks(_cred(), Track(title="Song One", artist="Artist One"))
+    assert len(results) == 1
+    assert results[0].provider_track_id == "yt_song_one"
+    assert results[0].uri == "ytmusic:video:yt_song_one"
+    assert results[0].artist == "Artist One"
+    assert results[0].explicit is False
+
+
+async def test_header_auth_json_returns_credential() -> None:
+    adapter = _adapter(FakeYTMusic())
+    cred = await adapter.auth.complete(
+        user_id="local",
+        callback={"headers_raw": '{"Authorization":"Bearer x","Cookie":"SID=y"}'},
+    )
+    assert cred.auth_kind is AuthKind.HEADER_PASTE
+    assert cred.extra["auth"]["Authorization"] == "Bearer x"

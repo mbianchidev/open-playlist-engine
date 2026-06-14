@@ -1,14 +1,60 @@
-import type { JobView, ProviderView } from "./types";
+import type {
+  AccountView,
+  AuthChallenge,
+  ConnectionView,
+  JobItemView,
+  JobView,
+  Playlist,
+  PlaylistRef,
+  ProviderView,
+} from "./types";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`);
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail ?? `${res.status} ${res.statusText}`);
   }
   return (await res.json()) as T;
 }
 
 export async function getProviders(): Promise<ProviderView[]> {
   return json<ProviderView[]>(await fetch("/api/providers"));
+}
+
+export async function beginAuth(provider: string): Promise<AuthChallenge> {
+  return json<AuthChallenge>(await fetch(`/api/auth/${provider}/begin`, { method: "POST" }));
+}
+
+export async function completeAuth(
+  provider: string,
+  callback: Record<string, unknown>,
+): Promise<ConnectionView> {
+  return json<ConnectionView>(
+    await fetch(`/api/auth/${provider}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(callback),
+    }),
+  );
+}
+
+export async function getAccounts(provider?: string): Promise<AccountView[]> {
+  const params = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  return json<AccountView[]>(await fetch(`/api/auth/accounts${params}`));
+}
+
+export async function getPlaylists(provider: string, accountId: string): Promise<PlaylistRef[]> {
+  const params = new URLSearchParams({ provider, account_id: accountId });
+  return json<PlaylistRef[]>(await fetch(`/api/playlists?${params}`));
+}
+
+export async function getPlaylist(
+  provider: string,
+  accountId: string,
+  playlistId: string,
+): Promise<Playlist> {
+  const params = new URLSearchParams({ provider, account_id: accountId });
+  return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
 }
 
 export interface CreateMigrationBody {
@@ -22,6 +68,24 @@ export interface CreateMigrationBody {
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {
   return json<JobView>(
     await fetch("/api/migrations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function getMigrationItems(jobId: string): Promise<JobItemView[]> {
+  return json<JobItemView[]>(await fetch(`/api/migrations/${jobId}/items`));
+}
+
+export async function reviewMigrationItem(
+  jobId: string,
+  itemId: string,
+  body: { action: "approve" | "skip"; target_uri?: string | null },
+): Promise<JobItemView> {
+  return json<JobItemView>(
+    await fetch(`/api/migrations/${jobId}/items/${itemId}/review`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),

@@ -30,6 +30,14 @@ and lets a user migrate playlists from any source to any target through a UI.
 - Track matching that gets **cheaper and more accurate over time**.
 - Long-running migrations with **durable, replayable live progress**.
 
+### Current implementation status
+The self-hosted MVP currently exposes only implemented capabilities in the UI:
+Spotify is a source provider (OAuth + playlist read/search) and YouTube Music is a
+target provider (header-paste auth + text search + playlist write through
+`ytmusicapi`). The persisted job pipeline supports import → match → write with SSE
+item progress; low-confidence matches are marked `needs_review` and can be
+approved, corrected, or skipped from the progress panel.
+
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
 - Providers without a usable playlist-write path (e.g. Amazon Music).
