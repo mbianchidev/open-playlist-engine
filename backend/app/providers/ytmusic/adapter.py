@@ -14,6 +14,7 @@ adapter against an in-memory fake instead of the live, unofficial API.
 from __future__ import annotations
 
 import asyncio
+import json
 import urllib.parse
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any, Protocol
@@ -30,6 +31,7 @@ from app.core.adapter import (
     ProviderError,
     ProviderInfo,
     TrackCandidate,
+    Unsupported,
 )
 from app.core.capabilities import (
     Capability,
@@ -63,6 +65,10 @@ class YTMusicClient(Protocol):
         duplicates: bool = False,
     ) -> str | dict[str, Any]: ...
 
+    def search(
+        self, query: str, filter: str | None = None, limit: int = 20
+    ) -> list[dict[str, Any]]: ...
+
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
 
@@ -94,6 +100,50 @@ def _video_id(uri: str) -> str:
     return uri
 
 
+def _duration_s(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    parts = value.split(":")
+    if not all(part.isdigit() for part in parts):
+        return None
+    total = 0
+    for part in parts:
+        total = total * 60 + int(part)
+    return total
+
+
+def _artist_names(value: Any) -> str:
+    if not isinstance(value, list):
+        return ""
+    names = [artist.get("name", "") for artist in value if isinstance(artist, dict)]
+    return ", ".join(name for name in names if name)
+
+
+def _auth_from_headers(raw: str) -> dict[str, Any]:
+    raw = raw.strip()
+    if not raw:
+        raise ProviderError("YouTube Music headers are required")
+    if raw.startswith("{"):
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise ProviderError("YouTube Music auth JSON must be an object")
+        return parsed
+
+    from ytmusicapi import setup
+
+    parsed = setup(filepath=None, headers_raw=raw)
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError as exc:
+            raise ProviderError("ytmusicapi returned invalid auth JSON") from exc
+    if not isinstance(parsed, dict):
+        raise ProviderError("ytmusicapi did not return a valid auth payload")
+    return parsed
+
+
 def _succeeded(response: str | dict[str, Any]) -> bool:
     return isinstance(response, dict) and "SUCCEEDED" in str(response.get("status", ""))
 
@@ -120,10 +170,25 @@ class YTMusicAuth(AuthStrategy):
         )
 
     async def complete(self, *, user_id: str, callback: dict) -> ProviderCredential:
-        raise NotImplementedError("TODO: finalize ytmusicapi oauth / validate pasted headers")
+        if not get_settings().allow_header_paste:
+            raise Unsupported("YouTube Music header-paste auth is disabled outside self-host mode")
+        headers_raw = callback.get("headers_raw")
+        if not isinstance(headers_raw, str):
+            raise ProviderError("YouTube Music header auth requires headers_raw")
+        auth_payload = await asyncio.to_thread(_auth_from_headers, headers_raw)
+        if not any(str(key).lower() == "authorization" for key in auth_payload):
+            raise ProviderError("YouTube Music headers must include Authorization")
+        if not any(str(key).lower() == "cookie" for key in auth_payload):
+            raise ProviderError("YouTube Music headers must include Cookie")
+        return ProviderCredential(
+            account_id="ytmusic-local",
+            provider="ytmusic",
+            auth_kind=AuthKind.HEADER_PASTE,
+            extra={"auth": auth_payload, "display_name": "YouTube Music"},
+        )
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
-        raise NotImplementedError("TODO: refresh oauth token")
+        return cred
 
     async def revoke(self, cred: ProviderCredential) -> None:
         return None
@@ -136,8 +201,6 @@ class YTMusicAdapter:
         auth_kind=AuthKind.OAUTH_DEVICE,
         capabilities=CapabilityDescriptor(
             capabilities={
-                Capability.READ_PLAYLISTS,
-                Capability.READ_TRACKS,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
                 Capability.SET_DESCRIPTION,
@@ -178,10 +241,35 @@ class YTMusicAdapter:
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
     ) -> list[TrackCandidate]:
-        raise NotImplementedError("TODO: ytmusic.search(query, filter='songs')")
+        query = f"{track.title} {track.artist}".strip()
+        if track.album:
+            query = f"{query} {track.album}".strip()
+        client = self._client(cred)
+        results = await asyncio.to_thread(lambda: client.search(query, filter="songs", limit=limit))
+        candidates: list[TrackCandidate] = []
+        for item in results:
+            video_id = item.get("videoId")
+            if not video_id:
+                continue
+            candidates.append(
+                TrackCandidate(
+                    provider_track_id=video_id,
+                    uri=f"ytmusic:video:{video_id}",
+                    title=item.get("title") or "",
+                    artist=_artist_names(item.get("artists")),
+                    album=(item.get("album") or {}).get("name")
+                    if isinstance(item.get("album"), dict)
+                    else None,
+                    duration_s=item.get("duration_seconds") or _duration_s(item.get("duration")),
+                )
+            )
+            if len(candidates) >= limit:
+                break
+        return candidates
 
     async def validate_uri(self, cred: ProviderCredential, uri: str) -> bool:
-        raise NotImplementedError("TODO: verify videoId still exists/available")
+        video_id = _video_id(uri)
+        return bool(video_id)
 
     # WRITE ----------------------------------------------------------------- #
     async def create_playlist(self, cred: ProviderCredential, spec: CreatePlaylistSpec) -> str:

@@ -25,6 +25,7 @@ services:
 
   backend:
     build: ./backend
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     env_file: .env
     environment:
       OPE_DATABASE_URL: postgresql+psycopg://ope:ope@postgres:5432/ope
@@ -39,7 +40,7 @@ services:
 
   worker:
     build: ./backend
-    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    command: ["sh", "-c", "alembic upgrade head && arq app.jobs.worker.WorkerSettings"]
     env_file: .env
     environment:
       OPE_DATABASE_URL: postgresql+psycopg://ope:ope@postgres:5432/ope

@@ -9,9 +9,14 @@ still advertises the provider's full intended surface for the UI matrix.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
+import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
 
 import httpx
 
@@ -50,6 +55,18 @@ _SCOPES = [
     "playlist-modify-private",
     "playlist-modify-public",
 ]
+_TOKEN_URL = "https://accounts.spotify.com/api/token"
+_STATE_TTL_S = 600
+
+
+@dataclass(frozen=True)
+class _PendingState:
+    user_id: str
+    code_verifier: str
+    created_at: float
+
+
+_PENDING_STATES: dict[str, _PendingState] = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -139,6 +156,44 @@ def _track_id(uri: str) -> str | None:
     return uri or None
 
 
+def _code_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def _store_state(state: str, pending: _PendingState) -> None:
+    now = time.time()
+    expired = [
+        key for key, value in _PENDING_STATES.items() if now - value.created_at > _STATE_TTL_S
+    ]
+    for key in expired:
+        _PENDING_STATES.pop(key, None)
+    _PENDING_STATES[state] = pending
+
+
+def _consume_state(state: str | None, user_id: str) -> _PendingState:
+    if not state:
+        raise ProviderError("spotify callback is missing state")
+    pending = _PENDING_STATES.pop(state, None)
+    if pending is None:
+        raise ProviderError("spotify callback state is invalid or expired")
+    if pending.user_id != user_id:
+        raise ProviderError("spotify callback state does not match the current user")
+    return pending
+
+
+def _expires_at(expires_in: int | None) -> float | None:
+    if not expires_in:
+        return None
+    return time.time() + max(0, expires_in - 30)
+
+
+def _token_auth(settings) -> tuple[str, str] | None:
+    if settings.spotify_client_secret:
+        return (settings.spotify_client_id, settings.spotify_client_secret)
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
@@ -147,23 +202,99 @@ class SpotifyAuth(AuthStrategy):
 
     async def begin(self, *, user_id: str, account_label: str | None = None) -> AuthChallenge:
         s = get_settings()
+        if not s.spotify_client_id:
+            raise ProviderError("OPE_SPOTIFY_CLIENT_ID is required before connecting Spotify")
         state = uuid.uuid4().hex
+        code_verifier = secrets.token_urlsafe(64)
+        _store_state(
+            state,
+            _PendingState(user_id=user_id, code_verifier=code_verifier, created_at=time.time()),
+        )
         params = {
             "client_id": s.spotify_client_id,
             "response_type": "code",
             "redirect_uri": s.spotify_redirect_uri,
             "scope": " ".join(_SCOPES),
             "state": state,
-            # TODO: attach PKCE code_challenge and persist the verifier for `state`.
+            "code_challenge_method": "S256",
+            "code_challenge": _code_challenge(code_verifier),
         }
         url = "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode(params)
         return AuthChallenge(shape=ChallengeShape.REDIRECT, redirect_url=url, state=state)
 
     async def complete(self, *, user_id: str, callback: dict) -> ProviderCredential:
-        raise NotImplementedError("TODO: exchange auth code (+PKCE verifier) for tokens")
+        if callback.get("error"):
+            raise ProviderError(f"spotify authorization failed: {callback['error']}")
+        code = callback.get("code")
+        if not code:
+            raise ProviderError("spotify callback is missing code")
+        pending = _consume_state(callback.get("state"), user_id)
+        s = get_settings()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                _TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": s.spotify_redirect_uri,
+                    "client_id": s.spotify_client_id,
+                    "code_verifier": pending.code_verifier,
+                },
+                auth=_token_auth(s),
+            )
+            if not resp.is_success:
+                raise ProviderError(f"spotify token exchange failed with HTTP {resp.status_code}")
+            token = resp.json()
+            access_token = token.get("access_token")
+            if not access_token:
+                raise ProviderError("spotify token response did not include an access token")
+            profile_resp = await client.get(
+                f"{_API_BASE}/me", headers={"Authorization": f"Bearer {access_token}"}
+            )
+            _raise_for_status(profile_resp)
+        profile = profile_resp.json()
+        provider_user_id = profile.get("id")
+        if not provider_user_id:
+            raise ProviderError("spotify profile response did not include a user id")
+        return ProviderCredential(
+            account_id=provider_user_id,
+            provider="spotify",
+            auth_kind=self.kind,
+            access_token=access_token,
+            refresh_token=token.get("refresh_token"),
+            expires_at=_expires_at(token.get("expires_in")),
+            scopes=(token.get("scope") or " ".join(_SCOPES)).split(),
+            extra={"display_name": profile.get("display_name") or provider_user_id},
+        )
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
-        raise NotImplementedError("TODO: refresh access token")
+        if not cred.refresh_token:
+            raise AuthExpired("spotify refresh token is missing")
+        s = get_settings()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                _TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": cred.refresh_token,
+                    "client_id": s.spotify_client_id,
+                },
+                auth=_token_auth(s),
+            )
+        if not resp.is_success:
+            raise AuthExpired(f"spotify refresh failed with HTTP {resp.status_code}")
+        token = resp.json()
+        access_token = token.get("access_token")
+        if not access_token:
+            raise AuthExpired("spotify refresh response did not include an access token")
+        return cred.model_copy(
+            update={
+                "access_token": access_token,
+                "refresh_token": token.get("refresh_token") or cred.refresh_token,
+                "expires_at": _expires_at(token.get("expires_in")),
+                "scopes": (token.get("scope") or " ".join(cred.scopes)).split(),
+            }
+        )
 
     async def revoke(self, cred: ProviderCredential) -> None:
         return None
@@ -182,10 +313,6 @@ class SpotifyAdapter:
                 Capability.READ_PLAYLISTS,
                 Capability.READ_TRACKS,
                 Capability.READ_LIBRARY,
-                Capability.CREATE_PLAYLIST,
-                Capability.ADD_TRACKS,
-                Capability.SET_DESCRIPTION,
-                Capability.SET_COVER,
             },
             has_isrc=True,
             search_modes=[SearchMode.ISRC, SearchMode.TEXT],

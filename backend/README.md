@@ -13,6 +13,7 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 ## Develop
 ```bash
 pip install -e ".[dev]"
+alembic upgrade head
 uvicorn app.main:app --reload      # http://localhost:8000  (/docs, /health)
 arq app.jobs.worker.WorkerSettings # background worker
 pytest
@@ -34,10 +35,17 @@ read/search/write; `MatchService` owns matching.
 ## Provider status
 | Provider | Read / Search | Write | Test seam |
 |---|---|---|---|
-| Spotify | ✅ live (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
-| YouTube Music | stub | ✅ live (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+| Spotify | ✅ OAuth + live read/search (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
+| YouTube Music | search only | ✅ header auth + live write (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
 the conformance suite instantiates the adapter classes directly with a seam, so CI
 never makes live calls. See [ADR 0002](../docs/adr/0002-adapter-fixture-testing.md).
+
+## Spotify → YouTube Music MVP
+
+The implemented self-host path uses Spotify as the source and YouTube Music as the
+target. Docker Compose applies Alembic migrations before starting the backend and
+worker. For local development, run `alembic upgrade head` before `uvicorn` and
+`arq`.

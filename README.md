@@ -9,11 +9,11 @@ This is the first reference implementation of the
 plugin spoke, the universal format is the hub, so adding a provider is O(1) and it
 instantly works with all the others — both as source and target.
 
-> Status: **early**. Structure, contracts, capability matrix and pipeline are in
-> place. First provider primitives are live behind injectable seams and a recorded-
-> fixture conformance suite: **Spotify read + search** and **YouTube Music write**.
-> Remaining provider calls are stubbed (`NotImplementedError`). See
-> [`docs/DESIGN.md`](docs/DESIGN.md).
+> Status: **early MVP**. The self-hosted Spotify → YouTube Music path is wired:
+> Spotify OAuth/read/search, YouTube Music header auth/search/write, persisted
+> credentials, playlist selection, migration jobs and SSE progress. Other provider
+> directions remain gated until their adapters advertise implemented capabilities.
+> See [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
 
@@ -68,7 +68,22 @@ npm run build
 
 All backend settings use the `OPE_` env prefix; see [`.env.example`](.env.example).
 Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
-`OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`.
+`OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+
+## Spotify → YouTube Music
+
+1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
+   redirect URI to `http://localhost:8000/api/auth/spotify/callback`.
+2. Put `OPE_SPOTIFY_CLIENT_ID`, optional `OPE_SPOTIFY_CLIENT_SECRET`,
+   `OPE_SECRET_KEY`, and `OPE_FRONTEND_URL` in `.env`.
+3. Start Docker Compose, open `http://localhost:8080`, choose Spotify as source
+   and YouTube Music as target.
+4. Connect Spotify in the popup.
+5. For YouTube Music, paste request headers copied from an authenticated
+   `music.youtube.com` `/browse` POST request.
+6. Pick playlists and start the migration. Low-confidence matches are skipped as
+   `needs_review`; retry after improving matching or lowering
+   `OPE_REVIEW_CONFIDENCE_THRESHOLD`.
 
 ## Adding a provider
 

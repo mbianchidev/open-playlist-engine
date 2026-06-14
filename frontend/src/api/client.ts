@@ -1,14 +1,50 @@
-import type { JobView, ProviderView } from "./types";
+import type {
+  AccountView,
+  AuthChallenge,
+  ConnectionView,
+  JobItemView,
+  JobView,
+  PlaylistRef,
+  ProviderView,
+} from "./types";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`);
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail ?? `${res.status} ${res.statusText}`);
   }
   return (await res.json()) as T;
 }
 
 export async function getProviders(): Promise<ProviderView[]> {
   return json<ProviderView[]>(await fetch("/api/providers"));
+}
+
+export async function beginAuth(provider: string): Promise<AuthChallenge> {
+  return json<AuthChallenge>(await fetch(`/api/auth/${provider}/begin`, { method: "POST" }));
+}
+
+export async function completeAuth(
+  provider: string,
+  callback: Record<string, unknown>,
+): Promise<ConnectionView> {
+  return json<ConnectionView>(
+    await fetch(`/api/auth/${provider}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(callback),
+    }),
+  );
+}
+
+export async function getAccounts(provider?: string): Promise<AccountView[]> {
+  const params = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  return json<AccountView[]>(await fetch(`/api/auth/accounts${params}`));
+}
+
+export async function getPlaylists(provider: string, accountId: string): Promise<PlaylistRef[]> {
+  const params = new URLSearchParams({ provider, account_id: accountId });
+  return json<PlaylistRef[]>(await fetch(`/api/playlists?${params}`));
 }
 
 export interface CreateMigrationBody {
@@ -27,6 +63,10 @@ export async function createMigration(body: CreateMigrationBody): Promise<JobVie
       body: JSON.stringify(body),
     }),
   );
+}
+
+export async function getMigrationItems(jobId: string): Promise<JobItemView[]> {
+  return json<JobItemView[]>(await fetch(`/api/migrations/${jobId}/items`));
 }
 
 // SSE stream of migration progress. Returns a disposer.

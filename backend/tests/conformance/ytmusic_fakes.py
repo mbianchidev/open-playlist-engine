@@ -48,3 +48,16 @@ class FakeYTMusic:
             self.playlists[playlistId]["tracks"].append(video_id)
             results.append({"videoId": video_id, "setVideoId": f"set_{video_id}"})
         return {"status": "STATUS_SUCCEEDED", "playlistEditResults": results}
+
+    def search(
+        self, query: str, filter: str | None = None, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "videoId": "yt_song_one",
+                "title": "Song One",
+                "artists": [{"name": "Artist One"}],
+                "album": {"name": "Album One"},
+                "duration_seconds": 180,
+            }
+        ][:limit]

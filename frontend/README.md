@@ -19,7 +19,10 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 ```
 
 ## Flow (maps to the phased design)
-1. Connect source account → 2. pick playlists/tracks → 3. connect target →
-4. migrate → 5. live progress (SSE). The current scaffold wires provider
-selection (`/api/providers`) and the progress stream; account/playlist steps are
-stubbed pending backend implementation.
+1. Pick source/target providers from `/api/providers`.
+2. Connect accounts through generic auth challenges.
+3. Load source playlists from `/api/playlists`.
+4. Create a migration with selected playlist IDs.
+5. Render live job/item progress from SSE.
+
+The current UI supports the implemented self-host Spotify → YouTube Music MVP.

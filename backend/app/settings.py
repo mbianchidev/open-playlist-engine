@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Infra
     database_url: str = "postgresql+psycopg://ope:ope@localhost:5432/ope"
     valkey_url: str = "redis://localhost:6379/0"
+    frontend_url: str = "http://localhost:8080"
 
     # Secrets. In hosted mode this should come from a KMS-backed KeyProvider.
     secret_key: str = "dev-only-change-me"
