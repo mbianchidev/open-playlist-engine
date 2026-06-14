@@ -32,6 +32,7 @@ for low-confidence matches.
 |---|---|
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
+| `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
 | `docs/` | [`DESIGN.md`](docs/DESIGN.md) and [ADRs](docs/adr). |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
