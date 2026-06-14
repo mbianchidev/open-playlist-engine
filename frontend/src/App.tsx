@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ApiError,
   beginAuth,
   completeAuth,
   createMigration,
@@ -7,6 +8,7 @@ import {
   getPlaylist,
   getPlaylists,
   getProviders,
+  testAccountConnection,
 } from "./api/client";
 import type { AccountView, PlaylistRef, ProviderView, Track } from "./api/types";
 import ProviderPicker from "./components/ProviderPicker";
@@ -29,6 +31,10 @@ export default function App() {
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
+  const playlistContext = {
+    targetProvider: target,
+    targetAccountId: targetAccount?.id ?? null,
+  };
   const selectedMigrationPlaylistIds = getSelectedMigrationPlaylistIds(
     selectedPlaylists,
     playlistTracks,
@@ -46,17 +52,23 @@ export default function App() {
     setPlaylistTracks({});
     setSelectedTracks({});
     if (!source || !sourceAccount) return;
-    getPlaylists(source, sourceAccount.id)
+    getPlaylists(source, sourceAccount.id, playlistContext)
       .then((rows) => {
         setPlaylists(rows);
-        setSelectedPlaylists(new Set(rows.map((p) => p.id)));
+        setSelectedPlaylists(new Set());
       })
       .catch((e: unknown) => setError(errorMessage(e)));
-  }, [source, sourceAccount?.id]);
+  }, [source, sourceAccount?.id, target, targetAccount?.id]);
 
   async function refreshAccounts() {
     try {
-      setAccounts(await getAccounts());
+      const rows = await getAccounts(undefined, true);
+      setAccounts((prev) => {
+        if (prev.length > rows.length) {
+          setNotice("Expired account disconnected. Reconnect before migrating.");
+        }
+        return rows;
+      });
     } catch (e: unknown) {
       setError(errorMessage(e));
     }
@@ -104,7 +116,23 @@ export default function App() {
     }
   }
 
-  async function start() {
+  async function testConnection(account: AccountView) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await testAccountConnection(account.id);
+      setNotice(result.message);
+      await refreshAccounts();
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+      await refreshAccounts();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function start(acknowledgeWarnings = false) {
     if (!source || !target || !sourceAccount || !targetAccount) return;
     const tracks = Object.fromEntries(
       selectedMigrationPlaylistIds
@@ -120,9 +148,14 @@ export default function App() {
         source_account_id: sourceAccount.id,
         target_account_id: targetAccount.id,
         selection: { playlist_ids: selectedMigrationPlaylistIds, tracks },
+        acknowledge_warnings: acknowledgeWarnings,
       });
       setJobId(job.id);
     } catch (e: unknown) {
+      if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
+        await start(true);
+        return;
+      }
       setError(errorMessage(e));
     } finally {
       setBusy(false);
@@ -130,12 +163,27 @@ export default function App() {
   }
 
   function togglePlaylist(id: string) {
+    if (selectedPlaylists.has(id)) {
+      setSelectedPlaylists((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      closePlaylistSongs(id);
+      return;
+    }
     setSelectedPlaylists((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.add(id);
       return next;
     });
+    const loaded = playlistTracks[id];
+    if (loaded) {
+      setSelectedTracks((prevTracks) => ({
+        ...prevTracks,
+        [id]: new Set(loaded.map(trackKey)),
+      }));
+    }
   }
 
   function selectAllPlaylists() {
@@ -144,6 +192,8 @@ export default function App() {
 
   function deselectAllPlaylists() {
     setSelectedPlaylists(new Set());
+    setPlaylistTracks({});
+    setSelectedTracks({});
   }
 
   async function loadTracks(playlist: PlaylistRef) {
@@ -151,12 +201,21 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const detail = await getPlaylist(source, sourceAccount.id, playlist.id);
+      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, playlistContext);
+      const defaultSelected = detail.tracks
+        .filter((track) => track.migration_status !== "migrated")
+        .map(trackKey);
       setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
       setSelectedTracks((prev) => ({
         ...prev,
-        [playlist.id]: new Set(detail.tracks.map(trackKey)),
+        [playlist.id]: new Set(defaultSelected),
       }));
+      setSelectedPlaylists((prev) => {
+        const next = new Set(prev);
+        if (defaultSelected.length === 0) next.delete(playlist.id);
+        else next.add(playlist.id);
+        return next;
+      });
     } catch (e: unknown) {
       setError(errorMessage(e));
     } finally {
@@ -165,11 +224,57 @@ export default function App() {
   }
 
   function toggleTrack(playlistId: string, key: string) {
+    const next = new Set(selectedTracks[playlistId] ?? []);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    if (next.size === 0) {
+      setSelectedPlaylists((selected) => {
+        const selectedNext = new Set(selected);
+        selectedNext.delete(playlistId);
+        return selectedNext;
+      });
+      closePlaylistSongs(playlistId);
+      return;
+    }
     setSelectedTracks((prev) => {
-      const next = new Set(prev[playlistId] ?? []);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
       return { ...prev, [playlistId]: next };
+    });
+  }
+
+  function selectPlaylistSongs(playlistId: string, mode: "all" | "leftovers" | "none") {
+    if (mode === "none") {
+      setSelectedPlaylists((prev) => {
+        const next = new Set(prev);
+        next.delete(playlistId);
+        return next;
+      });
+      closePlaylistSongs(playlistId);
+      return;
+    }
+    const tracks = playlistTracks[playlistId] ?? [];
+    const keys = tracks
+      .filter((track) => mode === "all" || track.migration_status !== "migrated")
+      .map(trackKey);
+    setSelectedTracks((prev) => ({ ...prev, [playlistId]: new Set(keys) }));
+    setSelectedPlaylists((prev) => {
+      const next = new Set(prev);
+      if (keys.length === 0) next.delete(playlistId);
+      else next.add(playlistId);
+      return next;
+    });
+    if (keys.length === 0) closePlaylistSongs(playlistId);
+  }
+
+  function closePlaylistSongs(playlistId: string) {
+    setPlaylistTracks((prev) => {
+      const next = { ...prev };
+      delete next[playlistId];
+      return next;
+    });
+    setSelectedTracks((prev) => {
+      const next = { ...prev };
+      delete next[playlistId];
+      return next;
     });
   }
 
@@ -207,6 +312,7 @@ export default function App() {
             account={sourceAccount}
             busy={busy}
             onConnect={connect}
+            onTest={testConnection}
           />
           <AccountPanel
             label="Target"
@@ -214,6 +320,7 @@ export default function App() {
             account={targetAccount}
             busy={busy}
             onConnect={connect}
+            onTest={testConnection}
           />
         </div>
         {target === "ytmusic" && !targetAccount ? (
@@ -274,6 +381,11 @@ export default function App() {
                       onChange={() => togglePlaylist(playlist.id)}
                     />
                     <span>{playlist.name}</span>
+                    {playlist.migration_note ? (
+                      <span className={`badge migration-${playlist.migration_status ?? "none"}`}>
+                        {playlist.migration_note}
+                      </span>
+                    ) : null}
                     <span className="muted">
                       {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
                     </span>
@@ -287,8 +399,31 @@ export default function App() {
                       {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
                     </button>
                   ) : null}
-                  {playlistTracks[playlist.id] ? (
+                  {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
                     <div className="track-list">
+                      <div className="track-toolbar">
+                        <button
+                          className="secondary compact"
+                          disabled={busy}
+                          onClick={() => selectPlaylistSongs(playlist.id, "all")}
+                        >
+                          Select all songs
+                        </button>
+                        <button
+                          className="secondary compact"
+                          disabled={busy}
+                          onClick={() => selectPlaylistSongs(playlist.id, "leftovers")}
+                        >
+                          Select leftovers
+                        </button>
+                        <button
+                          className="secondary compact"
+                          disabled={busy}
+                          onClick={() => selectPlaylistSongs(playlist.id, "none")}
+                        >
+                          Deselect playlist
+                        </button>
+                      </div>
                       {playlistTracks[playlist.id].map((track) => {
                         const key = trackKey(track);
                         return (
@@ -301,6 +436,11 @@ export default function App() {
                             <span>
                               {track.title} — {track.artist}
                               {track.explicit ? <span className="badge inline">explicit</span> : null}
+                              {track.migration_status === "migrated" ? (
+                                <span className="badge inline migration-migrated">migrated</span>
+                              ) : playlist.migration_status === "partial" ? (
+                                <span className="badge inline migration-partial">leftover</span>
+                              ) : null}
                             </span>
                             <span className="muted">{track.album ?? ""}</span>
                           </label>
@@ -325,7 +465,7 @@ export default function App() {
           selectedMigrationPlaylistIds.length === 0 ||
           busy
         }
-        onClick={start}
+        onClick={() => start()}
       >
         {busy ? "Starting…" : "Start migration"}
       </button>
@@ -351,23 +491,52 @@ function trackKey(track: Track): string {
   return track.source_item_id ?? track.id ?? String(track.position ?? track.title);
 }
 
+interface MigrationWarningDetail {
+  code: string;
+  message: string;
+  warnings: { code: string; message: string }[];
+}
+
+function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningDetail } {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  if (!error.detail || typeof error.detail !== "object") return false;
+  const detail = error.detail as Partial<MigrationWarningDetail>;
+  return detail.code === "migration_warnings" && Array.isArray(detail.warnings);
+}
+
+function warningMessage(detail: MigrationWarningDetail): string {
+  return [
+    detail.message,
+    "",
+    ...detail.warnings.map((warning) => `- ${warning.message}`),
+    "",
+    "Continue anyway?",
+  ].join("\n");
+}
+
 interface AccountPanelProps {
   label: string;
   provider: string | null;
   account: AccountView | null;
   busy: boolean;
   onConnect: (provider: string) => void;
+  onTest: (account: AccountView) => void;
 }
 
-function AccountPanel({ label, provider, account, busy, onConnect }: AccountPanelProps) {
+function AccountPanel({ label, provider, account, busy, onConnect, onTest }: AccountPanelProps) {
   return (
     <div>
       <h3>{label}</h3>
       {!provider ? <p className="muted">Pick a provider first.</p> : null}
       {provider && account ? (
-        <p className="connected">
-          Connected: {account.display_name ?? account.provider_user_id ?? account.id}
-        </p>
+        <>
+          <p className="connected">
+            Connected: {account.display_name ?? account.provider_user_id ?? account.id}
+          </p>
+          <button className="secondary compact" disabled={busy} onClick={() => onTest(account)}>
+            Test connection
+          </button>
+        </>
       ) : null}
       {provider && !account ? (
         <button className="secondary" disabled={busy} onClick={() => onConnect(provider)}>

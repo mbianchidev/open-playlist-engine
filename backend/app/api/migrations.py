@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from arq import create_pool
@@ -18,11 +19,19 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
+from app.core.migration_state import (
+    has_track_overlap,
+    keys_from_metadata,
+    track_keys,
+    track_selected,
+    uri_keys,
+)
+from app.core.models import Playlist, PlaylistRef
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
@@ -51,6 +60,7 @@ class CreateMigration(BaseModel):
     source_account_id: str
     target_account_id: str
     selection: Selection
+    acknowledge_warnings: bool = False
 
 
 class JobView(BaseModel):
@@ -86,6 +96,11 @@ class JobItemView(BaseModel):
 class ReviewItem(BaseModel):
     action: Literal["approve", "skip"]
     target_uri: str | None = None
+
+
+class BatchReview(BaseModel):
+    action: Literal["approve", "skip"]
+    item_ids: list[str] = []
 
 
 def _job_view(job: orm.MigrationJob) -> JobView:
@@ -169,8 +184,28 @@ async def create_migration(
         await load_credential(
             session, account_id=body.target_account_id, provider=body.target_provider
         )
+        warnings = await _preflight_warnings(session, body, user_id=user_id)
     except (AccountNotFound, CredentialNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthExpired as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RateLimited as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if warnings and not body.acknowledge_warnings:
+        await session.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "migration_warnings",
+                "message": "Review and acknowledge migration warnings before starting.",
+                "warnings": warnings,
+            },
+        )
 
     job = orm.MigrationJob(
         user_id=user_id,
@@ -185,6 +220,176 @@ async def create_migration(
     await session.commit()
     await _enqueue_or_inline(background_tasks, job.id)
     return _job_view(job)
+
+
+async def _preflight_warnings(
+    session: AsyncSession,
+    body: CreateMigration,
+    *,
+    user_id: str,
+) -> list[dict[str, str]]:
+    settings = get_settings()
+    source = get(body.source_provider)
+    target = get(body.target_provider)
+    source_cred, _ = await load_fresh_credential(
+        session,
+        account_id=body.source_account_id,
+        adapter=source,
+        provider=body.source_provider,
+    )
+    target_cred, _ = await load_fresh_credential(
+        session,
+        account_id=body.target_account_id,
+        adapter=target,
+        provider=body.target_provider,
+    )
+
+    selected = await _selected_playlists(source, source_cred, body.selection)
+    total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
+    warnings: list[dict[str, str]] = []
+    if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
+        warnings.append(
+            _warning(
+                "playlist_count",
+                "Safe default is 1 playlist per job. Start a single playlist unless "
+                "you accept the extra account-risk.",
+            )
+        )
+    if total_tracks > settings.migration_safe_max_tracks_per_job:
+        warnings.append(
+            _warning(
+                "track_count",
+                f"Safe default is {settings.migration_safe_max_tracks_per_job} tracks "
+                f"per job; this job has {total_tracks}.",
+            )
+        )
+
+    migrated_today = await _tracks_migrated_today(
+        session,
+        user_id=user_id,
+        target_provider=body.target_provider,
+        target_account_id=body.target_account_id,
+    )
+    if migrated_today + total_tracks > settings.migration_safe_daily_tracks:
+        warnings.append(
+            _warning(
+                "daily_limit",
+                f"Safe default is {settings.migration_safe_daily_tracks} tracks/day; "
+                f"today would reach {migrated_today + total_tracks}.",
+            )
+        )
+
+    wait_remaining = await _job_wait_remaining(
+        session,
+        user_id=user_id,
+        target_provider=body.target_provider,
+        target_account_id=body.target_account_id,
+        min_gap_s=settings.migration_safe_min_job_gap_s,
+    )
+    if wait_remaining > 0:
+        warnings.append(
+            _warning(
+                "job_spacing",
+                "Safe default is waiting at least "
+                f"{settings.migration_safe_min_job_gap_s // 60} minutes between jobs; "
+                f"wait about {wait_remaining} seconds.",
+            )
+        )
+
+    warnings.extend(await _same_name_warnings(target, target_cred, selected))
+    return warnings
+
+
+async def _selected_playlists(
+    source, source_cred, selection: Selection
+) -> dict[str, Playlist]:
+    selected: dict[str, Playlist] = {}
+    track_filters = selection.tracks or {}
+    for playlist_id in selection.playlist_ids:
+        playlist = await source.read_playlist(
+            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+        )
+        wanted = set(track_filters.get(playlist_id) or [])
+        tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
+        selected[playlist_id] = playlist.model_copy(update={"tracks": tracks})
+    return selected
+
+
+async def _same_name_warnings(
+    target, target_cred, selected: dict[str, Playlist]
+) -> list[dict[str, str]]:
+    target_refs = [ref async for ref in target.iter_playlists(target_cred)]
+    warnings: list[dict[str, str]] = []
+    for source_playlist in selected.values():
+        same_name = [ref for ref in target_refs if ref.name.strip() == source_playlist.name.strip()]
+        for ref in same_name:
+            target_playlist = await target.read_playlist(target_cred, ref)
+            if target_playlist.tracks and not has_track_overlap(
+                source_playlist.tracks, target_playlist.tracks
+            ):
+                warnings.append(
+                    _warning(
+                        "same_name_different_tracks",
+                        f'Target already has a playlist named "{source_playlist.name}" '
+                        "with different songs.",
+                    )
+                )
+                break
+    return warnings
+
+
+async def _tracks_migrated_today(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    target_provider: str,
+    target_account_id: str,
+) -> int:
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    count = await session.scalar(
+        select(func.count())
+        .select_from(orm.JobItem)
+        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
+        .where(
+            orm.MigrationJob.user_id == user_id,
+            orm.MigrationJob.target_provider == target_provider,
+            orm.MigrationJob.target_account_id == target_account_id,
+            orm.MigrationJob.created_at >= today,
+        )
+    )
+    return int(count or 0)
+
+
+async def _job_wait_remaining(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    target_provider: str,
+    target_account_id: str,
+    min_gap_s: int,
+) -> int:
+    job = await session.scalar(
+        select(orm.MigrationJob)
+        .where(
+            orm.MigrationJob.user_id == user_id,
+            orm.MigrationJob.target_provider == target_provider,
+            orm.MigrationJob.target_account_id == target_account_id,
+        )
+        .order_by(orm.MigrationJob.created_at.desc())
+        .limit(1)
+    )
+    if job is None or job.created_at is None:
+        return 0
+    created_at = job.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    elapsed = datetime.now(UTC) - created_at
+    remaining = timedelta(seconds=min_gap_s) - elapsed
+    return max(0, int(remaining.total_seconds()))
+
+
+def _warning(code: str, message: str) -> dict[str, str]:
+    return {"code": code, "message": message}
 
 
 @router.get("/{job_id}", response_model=JobView)
@@ -223,6 +428,48 @@ async def review_migration_item(
     item = await session.get(orm.JobItem, item_id)
     if item is None or item.job_id != job_id:
         raise HTTPException(status_code=404, detail="migration item not found")
+    return await _apply_review(session, job, item, body)
+
+
+@router.post("/{job_id}/items/review", response_model=list[JobItemView])
+async def review_migration_items(
+    job_id: str,
+    body: BatchReview,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[JobItemView]:
+    job = await session.get(orm.MigrationJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="migration job not found")
+    if not body.item_ids:
+        raise HTTPException(status_code=400, detail="Select at least one migration item")
+    stmt = select(orm.JobItem).where(
+        orm.JobItem.job_id == job_id,
+        orm.JobItem.id.in_(body.item_ids),
+    )
+    items = list((await session.execute(stmt)).scalars())
+    found_ids = {item.id for item in items}
+    missing = [item_id for item_id in body.item_ids if item_id not in found_ids]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"migration item not found: {missing[0]}")
+    updated = []
+    for item in items:
+        updated.append(
+            await _apply_review(
+                session,
+                job,
+                item,
+                ReviewItem(action=body.action, target_uri=item.target_uri),
+            )
+        )
+    return updated
+
+
+async def _apply_review(
+    session: AsyncSession,
+    job: orm.MigrationJob,
+    item: orm.JobItem,
+    body: ReviewItem,
+) -> JobItemView:
     if item.status not in {"needs_review", "failed"}:
         raise HTTPException(status_code=400, detail=f"item is already {item.status}")
 
@@ -250,6 +497,14 @@ async def review_migration_item(
             raise HTTPException(
                 status_code=400, detail="target_uri is not valid for target provider"
             )
+        existing_keys = await _target_playlist_keys(target, target_cred, item.target_playlist_id)
+        duplicate_keys = _item_target_keys(item, target_uri)
+        if duplicate_keys & existing_keys:
+            item.target_uri = target_uri
+            item.status = "skipped"
+            item.reason = "duplicate already exists in target playlist"
+            await commit_job_counts(session, job)
+            return _item_view(item)
         results = await target.add_tracks(target_cred, item.target_playlist_id, [target_uri])
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -282,6 +537,31 @@ async def review_migration_item(
         item.reason = (result.error if result else None) or "target rejected reviewed track"
     await commit_job_counts(session, job)
     return _item_view(item)
+
+
+async def _target_playlist_keys(target, target_cred, playlist_id: str) -> set[str]:
+    playlist = await target.read_playlist(
+        target_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+    )
+    keys: set[str] = set()
+    for track in playlist.tracks:
+        keys.update(track_keys(track))
+    return keys
+
+
+def _item_target_keys(item: orm.JobItem, target_uri: str | None) -> set[str]:
+    keys = uri_keys(target_uri)
+    keys.update(
+        keys_from_metadata(
+            item.source_metadata,
+            title=item.title,
+            artist=item.artist,
+            album=item.album,
+            duration_s=item.duration_s,
+            isrc=item.isrc,
+        )
+    )
+    return keys
 
 
 async def _progress_payload(job_id: str) -> dict:

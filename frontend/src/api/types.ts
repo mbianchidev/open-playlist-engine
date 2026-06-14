@@ -32,6 +32,13 @@ export interface AccountView {
   display_name: string | null;
 }
 
+export interface ConnectionTestView {
+  status: string;
+  provider: string;
+  account_id: string;
+  message: string;
+}
+
 export interface ConnectionView {
   status: string;
   provider: string;
@@ -43,6 +50,10 @@ export interface PlaylistRef {
   name: string;
   track_count: number | null;
   owner_id: string | null;
+  migration_status: string | null;
+  migrated_track_count: number;
+  remaining_track_count: number | null;
+  migration_note: string | null;
 }
 
 export interface Credit {
@@ -77,6 +88,9 @@ export interface Track {
   source_item_id: string | null;
   added_at: string | null;
   unsupported_reason: string | null;
+  migration_status: string | null;
+  migrated_target_playlist_id: string | null;
+  migrated_target_uri: string | null;
 }
 
 export interface Playlist {

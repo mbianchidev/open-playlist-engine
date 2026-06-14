@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,12 +24,16 @@ from app.db.base import get_session
 from app.db.repositories import (
     AccountNotFound,
     CredentialNotFound,
+    delete_account,
     list_accounts,
+    load_credential,
+    load_fresh_credential,
     save_credential,
 )
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 class AccountView(BaseModel):
@@ -42,6 +47,13 @@ class ConnectionView(BaseModel):
     status: str
     provider: str
     account: AccountView
+
+
+class ConnectionTestView(BaseModel):
+    status: str
+    provider: str
+    account_id: str
+    message: str
 
 
 def _provider_error(exc: ProviderError) -> HTTPException:
@@ -82,9 +94,80 @@ async def accounts(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: str = "local",
     provider: Annotated[str | None, Query()] = None,
+    check: Annotated[bool, Query()] = False,
 ) -> list[AccountView]:
-    accounts = await list_accounts(session, user_id=user_id, provider=provider)
-    return [_account_view(account) for account in accounts]
+    rows = await list_accounts(session, user_id=user_id, provider=provider)
+    if not check:
+        return [_account_view(account) for account in rows]
+
+    valid_accounts = []
+    removed = False
+    for account in rows:
+        try:
+            adapter = get(account.provider)
+            credential, _ = await load_fresh_credential(
+                session,
+                account_id=account.id,
+                adapter=adapter,
+                provider=account.provider,
+            )
+            await adapter.test_connection(credential)
+            valid_accounts.append(account)
+        except KeyError:
+            valid_accounts.append(account)
+        except AuthExpired:
+            removed = True
+            logger.info(
+                "removing expired provider account provider=%s account_id=%s",
+                account.provider,
+                account.id,
+            )
+            await delete_account(session, account_id=account.id, user_id=user_id)
+        except ProviderError:
+            valid_accounts.append(account)
+    if removed:
+        await session.commit()
+    return [_account_view(account) for account in valid_accounts]
+
+
+@router.post("/accounts/{account_id}/test", response_model=ConnectionTestView)
+async def test_account_connection(
+    account_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: str = "local",
+) -> ConnectionTestView:
+    try:
+        _, account = await load_credential(session, account_id=account_id)
+        if account.user_id != user_id:
+            raise AccountNotFound(account_id)
+        adapter = get(account.provider)
+        credential, account = await load_fresh_credential(
+            session,
+            account_id=account_id,
+            adapter=adapter,
+            provider=account.provider,
+        )
+        await adapter.test_connection(credential)
+        await session.commit()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (AccountNotFound, CredentialNotFound) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthExpired as exc:
+        await delete_account(session, account_id=account_id, user_id=user_id)
+        await session.commit()
+        raise HTTPException(
+            status_code=401,
+            detail=f"{exc}; account was disconnected",
+        ) from exc
+    except ProviderError as exc:
+        raise _provider_error(exc) from exc
+    return ConnectionTestView(
+        status="ok",
+        provider=account.provider,
+        account_id=account.id,
+        message=f"{account.provider} connection is working",
+    )
 
 
 @router.post("/{provider}/complete", response_model=ConnectionView)

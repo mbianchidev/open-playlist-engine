@@ -10,10 +10,11 @@ plugin spoke, the universal format is the hub, so adding a provider is O(1) and 
 instantly works with all the others — both as source and target.
 
 > Status: **early MVP**. The self-hosted Spotify → YouTube Music path is wired:
-> Spotify OAuth/read/search, YouTube Music header auth/search/write, persisted
-> credentials, playlist/track selection, migration jobs, review actions and SSE
-> progress. Other provider directions remain gated until their adapters advertise
-> implemented capabilities. See [`docs/DESIGN.md`](docs/DESIGN.md).
+> Spotify OAuth/read/search, YouTube Music header auth/read/search/write,
+> persisted credentials, playlist/track selection, partial-migration detection,
+> migration jobs, review actions and SSE progress. Other provider directions
+> remain gated until their adapters advertise implemented capabilities. See
+> [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
 
@@ -71,6 +72,9 @@ npm run build
 All backend settings use the `OPE_` env prefix; see [`.env.example`](.env.example).
 Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+Safe migration defaults are intentionally slow and can be overridden only after a
+warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
+between jobs (`OPE_MIGRATION_SAFE_*`).
 
 ## Spotify → YouTube Music
 
@@ -83,11 +87,17 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 4. Connect Spotify in the popup.
 5. For YouTube Music, paste request headers copied from an authenticated
    `music.youtube.com` `/browse` POST request.
-6. Pick playlists, optionally choose individual tracks, and start the migration.
+6. Pick one playlist, optionally choose individual tracks, and start the migration.
+   The UI warns before exceeding the safe defaults or before writing into a target
+   playlist that has the same name but different songs.
 7. When the job finishes, the progress panel says "Migration succeeded" and links
    to created target playlists when the target provider exposes a web URL.
 8. Review low-confidence matches in the progress panel: approve the suggested
-   YouTube Music URI, paste a corrected URI/video ID, or skip the item.
+   YouTube Music URI, approve all suggested matches, paste a corrected URI/video
+   ID, skip one item, or deny all doubtful items.
+9. Re-running a playlist reuses an existing migrated target playlist, labels
+   partial source playlists/tracks, and skips duplicate target songs with an item
+   notice instead of adding them twice.
 
 Detailed Spotify app and YouTube Music header-copy steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).

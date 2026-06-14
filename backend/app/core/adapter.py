@@ -152,6 +152,8 @@ class ProviderAdapter(Protocol):
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist: ...
 
+    async def test_connection(self, cred: ProviderCredential) -> None: ...
+
     # SEARCH (used by MatchService; never writes to the graph itself)
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5

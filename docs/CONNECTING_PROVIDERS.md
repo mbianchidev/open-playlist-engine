@@ -35,6 +35,8 @@ it contains secrets and session tokens.
 
 10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
     the requested scopes.
+11. Use **Test connection** after connecting. If Spotify refresh expires, **Refresh
+    accounts** removes the stale account so you can reconnect cleanly.
 
 ## YouTube Music header-paste auth
 
@@ -82,6 +84,20 @@ after testing if they were exposed.
 
 7. Paste that block into **YouTube Music request headers** in the app and click
    **Connect YouTube Music**.
+8. Click **Test connection** before migrating. Header-paste credentials can expire
+   with the browser session; reconnect if the test fails.
 
 Do not paste response headers (`alt-svc`, `server`, `date`, etc.), pseudo headers
 (`:authority`, `:method`, etc.), or the request body.
+
+## Safe migration defaults
+
+The app starts deliberately slow for Spotify → YouTube Music migrations: 1
+playlist per job, 50 tracks per job, 250 tracks per day, and at least 120 seconds
+between jobs. If you exceed those defaults, the UI shows a warning popup and only
+continues after you acknowledge it.
+
+When a target playlist with the same name already exists, the app reads its songs.
+If they overlap with the source, the job reuses that playlist and skips duplicate
+songs with a progress notice. If the songs are completely different, the UI warns
+before creating a new migrated playlist with the same name.
