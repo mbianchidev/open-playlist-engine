@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
-    spotify_redirect_uri: str = "http://localhost:8000/api/auth/spotify/callback"
+    spotify_redirect_uri: str = "http://127.0.0.1:8000/api/auth/spotify/callback"
 
     @property
     def is_hosted(self) -> bool:

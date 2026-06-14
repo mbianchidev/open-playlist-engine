@@ -75,7 +75,7 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 ## Spotify → YouTube Music
 
 1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
-   redirect URI to `http://localhost:8000/api/auth/spotify/callback`.
+   redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
 2. Put `OPE_SPOTIFY_CLIENT_ID`, optional `OPE_SPOTIFY_CLIENT_SECRET`,
    `OPE_SECRET_KEY`, and `OPE_FRONTEND_URL` in `.env`.
 3. Start Docker Compose, open `http://localhost:8080`, choose Spotify as source
