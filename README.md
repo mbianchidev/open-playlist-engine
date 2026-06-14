@@ -87,6 +87,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 7. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, paste a corrected URI/video ID, or skip the item.
 
+Detailed Spotify app and YouTube Music header-copy steps are in
+[`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
+
 ## Adding a provider
 
 Implement `ProviderAdapter` in `backend/app/providers/<name>/adapter.py`, declare a

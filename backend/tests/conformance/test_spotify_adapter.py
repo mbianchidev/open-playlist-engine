@@ -74,6 +74,45 @@ async def test_read_maps_isrc_and_provider_uri_and_position() -> None:
     assert all(t.media_type is MediaType.TRACK for t in pl.tracks)
 
 
+async def test_read_supports_playlist_item_field_shape() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/tracks"):
+            return httpx.Response(403, json={"error": {"status": 403, "message": "Forbidden"}})
+        return httpx.Response(
+            200,
+            json={
+                "id": SPOTIFY_PLAYLIST_ID,
+                "name": "Root Items",
+                "description": "",
+                "items": {
+                    "items": [
+                        {
+                            "added_at": "2026-01-01T00:00:00Z",
+                            "is_local": False,
+                            "item": {
+                                "id": "new1",
+                                "name": "New Shape Song",
+                                "uri": "spotify:track:new1",
+                                "type": "track",
+                                "duration_ms": 123000,
+                                "artists": [{"name": "New Artist"}],
+                                "album": {"name": "New Album"},
+                            },
+                        }
+                    ],
+                    "next": None,
+                },
+            },
+        )
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    pl = await adapter.read_playlist(_cred(), _ref())
+    assert pl.name == "Root Items"
+    assert len(pl.tracks) == 1
+    assert pl.tracks[0].title == "New Shape Song"
+    assert pl.tracks[0].provider_uris["spotify"] == "spotify:track:new1"
+
+
 async def test_search_prefers_isrc_query() -> None:
     captured: dict[str, str] = {}
 

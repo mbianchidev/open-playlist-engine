@@ -50,3 +50,6 @@ target. Docker Compose applies Alembic migrations before starting the backend an
 worker. For local development, run `alembic upgrade head` before `uvicorn` and
 `arq`. Playlist detail and migration item review endpoints support track-level
 selection and low-confidence match correction in the UI.
+
+Provider setup steps are documented in
+[`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

@@ -34,7 +34,9 @@ export default function ProgressBoard({ jobId }: Props) {
       {error ? <p className="warn">{error}</p> : null}
       <div className="progress-list">
         {items.length === 0 ? (
-          <p className="muted">Waiting for tracks…</p>
+          <p className="muted">
+            {job?.status === "failed" ? "No tracks were created." : "Waiting for tracks…"}
+          </p>
         ) : (
           items.map((item) => (
             <div key={item.id} className="progress-row">

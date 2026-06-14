@@ -140,9 +140,41 @@ def _release_date(album: dict) -> tuple[date | None, int | None]:
     return None, year
 
 
+def _playlist_item_page(payload: dict) -> dict | None:
+    tracks = payload.get("tracks")
+    if isinstance(tracks, dict) and isinstance(tracks.get("items"), list):
+        return tracks
+    items = payload.get("items")
+    if isinstance(items, dict) and isinstance(items.get("items"), list):
+        return items
+    if isinstance(items, list):
+        return payload
+    return None
+
+
+async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> AsyncIterator[Track]:
+    position = 0
+    while True:
+        for item in page.get("items") or []:
+            track = _track_from_item(item)
+            if track is None:
+                continue
+            track.position = position
+            position += 1
+            yield track
+        next_url = page.get("next")
+        if not next_url:
+            break
+        page_resp = _raise_for_status(await client.get(next_url))
+        next_page = _playlist_item_page(page_resp.json())
+        if next_page is None:
+            break
+        page = next_page
+
+
 def _track_from_item(item: dict) -> Track | None:
-    """Map one ``/playlists/{id}/tracks`` item to the Open Playlist model."""
-    obj = item.get("track")
+    """Map one Spotify playlist item to the Open Playlist model."""
+    obj = item.get("track") or item.get("item")
     if not obj:  # null when a track was removed from the catalogue
         return None
     is_local = bool(item.get("is_local") or obj.get("is_local"))
@@ -419,43 +451,39 @@ class SpotifyAdapter:
     async def iter_playlist_items(
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
-        offset = 0
-        position = 0
         async with self._client(cred) as client:
-            while True:
-                resp = _raise_for_status(
-                    await client.get(
-                        f"/playlists/{ref.id}/tracks",
-                        params={
-                            "limit": _ITEMS_PAGE,
-                            "offset": offset,
-                            "additional_types": "track,episode",
-                        },
-                    )
-                )
-                data = resp.json()
-                items = data.get("items", [])
-                for item in items:
-                    track = _track_from_item(item)
-                    if track is None:
-                        continue
-                    track.position = position
-                    position += 1
+            resp = await client.get(
+                f"/playlists/{ref.id}/tracks",
+                params={
+                    "limit": _ITEMS_PAGE,
+                    "offset": 0,
+                    "additional_types": "track,episode",
+                },
+            )
+            if resp.status_code == 403:
+                meta_resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
+                page = _playlist_item_page(meta_resp.json())
+                if page is None:
+                    _raise_for_status(resp)
+                    return
+                async for track in _iter_tracks_from_page(client, page):
                     yield track
-                if not data.get("next"):
-                    break
-                offset += _ITEMS_PAGE
+                return
+            page = _playlist_item_page(_raise_for_status(resp).json())
+            if page is None:
+                return
+            async for track in _iter_tracks_from_page(client, page):
+                yield track
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         async with self._client(cred) as client:
-            resp = _raise_for_status(
-                await client.get(
-                    f"/playlists/{ref.id}",
-                    params={"fields": "id,name,description,owner(id)"},
-                )
-            )
-        meta = resp.json()
-        tracks = [t async for t in self.iter_playlist_items(cred, ref)]
+            resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
+            meta = resp.json()
+            page = _playlist_item_page(meta)
+            if page is not None:
+                tracks = [track async for track in _iter_tracks_from_page(client, page)]
+            else:
+                tracks = [track async for track in self.iter_playlist_items(cred, ref)]
         return Playlist(
             id=meta.get("id") or ref.id,
             name=meta.get("name") or ref.name,
