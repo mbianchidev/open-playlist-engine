@@ -84,7 +84,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 5. For YouTube Music, paste request headers copied from an authenticated
    `music.youtube.com` `/browse` POST request.
 6. Pick playlists, optionally choose individual tracks, and start the migration.
-7. Review low-confidence matches in the progress panel: approve the suggested
+7. When the job finishes, the progress panel says "Migration succeeded" and links
+   to created target playlists when the target provider exposes a web URL.
+8. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, paste a corrected URI/video ID, or skip the item.
 
 Detailed Spotify app and YouTube Music header-copy steps are in

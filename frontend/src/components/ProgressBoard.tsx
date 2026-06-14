@@ -13,6 +13,9 @@ export default function ProgressBoard({ jobId }: Props) {
   const [items, setItems] = useState<JobItemView[]>([]);
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
+  const targetPlaylists =
+    job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
 
   useEffect(() => {
     getMigrationItems(jobId).then(setItems).catch(() => setItems([]));
@@ -30,6 +33,31 @@ export default function ProgressBoard({ jobId }: Props) {
       <p className="muted">
         {job ? `${job.status}: ${job.done}/${job.total} done, ${job.failed} failed` : "waiting…"}
       </p>
+      {job?.status === "done" ? (
+        <div className="notice migration-success">
+          <strong>Migration succeeded.</strong>
+          {targetPlaylists.length > 0 ? (
+            <div className="target-playlists">
+              {targetPlaylists.map((playlist) =>
+                playlist.url ? (
+                  <a
+                    key={playlist.id}
+                    href={playlist.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open {playlist.label} in {targetProviderLabel}
+                  </a>
+                ) : (
+                  <span key={playlist.id}>
+                    Target playlist: {playlist.label} ({playlist.id})
+                  </span>
+                ),
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {job?.error ? <p className="warn">{job.error}</p> : null}
       {error ? <p className="warn">{error}</p> : null}
       <div className="progress-list">
@@ -87,4 +115,45 @@ function formatTrack(item: JobItemView): string {
   if (item.release_year) bits.push(String(item.release_year));
   if (item.explicit) bits.push("explicit");
   return bits.join(" · ");
+}
+
+interface TargetPlaylist {
+  id: string;
+  label: string;
+  url: string | null;
+}
+
+function getTargetPlaylists(items: JobItemView[], provider: string): TargetPlaylist[] {
+  const byId = new Map<string, TargetPlaylist>();
+  for (const item of items) {
+    if (!item.target_playlist_id || byId.has(item.target_playlist_id)) {
+      continue;
+    }
+    byId.set(item.target_playlist_id, {
+      id: item.target_playlist_id,
+      label: item.source_playlist_name ?? item.target_playlist_id,
+      url: targetPlaylistUrl(provider, item.target_playlist_id),
+    });
+  }
+  return [...byId.values()];
+}
+
+function targetPlaylistUrl(provider: string, playlistId: string): string | null {
+  if (provider === "ytmusic" || provider === "youtube" || provider === "youtube_music") {
+    return `https://music.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+  }
+  if (provider === "spotify") {
+    return `https://open.spotify.com/playlist/${encodeURIComponent(playlistId)}`;
+  }
+  return null;
+}
+
+function providerLabel(provider: string): string {
+  if (provider === "ytmusic" || provider === "youtube" || provider === "youtube_music") {
+    return "YouTube Music";
+  }
+  if (provider === "spotify") {
+    return "Spotify";
+  }
+  return "target provider";
 }
