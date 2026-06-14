@@ -231,6 +231,22 @@ components:
           type: string
           description: Composer or songwriter credited for the track.
           example: "Abel Tesfaye"
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/Credit"
+          description: |
+            Detailed list of people and entities credited on the track, such as
+            featured artists, producers, composers, lyricists, mixing engineers,
+            and more. Complements the simple `artist` and `composer` fields by
+            capturing the full set of contributors and their roles.
+          example:
+            - role: "featured_artist"
+              name: "Daft Punk"
+            - role: "producer"
+              name: "Max Martin"
+            - role: "lyricist"
+              name: "Savan Kotecha"
         label:
           type: string
           description: Record label that published the track.
@@ -262,6 +278,35 @@ components:
           example:
             genre: "Synth-pop"
             bpm: 171
+
+    Credit:
+      type: object
+      required:
+        - role
+        - name
+      properties:
+        role:
+          type: string
+          description: |
+            The role this contributor played on the track. Common values include
+            `featured_artist`, `producer`, `composer`, `lyricist`, `songwriter`,
+            `arranger`, `mixing_engineer`, `mastering_engineer`, and `performer`.
+            The list is intentionally open-ended so providers can express any role.
+          example: "producer"
+        name:
+          type: string
+          description: Name of the person or entity credited.
+          example: "Max Martin"
+        instrument:
+          type: string
+          description: |
+            Optional instrument or specialization for performer credits.
+          example: "guitar"
+        uri:
+          type: string
+          format: uri
+          description: Optional URI identifying the contributor (e.g. an artist page).
+          example: "https://music.example.com/artist/max-martin"
 
     ImportRequest:
       type: object

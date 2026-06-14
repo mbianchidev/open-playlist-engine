@@ -22,6 +22,13 @@ class MediaType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class Credit(BaseModel):
+    role: str
+    name: str
+    instrument: str | None = None
+    uri: str | None = None
+
+
 class Track(BaseModel):
     """A single playlist item in universal form.
 
@@ -41,6 +48,7 @@ class Track(BaseModel):
     disc_number: int | None = None
     explicit: bool | None = None
     composer: str | None = None
+    credits: list[Credit] = Field(default_factory=list)
     label: str | None = None
     isrc: str | None = None
     artwork_uri: str | None = None
