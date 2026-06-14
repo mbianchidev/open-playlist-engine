@@ -93,6 +93,7 @@ export interface Playlist {
 export interface JobView {
   id: string;
   status: string;
+  target_provider: string;
   total: number;
   done: number;
   failed: number;
