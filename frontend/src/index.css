@@ -601,7 +601,7 @@ textarea {
 .review-controls {
   grid-column: 2;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 0.5rem;
 }
 
@@ -651,6 +651,21 @@ textarea {
   background: #0d0f12;
   color: inherit;
   padding: 0.5rem;
+}
+
+.review-verify-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  align-self: stretch;
+  margin-top: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #3563b5;
+  background: #132241;
+  color: #c7d8ff;
+  font-size: 0.8rem;
+  text-decoration: none;
 }
 
 .status {
