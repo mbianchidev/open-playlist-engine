@@ -29,6 +29,7 @@ export default function App() {
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
 
@@ -51,6 +52,13 @@ export default function App() {
     selectedMigrationPlaylistIds.length === 0 ||
     busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
+  const migratedPlaylists = playlists.filter(isAnnotatedMigratedPlaylist);
+  const migrationCandidatePlaylists = playlists.filter(
+    (playlist) => !isAnnotatedMigratedPlaylist(playlist),
+  );
+  const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
+    selectedPlaylists.has(playlist.id),
+  ).length;
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean } = {}) => {
@@ -277,7 +285,7 @@ export default function App() {
   }
 
   function selectAllPlaylists() {
-    setSelectedPlaylists(new Set(playlists.map((playlist) => playlist.id)));
+    setSelectedPlaylists(new Set(migrationCandidatePlaylists.map((playlist) => playlist.id)));
   }
 
   function deselectAllPlaylists() {
@@ -366,6 +374,87 @@ export default function App() {
       delete next[playlistId];
       return next;
     });
+  }
+
+  function renderPlaylistCard(playlist: PlaylistRef) {
+    return (
+      <div key={playlist.id} className="playlist-card">
+        <label className="playlist-row">
+          <input
+            type="checkbox"
+            checked={selectedPlaylists.has(playlist.id)}
+            onChange={() => togglePlaylist(playlist.id)}
+          />
+          <span>{playlist.name}</span>
+          {playlist.migration_note ? (
+            <span className={`badge migration-${playlist.migration_status ?? "none"}`}>
+              {playlist.migration_note}
+            </span>
+          ) : null}
+          <span className="muted">
+            {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
+          </span>
+        </label>
+        {selectedPlaylists.has(playlist.id) ? (
+          <button
+            className="secondary compact"
+            disabled={busy}
+            onClick={() => loadTracks(playlist)}
+          >
+            {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
+          </button>
+        ) : null}
+        {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
+          <div className="track-list">
+            <div className="track-toolbar">
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => selectPlaylistSongs(playlist.id, "all")}
+              >
+                Select all songs
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => selectPlaylistSongs(playlist.id, "leftovers")}
+              >
+                Select leftovers
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => selectPlaylistSongs(playlist.id, "none")}
+              >
+                Deselect playlist
+              </button>
+            </div>
+            {playlistTracks[playlist.id].map((track) => {
+              const key = trackKey(track);
+              return (
+                <label key={key} className="track-row">
+                  <input
+                    type="checkbox"
+                    checked={selectedTracks[playlist.id]?.has(key) ?? false}
+                    onChange={() => toggleTrack(playlist.id, key)}
+                  />
+                  <span>
+                    {track.title} — {track.artist}
+                    {track.explicit ? <span className="badge inline">explicit</span> : null}
+                    {track.migration_status === "migrated" ? (
+                      <span className="badge inline migration-migrated">migrated</span>
+                    ) : playlist.migration_status === "partial" ? (
+                      <span className="badge inline migration-partial">leftover</span>
+                    ) : null}
+                  </span>
+                  <span className="muted">{track.album ?? ""}</span>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -522,7 +611,11 @@ export default function App() {
             <div className="toolbar">
               <button
                 className="secondary compact"
-                disabled={busy || playlists.length === 0 || selectedPlaylists.size === playlists.length}
+                disabled={
+                  busy ||
+                  migrationCandidatePlaylists.length === 0 ||
+                  selectedCandidateCount === migrationCandidatePlaylists.length
+                }
                 onClick={selectAllPlaylists}
               >
                 Select all
@@ -559,88 +652,34 @@ export default function App() {
               </div>
             ) : null}
           </div>
+          {migratedPlaylists.length > 0 ? (
+            <div className="migrated-playlists-panel">
+              <button
+                className="migrated-playlists-toggle"
+                type="button"
+                aria-expanded={showMigratedPlaylists}
+                onClick={() => setShowMigratedPlaylists((open) => !open)}
+              >
+                <span>Migrated playlists</span>
+                <span className="muted">
+                  {migratedPlaylists.length} migrated or partially migrated
+                </span>
+                <span aria-hidden="true">{showMigratedPlaylists ? "Hide" : "Show"}</span>
+              </button>
+              {showMigratedPlaylists ? (
+                <div className="playlist-list migrated-playlist-list">
+                  {migratedPlaylists.map(renderPlaylistCard)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
+          ) : migrationCandidatePlaylists.length === 0 ? (
+            <p className="muted">No unmigrated playlists left.</p>
           ) : (
             <div className="playlist-list">
-              {playlists.map((playlist) => (
-                <div key={playlist.id} className="playlist-card">
-                  <label className="playlist-row">
-                    <input
-                      type="checkbox"
-                      checked={selectedPlaylists.has(playlist.id)}
-                      onChange={() => togglePlaylist(playlist.id)}
-                    />
-                    <span>{playlist.name}</span>
-                    {playlist.migration_note ? (
-                      <span className={`badge migration-${playlist.migration_status ?? "none"}`}>
-                        {playlist.migration_note}
-                      </span>
-                    ) : null}
-                    <span className="muted">
-                      {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
-                    </span>
-                  </label>
-                  {selectedPlaylists.has(playlist.id) ? (
-                    <button
-                      className="secondary compact"
-                      disabled={busy}
-                      onClick={() => loadTracks(playlist)}
-                    >
-                      {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
-                    </button>
-                  ) : null}
-                  {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
-                    <div className="track-list">
-                      <div className="track-toolbar">
-                        <button
-                          className="secondary compact"
-                          disabled={busy}
-                          onClick={() => selectPlaylistSongs(playlist.id, "all")}
-                        >
-                          Select all songs
-                        </button>
-                        <button
-                          className="secondary compact"
-                          disabled={busy}
-                          onClick={() => selectPlaylistSongs(playlist.id, "leftovers")}
-                        >
-                          Select leftovers
-                        </button>
-                        <button
-                          className="secondary compact"
-                          disabled={busy}
-                          onClick={() => selectPlaylistSongs(playlist.id, "none")}
-                        >
-                          Deselect playlist
-                        </button>
-                      </div>
-                      {playlistTracks[playlist.id].map((track) => {
-                        const key = trackKey(track);
-                        return (
-                          <label key={key} className="track-row">
-                            <input
-                              type="checkbox"
-                              checked={selectedTracks[playlist.id]?.has(key) ?? false}
-                              onChange={() => toggleTrack(playlist.id, key)}
-                            />
-                            <span>
-                              {track.title} — {track.artist}
-                              {track.explicit ? <span className="badge inline">explicit</span> : null}
-                              {track.migration_status === "migrated" ? (
-                                <span className="badge inline migration-migrated">migrated</span>
-                              ) : playlist.migration_status === "partial" ? (
-                                <span className="badge inline migration-partial">leftover</span>
-                              ) : null}
-                            </span>
-                            <span className="muted">{track.album ?? ""}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+              {migrationCandidatePlaylists.map(renderPlaylistCard)}
             </div>
           )}
         </section>
@@ -660,6 +699,10 @@ function getSelectedMigrationPlaylistIds(
     if (!loaded) return true;
     return (selectedTracks[id]?.size ?? 0) > 0;
   });
+}
+
+function isAnnotatedMigratedPlaylist(playlist: PlaylistRef): boolean {
+  return playlist.migration_status === "migrated" || playlist.migration_status === "partial";
 }
 
 function trackKey(track: Track): string {

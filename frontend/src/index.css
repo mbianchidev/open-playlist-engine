@@ -250,6 +250,38 @@ button.compact {
   margin-top: 0;
 }
 
+.migrated-playlists-panel {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  border: 1px solid #2a3039;
+  border-radius: 10px;
+  background: #11141a;
+}
+
+.migrated-playlists-toggle {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.migrated-playlists-toggle .muted {
+  font-weight: 400;
+}
+
+.migrated-playlist-list {
+  padding: 0 0.75rem 0.75rem;
+}
+
 .account-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -415,6 +447,10 @@ textarea {
 
   .progress-popover {
     width: 100%;
+  }
+
+  .migrated-playlists-toggle {
+    grid-template-columns: 1fr;
   }
 }
 
