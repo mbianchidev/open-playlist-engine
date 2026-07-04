@@ -43,6 +43,13 @@ export default function App() {
     playlistTracks,
     selectedTracks,
   );
+  const startDisabled =
+    !source ||
+    !target ||
+    !sourceAccount ||
+    !targetAccount ||
+    selectedMigrationPlaylistIds.length === 0 ||
+    busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
 
   useEffect(() => {
@@ -521,6 +528,18 @@ export default function App() {
               </button>
             </div>
           </div>
+          <div className="migration-action-bar">
+            <div>
+              <p className="eyebrow">Ready to migrate</p>
+              <p className="muted">
+                {selectedMigrationPlaylistIds.length} playlist
+                {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
+              </p>
+            </div>
+            <button className="primary" disabled={startDisabled} onClick={() => start()}>
+              {busy ? "Starting…" : "Start migration"}
+            </button>
+          </div>
           {playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
           ) : (
@@ -607,21 +626,6 @@ export default function App() {
           )}
         </section>
       ) : null}
-
-      <button
-        className="primary"
-        disabled={
-          !source ||
-          !target ||
-          !sourceAccount ||
-          !targetAccount ||
-          selectedMigrationPlaylistIds.length === 0 ||
-          busy
-        }
-        onClick={() => start()}
-      >
-        {busy ? "Starting…" : "Start migration"}
-      </button>
 
       {jobId ? <ProgressBoard jobId={jobId} /> : null}
     </div>

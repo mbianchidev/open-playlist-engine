@@ -120,7 +120,6 @@ h1 {
 }
 
 button.primary {
-  margin-top: 1.25rem;
   padding: 0.7rem 1.1rem;
   border-radius: 8px;
   border: none;
@@ -204,6 +203,30 @@ button.compact {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.migration-action-bar {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid #2a3039;
+  border-radius: 10px;
+  background: rgba(17, 20, 26, 0.96);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.migration-action-bar p {
+  margin: 0;
+}
+
+.migration-action-bar .muted {
+  margin-top: 0.2rem;
 }
 
 .account-grid {
@@ -356,8 +379,13 @@ textarea {
   }
 
   .guide-heading,
-  .section-heading {
+  .section-heading,
+  .migration-action-bar {
     display: grid;
+  }
+
+  .migration-action-bar button {
+    width: 100%;
   }
 }
 
