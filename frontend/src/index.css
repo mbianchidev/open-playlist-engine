@@ -785,6 +785,21 @@ textarea {
   min-width: 0;
 }
 
+.source-check-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.45rem;
+  color: #f0b450;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.source-check-link:hover {
+  text-decoration: underline;
+}
+
 .progress-row-reason {
   grid-column: 2;
 }

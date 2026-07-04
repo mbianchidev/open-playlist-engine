@@ -271,11 +271,23 @@ export default function ProgressBoard({
   function renderProgressRow(item: JobItemView) {
     const targetUri = reviewInputs[item.id] ?? item.target_uri ?? "";
     const verifyUrl = youtubeMusicWatchUrl(targetUri);
+    const sourceLink = lowConfidenceSourceLink(item, job?.source_provider);
     return (
       <div key={item.id} className={`progress-row ${isReviewableItem(item) ? "review-row" : ""}`}>
         <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
         <span className="progress-track-title">
-          {formatTrack(item)}
+          <span>{formatTrack(item)}</span>
+          {sourceLink ? (
+            <a
+              className="source-check-link"
+              href={sourceLink.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Check original ${item.title} on ${sourceLink.label}`}
+            >
+              check on {sourceLink.label} <span aria-hidden="true">↗</span>
+            </a>
+          ) : null}
           {item.status === "needs_review" ? (
             <span className="badge inline confidence-badge">{formatConfidence(item.confidence)}</span>
           ) : null}
@@ -379,6 +391,10 @@ function confidenceAtOrBelowThreshold(confidence: number | null, thresholdPct: n
   return confidence !== null && confidence * 100 <= thresholdPct;
 }
 
+function isConfidenceAtOrBelow50(confidence: number | null): boolean {
+  return confidenceAtOrBelowThreshold(confidence, 50);
+}
+
 function isReviewableItem(item: JobItemView): boolean {
   return item.status === "needs_review" || item.status === "failed";
 }
@@ -416,6 +432,57 @@ function youtubeMusicWatchUrl(targetUri: string): string | null {
   const match = targetUri.trim().match(/^ytmusic:video:([^/?#&\s]+)$/);
   if (!match) return null;
   return `https://music.youtube.com/watch?v=${encodeURIComponent(match[1])}`;
+}
+
+interface SourceLink {
+  url: string;
+  label: string;
+}
+
+function lowConfidenceSourceLink(
+  item: JobItemView,
+  sourceProvider: string | undefined,
+): SourceLink | null {
+  if (item.status !== "needs_review" || !sourceProvider || !isConfidenceAtOrBelow50(item.confidence)) {
+    return null;
+  }
+  const url = sourceTrackUrl(item, sourceProvider);
+  if (!url) return null;
+  return { url, label: providerLabel(sourceProvider) };
+}
+
+function sourceTrackUrl(item: JobItemView, provider: string): string | null {
+  const metadataUri = sourceProviderUri(item.source_metadata, provider);
+  if (metadataUri) return providerUriToWebUrl(provider, metadataUri);
+  if (provider === "spotify" && item.source_metadata.id) {
+    return providerUriToWebUrl(provider, String(item.source_metadata.id));
+  }
+  return null;
+}
+
+function sourceProviderUri(metadata: Record<string, unknown>, provider: string): string | null {
+  const providerUris = metadata.provider_uris;
+  if (!providerUris || typeof providerUris !== "object") return null;
+  const uri = (providerUris as Record<string, unknown>)[provider];
+  return typeof uri === "string" && uri.trim() ? uri.trim() : null;
+}
+
+function providerUriToWebUrl(provider: string, uri: string): string | null {
+  if (provider === "spotify") {
+    const trackId = spotifyTrackId(uri);
+    return trackId ? `https://open.spotify.com/track/${encodeURIComponent(trackId)}` : null;
+  }
+  if (/^https?:\/\//.test(uri)) return uri;
+  return null;
+}
+
+function spotifyTrackId(uri: string): string | null {
+  const trimmed = uri.trim();
+  const uriMatch = trimmed.match(/^spotify:track:([^/?#&\s]+)$/);
+  if (uriMatch) return uriMatch[1];
+  const urlMatch = trimmed.match(/^https?:\/\/open\.spotify\.com\/track\/([^/?#&\s]+)/);
+  if (urlMatch) return urlMatch[1];
+  return /^[A-Za-z0-9]{10,}$/.test(trimmed) ? trimmed : null;
 }
 
 function countStatuses(items: JobItemView[]): Record<string, number> {
