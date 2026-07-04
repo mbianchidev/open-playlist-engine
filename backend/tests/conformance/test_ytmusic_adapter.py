@@ -13,10 +13,11 @@ from app.core.adapter import (
     AuthKind,
     ChallengeShape,
     CreatePlaylistSpec,
+    NotFound,
     ProviderCredential,
     ProviderError,
 )
-from app.core.models import Track
+from app.core.models import PlaylistRef, Track
 from app.providers.ytmusic.adapter import (
     _PENDING_DEVICE_CODES,
     YTMusicAdapter,
@@ -205,6 +206,20 @@ async def test_create_playlist_maps_privacy() -> None:
     assert fake.playlists[pid]["privacy"] == "PUBLIC"
     pid2 = await adapter.create_playlist(_cred(), CreatePlaylistSpec(name="Priv"))
     assert fake.playlists[pid2]["privacy"] == "PRIVATE"
+
+
+async def test_read_playlist_maps_missing_contents_parser_error_to_not_found() -> None:
+    class MissingContents:
+        def get_playlist(self, *a, **k):
+            raise KeyError(
+                "Unable to find 'contents' using path "
+                "['contents', 'twoColumnBrowseResultsRenderer']"
+            )
+
+    adapter = _adapter(MissingContents())
+
+    with pytest.raises(NotFound, match="unavailable or no longer accessible"):
+        await adapter.read_playlist(_cred(), PlaylistRef(id="VLPLZFL31xAfxGg", name="Broken"))
 
 
 async def test_add_tracks_persists_video_ids() -> None:

@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Protocol
 
 import httpx
@@ -50,6 +52,8 @@ from app.core.capabilities import (
 from app.core.models import Playlist, PlaylistRef, Track
 from app.core.registry import register
 from app.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class YTMusicClient(Protocol):
@@ -172,6 +176,33 @@ def _playlist_title(item: dict[str, Any]) -> str:
 def _playlist_id(item: dict[str, Any]) -> str | None:
     value = item.get("playlistId") or item.get("id") or item.get("playlist_id")
     return str(value) if value else None
+
+
+async def _run_client_call(
+    action: str, call: Callable[[], Any], *, playlist_id: str | None = None
+) -> Any:
+    try:
+        return await asyncio.to_thread(call)
+    except (KeyError, IndexError) as exc:
+        if "Unable to find" in str(exc):
+            if playlist_id:
+                logger.warning(
+                    "ytmusic %s response missing expected content playlist_id=%s error=%s",
+                    action,
+                    playlist_id,
+                    exc,
+                )
+                raise NotFound(
+                    f"YouTube Music playlist '{playlist_id}' is unavailable or no longer accessible"
+                ) from exc
+            logger.warning("ytmusic %s response missing expected content error=%s", action, exc)
+            raise ProviderError(f"YouTube Music {action} returned an unexpected response") from exc
+        raise
+    except Exception as exc:
+        if type(exc).__module__.startswith("ytmusicapi."):
+            message = str(exc) or type(exc).__name__
+            raise ProviderError(f"YouTube Music {action} failed: {message}") from exc
+        raise
 
 
 def _track_from_video(item: dict[str, Any], position: int) -> Track | None:
@@ -532,8 +563,14 @@ class YTMusicAdapter:
 
     async def iter_playlists(self, cred: ProviderCredential) -> AsyncIterator[PlaylistRef]:
         client = self._client(cred)
-        rows = await asyncio.to_thread(lambda: client.get_library_playlists(limit=1000))
+        rows = await _run_client_call(
+            "list playlists", lambda: client.get_library_playlists(limit=1000)
+        )
+        if not isinstance(rows, list):
+            raise ProviderError("YouTube Music list playlists returned an invalid response")
         for item in rows:
+            if not isinstance(item, dict):
+                continue
             playlist_id = _playlist_id(item)
             if not playlist_id:
                 continue
@@ -548,7 +585,11 @@ class YTMusicAdapter:
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
         client = self._client(cred)
-        playlist = await asyncio.to_thread(lambda: client.get_playlist(ref.id, limit=5000))
+        playlist = await _run_client_call(
+            "read playlist", lambda: client.get_playlist(ref.id, limit=5000), playlist_id=ref.id
+        )
+        if not isinstance(playlist, dict):
+            raise ProviderError("YouTube Music playlist response was invalid")
         if playlist.get("error"):
             raise NotFound(ref.id)
         tracks = playlist.get("tracks")
@@ -563,7 +604,11 @@ class YTMusicAdapter:
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         client = self._client(cred)
-        raw = await asyncio.to_thread(lambda: client.get_playlist(ref.id, limit=5000))
+        raw = await _run_client_call(
+            "read playlist", lambda: client.get_playlist(ref.id, limit=5000), playlist_id=ref.id
+        )
+        if not isinstance(raw, dict):
+            raise ProviderError("YouTube Music playlist response was invalid")
         if raw.get("error"):
             raise NotFound(ref.id)
         raw_tracks = raw.get("tracks")
@@ -586,7 +631,9 @@ class YTMusicAdapter:
 
     async def test_connection(self, cred: ProviderCredential) -> None:
         client = self._client(cred)
-        await asyncio.to_thread(lambda: client.search("test", filter="songs", limit=1))
+        await _run_client_call(
+            "test connection", lambda: client.search("test", filter="songs", limit=1)
+        )
 
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
@@ -595,9 +642,15 @@ class YTMusicAdapter:
         if track.album:
             query = f"{query} {track.album}".strip()
         client = self._client(cred)
-        results = await asyncio.to_thread(lambda: client.search(query, filter="songs", limit=limit))
+        results = await _run_client_call(
+            "search tracks", lambda: client.search(query, filter="songs", limit=limit)
+        )
+        if not isinstance(results, list):
+            raise ProviderError("YouTube Music search returned an invalid response")
         candidates: list[TrackCandidate] = []
         for item in results:
+            if not isinstance(item, dict):
+                continue
             video_id = item.get("videoId")
             if not video_id:
                 continue
@@ -626,8 +679,9 @@ class YTMusicAdapter:
     async def create_playlist(self, cred: ProviderCredential, spec: CreatePlaylistSpec) -> str:
         client = self._client(cred)
         privacy = "PUBLIC" if spec.public else "PRIVATE"
-        result = await asyncio.to_thread(
-            client.create_playlist, spec.name, spec.description or "", privacy
+        result = await _run_client_call(
+            "create playlist",
+            lambda: client.create_playlist(spec.name, spec.description or "", privacy),
         )
         if not isinstance(result, str):
             raise ProviderError(f"ytmusic create_playlist failed: {result}")
@@ -645,8 +699,10 @@ class YTMusicAdapter:
             chunk = uris[start : start + batch]
             video_ids = [_video_id(u) for u in chunk]
             # duplicates=True: a migration must preserve the source's repeats.
-            response = await asyncio.to_thread(
-                client.add_playlist_items, playlist_id, video_ids, None, True
+            response = await _run_client_call(
+                "add tracks",
+                partial(client.add_playlist_items, playlist_id, video_ids, None, True),
+                playlist_id=playlist_id,
             )
             ok = _succeeded(response)
             for uri in chunk:
