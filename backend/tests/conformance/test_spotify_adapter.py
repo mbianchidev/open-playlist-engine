@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from app.core.adapter import (
+    AccessDenied,
     AuthExpired,
     AuthKind,
     ProviderCredential,
@@ -270,6 +271,46 @@ async def test_read_playlist_uses_tracks_href_when_metadata_track_items_are_empt
     assert pl.id == playlist_id
     assert len(pl.tracks) == 1
     assert pl.tracks[0].title == "Href Song"
+
+
+async def test_forbidden_playlist_tracks_explains_spotify_owner_limit() -> None:
+    playlist_id = "external-playlist"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+            return httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "status": 403,
+                        "message": "Forbidden",
+                    }
+                },
+            )
+        if request.url.path.endswith(f"/playlists/{playlist_id}"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": playlist_id,
+                    "name": "External playlist",
+                    "tracks": {
+                        "href": f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+                        "items": [],
+                        "total": 12,
+                    },
+                },
+            )
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(AccessDenied) as excinfo:
+        await adapter.read_playlist(_cred(), _ref(playlist_id, "External playlist"))
+
+    message = str(excinfo.value)
+    assert "Spotify does not allow this app to read tracks from playlists you do not own" in message
+    assert "Add to other playlist" in message
+    assert "Delta migration is not available" in message
 
 
 async def test_search_prefers_isrc_query() -> None:

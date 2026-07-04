@@ -22,6 +22,7 @@ from datetime import date
 import httpx
 
 from app.core.adapter import (
+    AccessDenied,
     AddItemResult,
     AuthChallenge,
     AuthExpired,
@@ -60,6 +61,12 @@ _SCOPES = [
 ]
 _TOKEN_URL = "https://accounts.spotify.com/api/token"
 _STATE_TTL_S = 600
+_PLAYLIST_TRACK_ACCESS_MESSAGE = (
+    "Spotify does not allow this app to read tracks from playlists you do not own "
+    "or collaborate on. In Spotify, use 'Add to other playlist' to copy it into a "
+    "playlist you own, then migrate that copy. Delta migration is not available for "
+    "the original external playlist because Spotify blocks track access."
+)
 
 
 @dataclass(frozen=True)
@@ -88,7 +95,7 @@ def _raise_for_status(resp: httpx.Response) -> httpx.Response:
     if resp.status_code == 401:
         raise AuthExpired("spotify authorization expired; reconnect Spotify")
     if resp.status_code == 403:
-        raise ProviderError("spotify request forbidden (insufficient scope?)")
+        raise AccessDenied("spotify request forbidden")
     if resp.status_code == 404:
         raise NotFound(str(resp.request.url))
     if resp.status_code == 429:
@@ -121,6 +128,10 @@ def _spotify_error_code(resp: httpx.Response) -> str | None:
         return None
     error = payload.get("error")
     return error if isinstance(error, str) and error else None
+
+
+def _raise_playlist_tracks_forbidden() -> None:
+    raise AccessDenied(_PLAYLIST_TRACK_ACCESS_MESSAGE)
 
 
 def _media_type(spotify_type: str | None, is_local: bool) -> MediaType:
@@ -541,6 +552,8 @@ class SpotifyAdapter:
                 meta_resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
                 page = _playlist_item_page(meta_resp.json())
                 if page is None:
+                    if resp.status_code == 403:
+                        _raise_playlist_tracks_forbidden()
                     _raise_for_status(resp)
                     return
                 async for track in _iter_tracks_from_page(client, page):
@@ -582,6 +595,8 @@ class SpotifyAdapter:
     ) -> Playlist | None:
         saved = await _saved_playlist_ref(client, ref.id)
         if saved is None:
+            if original_resp.status_code == 403:
+                _raise_playlist_tracks_forbidden()
             _raise_for_status(original_resp)
             return None
         tracks = await self._read_playlist_tracks(
@@ -605,9 +620,10 @@ class SpotifyAdapter:
         tracks_href: str | None = None,
         expected_total: int | None = None,
     ) -> list[Track]:
-        resp = _raise_for_status(
-            await self._playlist_tracks_response(client, playlist_id, tracks_href=tracks_href)
-        )
+        resp = await self._playlist_tracks_response(client, playlist_id, tracks_href=tracks_href)
+        if resp.status_code == 403:
+            _raise_playlist_tracks_forbidden()
+        _raise_for_status(resp)
         page = _playlist_item_page(resp.json())
         if page is None:
             if expected_total:

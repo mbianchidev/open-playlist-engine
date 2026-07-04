@@ -22,7 +22,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.adapter import AuthExpired, NotFound, ProviderError, RateLimited
+from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
 from app.core.migration_state import (
     has_track_overlap,
@@ -178,6 +178,8 @@ async def create_migration(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
@@ -225,6 +227,8 @@ async def preflight_migration(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
@@ -557,6 +561,8 @@ async def _apply_review(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:

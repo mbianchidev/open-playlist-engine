@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import (
+    AccessDenied,
     AuthChallenge,
     AuthExpired,
     NotFound,
@@ -61,6 +62,8 @@ def _provider_error(exc: ProviderError) -> HTTPException:
         return HTTPException(status_code=401, detail=str(exc))
     if isinstance(exc, RateLimited):
         return HTTPException(status_code=429, detail=str(exc))
+    if isinstance(exc, AccessDenied):
+        return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, NotFound):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, Unsupported):

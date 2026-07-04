@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.adapter import AuthExpired, NotFound, ProviderError, RateLimited
+from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.migration_state import keys_from_metadata, track_keys
 from app.core.models import Playlist, PlaylistRef
 from app.core.registry import get
@@ -79,6 +79,8 @@ async def list_playlists(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
@@ -134,6 +136,8 @@ async def get_playlist(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:

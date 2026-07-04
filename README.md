@@ -95,6 +95,9 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
 6. Pick one playlist, optionally choose individual tracks, and start the migration.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
+   Spotify may block tracks from playlists you do not own or collaborate on; copy
+   those playlists into one you own with Spotify's **Add to other playlist** before
+   migrating.
 7. When the job finishes, the progress panel says "Migration succeeded" and links
    to created target playlists when the target provider exposes a web URL.
 8. Review low-confidence matches in the progress panel: approve the suggested

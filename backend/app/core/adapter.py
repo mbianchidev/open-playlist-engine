@@ -32,6 +32,10 @@ class RefreshTokenExpired(AuthExpired):
     pass
 
 
+class AccessDenied(ProviderError):
+    pass
+
+
 class RateLimited(ProviderError):
     def __init__(self, retry_after_s: float | None = None, message: str = "rate limited"):
         super().__init__(message)

@@ -40,6 +40,15 @@ it contains secrets and session tokens.
     account before asking you to reconnect. **Refresh accounts** also removes stale
     accounts so you can reconnect cleanly.
 
+### Spotify playlists owned by someone else
+
+Spotify blocks the playlist-items endpoint for playlists where the signed-in user
+is neither the owner nor a collaborator. If loading tracks or starting migration
+returns a Spotify access error, open the playlist in Spotify and use **Add to other
+playlist** to copy it into a playlist you own, then migrate that copy. Delta
+migration is not available for the original external playlist because Spotify does
+not let the app read its tracks.
+
 ## YouTube Music device-code auth
 
 YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device
