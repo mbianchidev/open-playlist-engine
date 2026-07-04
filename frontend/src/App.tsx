@@ -36,6 +36,7 @@ export default function App() {
   const [blockingAlert, setBlockingAlert] = useState<BlockingAlert | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
@@ -44,13 +45,10 @@ export default function App() {
   const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
+  const playlistLoadId = useRef(0);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
-  const playlistContext = {
-    targetProvider: target,
-    targetAccountId: targetAccount?.id ?? null,
-  };
   const blockedSpotifyPlaylists = playlists.filter((playlist) =>
     isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
   );
@@ -90,16 +88,29 @@ export default function App() {
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean } = {}) => {
-      if (!source || !sourceAccount) return;
+      if (!source || !sourceAccount || !target || !targetAccount) {
+        setPlaylistLoading(false);
+        return;
+      }
+      const loadId = playlistLoadId.current + 1;
+      playlistLoadId.current = loadId;
+      setPlaylistLoading(true);
       try {
-        const rows = await getPlaylists(source, sourceAccount.id, playlistContext);
+        const rows = await getPlaylists(source, sourceAccount.id, {
+          targetProvider: target,
+          targetAccountId: targetAccount.id,
+        });
+        if (loadId !== playlistLoadId.current) return;
         setPlaylists(rows);
         setPlaylistError(null);
         if (options.resetSelection) setSelectedPlaylists(new Set());
       } catch (e: unknown) {
+        if (loadId !== playlistLoadId.current) return;
         const message = errorMessage(e);
         setPlaylistError(message);
         setError(message);
+      } finally {
+        if (loadId === playlistLoadId.current) setPlaylistLoading(false);
       }
     },
     [source, sourceAccount?.id, target, targetAccount?.id],
@@ -118,8 +129,10 @@ export default function App() {
   }, [source, target]);
 
   useEffect(() => {
+    playlistLoadId.current += 1;
     setPlaylists([]);
     setPlaylistError(null);
+    setPlaylistLoading(false);
     setSelectedPlaylists(new Set());
     setPlaylistTracks({});
     setSelectedTracks({});
@@ -406,11 +419,14 @@ export default function App() {
   }
 
   async function loadTracks(playlist: PlaylistRef) {
-    if (!source || !sourceAccount) return;
+    if (!source || !sourceAccount || !target || !targetAccount) return;
     setBusy(true);
     setError(null);
     try {
-      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, playlistContext);
+      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, {
+        targetProvider: target,
+        targetAccountId: targetAccount.id,
+      });
       const defaultSelected = unmigratedTrackKeys(detail.tracks);
       if (detail.tracks.length > 0 && defaultSelected.length === 0) {
         markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
@@ -873,7 +889,9 @@ export default function App() {
               ) : null}
             </div>
           ) : null}
-          {playlistError && playlists.length === 0 ? (
+          {playlistLoading && playlists.length === 0 ? (
+            <p className="empty-guidance">Loading playlists…</p>
+          ) : playlistError && playlists.length === 0 ? (
             <p className="empty-guidance error-guidance">
               Could not load playlists: {playlistError}
             </p>

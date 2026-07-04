@@ -55,6 +55,7 @@ _LIST_PAGE = 50
 _ITEMS_PAGE = 100
 _RATE_LIMIT_STATUSES = {420, 429}
 _RATE_LIMIT_MAX_RETRIES = 2
+_RATE_LIMIT_MAX_AUTO_WAIT_S = 30
 
 _SCOPES = [
     "user-read-private",
@@ -125,7 +126,21 @@ async def _spotify_request(
         if resp.status_code not in _RATE_LIMIT_STATUSES:
             return resp
         retry_after_s = _retry_after_seconds(resp)
-        if retry_after_s is None or retries >= _RATE_LIMIT_MAX_RETRIES:
+        if (
+            retry_after_s is None
+            or retry_after_s > _RATE_LIMIT_MAX_AUTO_WAIT_S
+            or retries >= _RATE_LIMIT_MAX_RETRIES
+        ):
+            logger.warning(
+                "spotify rate limited status=%s retry_after_s=%s retry=%s/%s "
+                "auto_wait_cap_s=%s returning error path=%s",
+                resp.status_code,
+                retry_after_s,
+                retries,
+                _RATE_LIMIT_MAX_RETRIES,
+                _RATE_LIMIT_MAX_AUTO_WAIT_S,
+                resp.request.url.path,
+            )
             return resp
         retries += 1
         logger.warning(

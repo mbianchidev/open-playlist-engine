@@ -85,6 +85,15 @@ async def test_429_with_retry_after_retries_before_returning() -> None:
     assert results[0].uri == "spotify:track:target"
 
 
+async def test_429_with_large_retry_after_surfaces_rate_limit() -> None:
+    adapter = _adapter_returning(429, headers={"Retry-After": "50963"})
+    with pytest.raises(RateLimited) as excinfo:
+        await adapter.search_tracks(_cred(), Track(title="x", artist="y"))
+    assert excinfo.value.retry_after_s == 50963.0
+    assert excinfo.value.status_code == 429
+    assert str(excinfo.value) == "spotify rate limited; retry after 50963 seconds"
+
+
 async def test_420_maps_to_rate_limited_with_status_preserved() -> None:
     adapter = _adapter_returning(420)
     with pytest.raises(RateLimited) as excinfo:
