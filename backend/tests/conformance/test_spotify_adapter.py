@@ -113,6 +113,64 @@ async def test_read_supports_playlist_item_field_shape() -> None:
     assert pl.tracks[0].provider_uris["spotify"] == "spotify:track:new1"
 
 
+async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> None:
+    playlist_id = "saved-by-other"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/me/playlists"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": playlist_id,
+                            "name": "Saved from someone",
+                            "owner": {"id": "other-user"},
+                            "tracks": {"total": 1},
+                        }
+                    ],
+                    "next": None,
+                },
+            )
+        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "added_at": "2026-01-01T00:00:00Z",
+                            "is_local": False,
+                            "track": {
+                                "id": "shared1",
+                                "name": "Shared Song",
+                                "uri": "spotify:track:shared1",
+                                "type": "track",
+                                "duration_ms": 123000,
+                                "artists": [{"name": "Shared Artist"}],
+                                "album": {"name": "Shared Album"},
+                            },
+                        }
+                    ],
+                    "next": None,
+                },
+            )
+        if request.url.path.endswith(f"/playlists/{playlist_id}"):
+            return httpx.Response(
+                400,
+                json={"error": {"status": 400, "message": "Invalid playlist id"}},
+            )
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    pl = await adapter.read_playlist(_cred(), _ref(playlist_id, "Fallback name"))
+
+    assert pl.id == playlist_id
+    assert pl.name == "Saved from someone"
+    assert pl.owner_id == "other-user"
+    assert len(pl.tracks) == 1
+    assert pl.tracks[0].title == "Shared Song"
+
+
 async def test_search_prefers_isrc_query() -> None:
     captured: dict[str, str] = {}
 
@@ -137,10 +195,10 @@ def test_track_id_parsing() -> None:
     assert _track_id("abc") == "abc"
 
 
-def _ref():
+def _ref(playlist_id: str = SPOTIFY_PLAYLIST_ID, name: str = "Roadtrip"):
     from app.core.models import PlaylistRef
 
-    return PlaylistRef(id=SPOTIFY_PLAYLIST_ID, name="Roadtrip")
+    return PlaylistRef(id=playlist_id, name=name)
 
 
 async def test_local_file_item_is_flagged_not_dropped() -> None:
