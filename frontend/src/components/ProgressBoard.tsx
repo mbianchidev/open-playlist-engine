@@ -27,11 +27,21 @@ export default function ProgressBoard({
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
   const [approveThresholdPct, setApproveThresholdPct] = useState(70);
   const [skipThresholdPct, setSkipThresholdPct] = useState(50);
+  const [collapsed, setCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const notifiedDoneForJob = useRef<string | null>(null);
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
   const targetPlaylists =
     job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
+  const counts = countStatuses(items);
+  const total = job?.total ?? items.length;
+  const migratedCount = counts.written ?? 0;
+  const reviewCount = counts.needs_review ?? 0;
+  const processedCount =
+    migratedCount + (counts.skipped ?? 0) + reviewCount + (counts.failed ?? 0);
+  const waitingCount = Math.max(total - processedCount, 0);
+  const progressPct = total > 0 ? Math.min(100, Math.round((migratedCount / total) * 100)) : 0;
+  const playlistLabel = summarizePlaylists(items);
   const doubtfulItems = items.filter((item) => item.status === "needs_review");
   const thresholdApprovableItems = doubtfulItems.filter(
     (item) => item.target_uri && confidenceAtOrAboveThreshold(item.confidence, approveThresholdPct),
@@ -60,127 +70,159 @@ export default function ProgressBoard({
 
   return (
     <section className={["card", className].filter(Boolean).join(" ")}>
-      <h2>Progress · {jobId}</h2>
-      <p className="muted">
-        {job ? `${job.status}: ${job.done}/${job.total} done, ${job.failed} failed` : "waiting…"}
+      <button
+        className="progress-collapse-toggle"
+        type="button"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((value) => !value)}
+      >
+        <span>
+          <strong>{playlistLabel}</strong>
+          <span className="muted">Migration {shortJobId(jobId)}</span>
+        </span>
+        <span className="muted">{collapsed ? "Show" : "Hide"}</span>
+      </button>
+      <div
+        className="migration-progress-meter"
+        role="progressbar"
+        aria-label="Migrated songs"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progressPct}
+      >
+        <span style={{ transform: `scaleX(${progressPct / 100})` }} />
+      </div>
+      <p className="progress-summary">
+        {migratedCount}/{total || "?"} migrated
+        {reviewCount ? ` · ${reviewCount} need review` : ""}
+        {waitingCount ? ` · ${waitingCount} waiting` : ""}
+        {job?.failed ? ` · ${job.failed} failed` : ""}
       </p>
-      {job?.status === "done" ? (
-        <div className="notice migration-success">
-          <strong>Migration succeeded.</strong>
-          {targetPlaylists.length > 0 ? (
-            <div className="target-playlists">
-              {targetPlaylists.map((playlist) =>
-                playlist.url ? (
-                  <a
-                    key={playlist.id}
-                    href={playlist.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open {playlist.label} in {targetProviderLabel}
-                  </a>
-                ) : (
-                  <span key={playlist.id}>
-                    Target playlist: {playlist.label} ({playlist.id})
-                  </span>
-                ),
-              )}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {job?.error ? <p className="warn">{job.error}</p> : null}
-      {reconnectProvider ? (
-        <div className="auth-reconnect-callout">
-          <p>Reconnect {providerLabel(reconnectProvider)}, then start the migration again.</p>
-          <button
-            className="secondary compact"
-            disabled={!onReconnectProvider}
-            onClick={() => void onReconnectProvider?.(reconnectProvider)}
-          >
-            Reconnect {providerLabel(reconnectProvider)}
-          </button>
-        </div>
-      ) : null}
-      {error ? <p className="warn">{error}</p> : null}
-      {doubtfulItems.length > 0 ? (
-        <div className="review-toolbar">
-          <div className="bulk-review-action">
-            <label htmlFor="approveThreshold">Approve above</label>
-            <input
-              id="approveThreshold"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={approveThresholdPct}
-              onChange={(e) =>
-                setApproveThresholdPct(clampPercent(e.target.valueAsNumber, 70))
-              }
-            />
-            <span>%</span>
-            <button
-              className="secondary compact"
-              disabled={thresholdApprovableItems.length === 0}
-              onClick={() => reviewMany(thresholdApprovableItems, "approve")}
-            >
-              Approve above {approveThresholdPct}% ({thresholdApprovableItems.length})
-            </button>
-          </div>
-          <div className="bulk-review-action">
-            <label htmlFor="skipThreshold">Skip below</label>
-            <input
-              id="skipThreshold"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={skipThresholdPct}
-              onChange={(e) => setSkipThresholdPct(clampPercent(e.target.valueAsNumber, 50))}
-            />
-            <span>%</span>
-            <button
-              className="secondary compact"
-              disabled={thresholdSkippableItems.length === 0}
-              onClick={() => reviewMany(thresholdSkippableItems, "skip")}
-            >
-              Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
-            </button>
-          </div>
-        </div>
-      ) : null}
-      <div className="progress-list">
-        {items.length === 0 ? (
-          <p className="muted">
-            {job?.status === "failed" ? "No tracks were created." : "Waiting for tracks…"}
-          </p>
-        ) : (
-          items.map((item) => (
-            <div key={item.id} className="progress-row">
-              <span className={`status status-${item.status}`}>{item.status}</span>
-              <span>{formatTrack(item)}</span>
-              {item.reason ? <span className="muted">{item.reason}</span> : null}
-              {item.status === "needs_review" || item.status === "failed" ? (
-                <div className="review-controls">
-                  <input
-                    value={reviewInputs[item.id] ?? item.target_uri ?? ""}
-                    onChange={(e) =>
-                      setReviewInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
-                    }
-                    placeholder="ytmusic:video:id or YouTube Music URL"
-                  />
-                  <button className="secondary compact" onClick={() => review(item, "approve")}>
-                    Approve
-                  </button>
-                  <button className="secondary compact" onClick={() => review(item, "skip")}>
-                    Skip
-                  </button>
+      {!collapsed ? (
+        <div className="progress-panel-body">
+          {job?.status === "done" ? (
+            <div className="notice migration-success">
+              <strong>Migration succeeded.</strong>
+              {targetPlaylists.length > 0 ? (
+                <div className="target-playlists">
+                  {targetPlaylists.map((playlist) =>
+                    playlist.url ? (
+                      <a
+                        key={playlist.id}
+                        href={playlist.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open {playlist.label} in {targetProviderLabel}
+                      </a>
+                    ) : (
+                      <span key={playlist.id}>
+                        Target playlist: {playlist.label} ({playlist.id})
+                      </span>
+                    ),
+                  )}
                 </div>
               ) : null}
             </div>
-          ))
-        )}
-      </div>
+          ) : null}
+          {job?.error ? <p className="warn">{job.error}</p> : null}
+          {reconnectProvider ? (
+            <div className="auth-reconnect-callout">
+              <p>Reconnect {providerLabel(reconnectProvider)}, then start the migration again.</p>
+              <button
+                className="secondary compact"
+                disabled={!onReconnectProvider}
+                onClick={() => void onReconnectProvider?.(reconnectProvider)}
+              >
+                Reconnect {providerLabel(reconnectProvider)}
+              </button>
+            </div>
+          ) : null}
+          {error ? <p className="warn">{error}</p> : null}
+          {doubtfulItems.length > 0 ? (
+            <div className="review-toolbar">
+              <div className="bulk-review-action">
+                <label htmlFor="approveThreshold">Approve above</label>
+                <input
+                  id="approveThreshold"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={approveThresholdPct}
+                  onChange={(e) =>
+                    setApproveThresholdPct(normalizeThreshold(e.target.value, 70))
+                  }
+                />
+                <span>%</span>
+                <button
+                  className="secondary compact"
+                  disabled={thresholdApprovableItems.length === 0}
+                  onClick={() => reviewMany(thresholdApprovableItems, "approve")}
+                >
+                  Approve above {approveThresholdPct}% ({thresholdApprovableItems.length})
+                </button>
+              </div>
+              <div className="bulk-review-action">
+                <label htmlFor="skipThreshold">Skip below</label>
+                <input
+                  id="skipThreshold"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={skipThresholdPct}
+                  onChange={(e) =>
+                    setSkipThresholdPct(normalizeThreshold(e.target.value, 50))
+                  }
+                />
+                <span>%</span>
+                <button
+                  className="secondary compact"
+                  disabled={thresholdSkippableItems.length === 0}
+                  onClick={() => reviewMany(thresholdSkippableItems, "skip")}
+                >
+                  Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="progress-list">
+            {items.length === 0 ? (
+              <p className="muted">
+                {job?.status === "failed" ? "No tracks were created." : "Waiting for tracks…"}
+              </p>
+            ) : (
+              items.map((item) => (
+                <div key={item.id} className="progress-row">
+                  <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
+                  <span className="progress-track-title">{formatTrack(item)}</span>
+                  {item.reason ? (
+                    <span className="muted progress-row-reason">{item.reason}</span>
+                  ) : null}
+                  {item.status === "needs_review" || item.status === "failed" ? (
+                    <div className="review-controls">
+                      <input
+                        value={reviewInputs[item.id] ?? item.target_uri ?? ""}
+                        onChange={(e) =>
+                          setReviewInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                        placeholder="ytmusic:video:id or YouTube Music URL"
+                      />
+                      <button className="secondary compact" onClick={() => review(item, "approve")}>
+                        Approve
+                      </button>
+                      <button className="secondary compact" onClick={() => review(item, "skip")}>
+                        Skip
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 
@@ -223,9 +265,12 @@ function formatTrack(item: JobItemView): string {
   return bits.join(" · ");
 }
 
-function clampPercent(value: number, fallback: number): number {
+function normalizeThreshold(rawValue: string, fallback: number): number {
+  const value = Number(rawValue);
   if (!Number.isFinite(value)) return fallback;
-  return Math.min(100, Math.max(0, Math.round(value)));
+  const trimmed = rawValue.trim();
+  const asPercent = value > 0 && value < 1 && trimmed.startsWith("0.") ? value * 100 : value;
+  return Math.min(100, Math.max(0, Math.round(asPercent)));
 }
 
 function confidenceAtOrAboveThreshold(confidence: number | null, thresholdPct: number): boolean {
@@ -233,7 +278,37 @@ function confidenceAtOrAboveThreshold(confidence: number | null, thresholdPct: n
 }
 
 function confidenceAtOrBelowThreshold(confidence: number | null, thresholdPct: number): boolean {
-  return confidence === null || confidence * 100 <= thresholdPct;
+  return confidence !== null && confidence * 100 <= thresholdPct;
+}
+
+function countStatuses(items: JobItemView[]): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    counts[item.status] = (counts[item.status] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function summarizePlaylists(items: JobItemView[]): string {
+  const names = [
+    ...new Set(
+      items
+        .map((item) => item.source_playlist_name)
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ];
+  if (names.length === 0) return "Preparing migration";
+  if (names.length === 1) return names[0] ?? "Migration";
+  return `${names.slice(0, 2).join(", ")}${
+    names.length > 2 ? ` + ${names.length - 2} more` : ""
+  }`;
+}
+
+function shortJobId(jobId: string): string {
+  return jobId.slice(0, 8);
+}
+
+function statusLabel(status: string): string {
+  return status.replace("_", " ");
 }
 
 function shouldPromptReconnect(message: string): boolean {

@@ -144,50 +144,120 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             item.status = "matched"
             matched.append(item)
             await commit_job_counts(session, job)
-
-        if matched:
-            write_items = await _skip_duplicate_items(
-                session, job, matched, existing_keys=target_existing_keys
+            await _flush_matched_chunk(
+                session,
+                job,
+                target,
+                target_cred,
+                target_playlist_id,
+                matched,
+                existing_keys=target_existing_keys,
             )
-            try:
-                results = await target.add_tracks(
-                    target_cred,
-                    target_playlist_id,
-                    [item.target_uri or "" for item in write_items],
-                )
-            except ProviderError as exc:
-                for item in write_items:
-                    item.status = "failed"
-                    item.reason = str(exc)
-                await commit_job_counts(session, job)
-                continue
-            for item, result in zip(write_items, results, strict=False):
-                session.add(
-                    orm.OperationLedger(
-                        job_id=job.id,
-                        op="add_track",
-                        intent={"playlist_id": target_playlist_id, "uri": result.uri},
-                        observed_target_id=target_playlist_id if result.ok else None,
-                        position=result.position,
-                        state="done" if result.ok else "ambiguous",
-                    )
-                )
-                if result.ok:
-                    item.status = "written"
-                    item.reason = None
-                else:
-                    item.status = "failed"
-                    item.reason = result.error or "target rejected track"
-                await commit_job_counts(session, job)
-            for item in write_items[len(results) :]:
-                item.status = "failed"
-                item.reason = "target did not return a result for this track"
-                await commit_job_counts(session, job)
+
+        while matched:
+            await _flush_matched_chunk(
+                session,
+                job,
+                target,
+                target_cred,
+                target_playlist_id,
+                matched,
+                existing_keys=target_existing_keys,
+                force=True,
+            )
 
     await commit_job_counts(session, job)
     job.status = "done"
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
+
+
+async def _flush_matched_chunk(
+    session: AsyncSession,
+    job: orm.MigrationJob,
+    target: ProviderAdapter,
+    target_cred: ProviderCredential,
+    target_playlist_id: str,
+    matched: list[orm.JobItem],
+    *,
+    existing_keys: set[str],
+    force: bool = False,
+) -> None:
+    chunk_size = _write_chunk_size(target)
+    if not matched or (not force and len(matched) < chunk_size):
+        return
+    chunk = matched[:chunk_size]
+    del matched[:chunk_size]
+    await _write_matched_items(
+        session,
+        job,
+        target,
+        target_cred,
+        target_playlist_id,
+        chunk,
+        existing_keys=existing_keys,
+    )
+
+
+def _write_chunk_size(target: ProviderAdapter) -> int:
+    return max(1, target.info.capabilities.max_add_batch)
+
+
+async def _write_matched_items(
+    session: AsyncSession,
+    job: orm.MigrationJob,
+    target: ProviderAdapter,
+    target_cred: ProviderCredential,
+    target_playlist_id: str,
+    items: list[orm.JobItem],
+    *,
+    existing_keys: set[str],
+) -> None:
+    write_items = await _skip_duplicate_items(session, job, items, existing_keys=existing_keys)
+    if not write_items:
+        return
+    try:
+        results = await target.add_tracks(
+            target_cred,
+            target_playlist_id,
+            [item.target_uri or "" for item in write_items],
+        )
+    except ProviderError as exc:
+        for item in write_items:
+            item.status = "failed"
+            item.reason = str(exc)
+        await commit_job_counts(session, job)
+        return
+    for item, result in zip(write_items, results, strict=False):
+        session.add(
+            orm.OperationLedger(
+                job_id=job.id,
+                op="add_track",
+                intent={"playlist_id": target_playlist_id, "uri": result.uri},
+                observed_target_id=target_playlist_id if result.ok else None,
+                position=result.position,
+                state="done" if result.ok else "ambiguous",
+            )
+        )
+        if result.ok:
+            item.status = "written"
+            item.reason = None
+            existing_keys.update(_item_target_keys(item))
+        else:
+            item.status = "failed"
+            item.reason = result.error or "target rejected track"
+        await commit_job_counts(session, job)
+    for item in write_items[len(results) :]:
+        item.status = "failed"
+        item.reason = "target did not return a result for this track"
+        await commit_job_counts(session, job)
+
+    logger.info(
+        "migration job_id=%s wrote matched chunk target_playlist_id=%s count=%s",
+        job.id,
+        target_playlist_id,
+        len(write_items),
+    )
 
 
 async def _create_items(

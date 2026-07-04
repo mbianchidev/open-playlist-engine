@@ -207,15 +207,15 @@ button.compact {
 }
 
 .migration-top-stack {
-  position: sticky;
-  top: 0.75rem;
-  z-index: 5;
   display: grid;
   gap: 0.75rem;
   margin: 0.75rem 0 1rem;
 }
 
 .migration-action-bar {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -236,19 +236,67 @@ button.compact {
 }
 
 .migration-progress-slot {
-  display: flex;
-  justify-content: flex-end;
+  display: block;
 }
 
 .progress-popover {
-  width: min(100%, 620px);
-  max-height: min(68vh, 44rem);
-  overflow: auto;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+  display: grid;
+  gap: 0.65rem;
+  width: 100%;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
 }
 
-.progress-popover h2 {
-  margin-top: 0;
+.progress-collapse-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.progress-collapse-toggle span:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.migration-progress-meter {
+  height: 0.45rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #0d0f12;
+  border: 1px solid #2a3039;
+}
+
+.migration-progress-meter span {
+  display: block;
+  height: 100%;
+  transform-origin: left;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4f8cff, #7ddc95);
+  transition: transform 180ms ease;
+}
+
+.progress-summary {
+  margin: 0;
+  color: #9aa3ad;
+  font-size: 0.85rem;
+}
+
+.progress-panel-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.progress-list {
+  max-height: min(58vh, 40rem);
+  overflow: auto;
+  padding-right: 0.35rem;
 }
 
 .migrated-playlists-panel {
@@ -442,14 +490,6 @@ textarea {
     width: 100%;
   }
 
-  .migration-progress-slot {
-    display: block;
-  }
-
-  .progress-popover {
-    width: 100%;
-  }
-
   .migrated-playlists-toggle {
     grid-template-columns: 1fr;
   }
@@ -499,11 +539,21 @@ textarea {
 }
 
 .progress-row {
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: start;
+}
+
+.progress-track-title,
+.progress-row-reason {
+  min-width: 0;
+}
+
+.progress-row-reason {
+  grid-column: 2;
 }
 
 .review-controls {
-  grid-column: 1 / -1;
+  grid-column: 2;
   display: grid;
   grid-template-columns: 1fr auto auto;
   gap: 0.5rem;
@@ -558,6 +608,10 @@ textarea {
 }
 
 .status {
+  display: inline-flex;
+  justify-content: center;
+  justify-self: start;
+  min-width: 6.25rem;
   border-radius: 999px;
   padding: 0.15rem 0.45rem;
   background: #2a3039;

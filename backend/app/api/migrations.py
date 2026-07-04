@@ -483,6 +483,7 @@ async def _apply_review(
 
     if body.action == "skip":
         item.status = "skipped"
+        item.target_uri = None
         item.reason = "skipped during review"
         await commit_job_counts(session, job)
         return _item_view(item)
