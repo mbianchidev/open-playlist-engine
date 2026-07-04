@@ -71,6 +71,18 @@ def test_unknown_total_without_full_migration_stays_partial() -> None:
     assert annotated.migration_note == "Partially migrated: 1 skipped"
 
 
+def test_playlist_annotation_preserves_provider_note_without_migration_summary() -> None:
+    ref = PlaylistRef(
+        id="spotify:saved-tracks",
+        name="Liked Songs",
+        migration_note="Reconnect Spotify to migrate saved songs",
+    )
+
+    annotated = _annotate_playlist_ref(ref, None)
+
+    assert annotated.migration_note == "Reconnect Spotify to migrate saved songs"
+
+
 def test_review_accepted_full_migration_is_migrated_even_when_count_is_conservative() -> None:
     ref = PlaylistRef(id="playlist", name="Playlist", track_count=2)
     summary = _PlaylistMigrationSummary(

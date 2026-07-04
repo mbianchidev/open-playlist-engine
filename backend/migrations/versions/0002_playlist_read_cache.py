@@ -42,8 +42,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id", "provider", "account_id", "playlist_id"),
     )
-    op.create_index(op.f("ix_cached_playlist_ref_account_id"), "cached_playlist_ref", ["account_id"])
-    op.create_index(op.f("ix_cached_playlist_ref_playlist_id"), "cached_playlist_ref", ["playlist_id"])
+    op.create_index(
+        op.f("ix_cached_playlist_ref_account_id"), "cached_playlist_ref", ["account_id"]
+    )
+    op.create_index(
+        op.f("ix_cached_playlist_ref_playlist_id"), "cached_playlist_ref", ["playlist_id"]
+    )
     op.create_index(op.f("ix_cached_playlist_ref_provider"), "cached_playlist_ref", ["provider"])
     op.create_index(op.f("ix_cached_playlist_ref_user_id"), "cached_playlist_ref", ["user_id"])
 
@@ -74,14 +78,20 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_cached_playlist_tracks_playlist_id"), "cached_playlist_tracks", ["playlist_id"]
     )
-    op.create_index(op.f("ix_cached_playlist_tracks_provider"), "cached_playlist_tracks", ["provider"])
-    op.create_index(op.f("ix_cached_playlist_tracks_user_id"), "cached_playlist_tracks", ["user_id"])
+    op.create_index(
+        op.f("ix_cached_playlist_tracks_provider"), "cached_playlist_tracks", ["provider"]
+    )
+    op.create_index(
+        op.f("ix_cached_playlist_tracks_user_id"), "cached_playlist_tracks", ["user_id"]
+    )
 
 
 def downgrade() -> None:
     op.drop_index(op.f("ix_cached_playlist_tracks_user_id"), table_name="cached_playlist_tracks")
     op.drop_index(op.f("ix_cached_playlist_tracks_provider"), table_name="cached_playlist_tracks")
-    op.drop_index(op.f("ix_cached_playlist_tracks_playlist_id"), table_name="cached_playlist_tracks")
+    op.drop_index(
+        op.f("ix_cached_playlist_tracks_playlist_id"), table_name="cached_playlist_tracks"
+    )
     op.drop_index(op.f("ix_cached_playlist_tracks_account_id"), table_name="cached_playlist_tracks")
     op.drop_table("cached_playlist_tracks")
     op.drop_index(op.f("ix_cached_playlist_ref_user_id"), table_name="cached_playlist_ref")

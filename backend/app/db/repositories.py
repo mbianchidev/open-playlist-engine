@@ -125,12 +125,16 @@ async def load_credential(
         raise CredentialNotFound(account.id)
 
     payload = json.loads(decrypt(row.enc_blob))
+    extra = dict(payload.get("extra") or {})
+    if account.provider_user_id:
+        extra.setdefault("provider_user_id", account.provider_user_id)
     credential = RuntimeCredential.model_validate(payload).model_copy(
         update={
             "account_id": account.id,
             "provider": account.provider,
             "scopes": list(row.scopes or []),
             "expires_at": _to_epoch(row.expires_at),
+            "extra": extra,
             "version": row.version,
         }
     )

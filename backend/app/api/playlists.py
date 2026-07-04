@@ -19,6 +19,8 @@ from app.db.base import get_session
 from app.db.repositories import AccountNotFound, CredentialNotFound, load_fresh_credential
 
 router = APIRouter(prefix="/api/playlists", tags=["playlists"])
+_SPOTIFY_SAVED_TRACKS_PLAYLIST_ID = "spotify:saved-tracks"
+_SPOTIFY_SAVED_TRACKS_NAME = "Liked Songs"
 
 
 @dataclass
@@ -270,7 +272,18 @@ async def _cached_playlist_refs(
         )
         .order_by(orm.CachedPlaylistRef.name.asc())
     )
-    return [_playlist_ref_from_cache(row) for row in (await session.execute(stmt)).scalars()]
+    refs = [_playlist_ref_from_cache(row) for row in (await session.execute(stmt)).scalars()]
+    if provider == "spotify" and all(ref.id != _SPOTIFY_SAVED_TRACKS_PLAYLIST_ID for ref in refs):
+        refs.append(
+            PlaylistRef(
+                id=_SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+                name=_SPOTIFY_SAVED_TRACKS_NAME,
+                collaborative=False,
+                tracks_href="/me/tracks",
+                migration_note="Load songs to cache your Spotify Liked Songs",
+            )
+        )
+    return refs
 
 
 async def _cached_playlist_ref(
@@ -676,7 +689,7 @@ def _annotate_playlist_ref(
         else 0
     )
     status = None
-    note = None
+    note = ref.migration_note
     if fully_resolved:
         status = "migrated"
         note = "Migrated"

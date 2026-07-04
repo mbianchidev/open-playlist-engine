@@ -35,7 +35,11 @@ it contains secrets and session tokens.
 
 10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
     the requested scopes.
-11. Use **Test connection** after connecting. Spotify refresh tokens expire after
+11. Spotify **Liked Songs** is shown as an owned playlist and uses Spotify's
+    saved-tracks library endpoint. If you connected Spotify before this feature
+    existed, reconnect Spotify so the app can request the `user-library-read`
+    scope.
+12. Use **Test connection** after connecting. Spotify refresh tokens expire after
     six months; when Spotify returns `invalid_grant`, the app discards the stale
     account before asking you to reconnect. **Refresh accounts** also removes stale
     accounts so you can reconnect cleanly.

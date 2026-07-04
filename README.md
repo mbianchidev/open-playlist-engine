@@ -95,6 +95,9 @@ ARQ's 5-minute default timeout.
    shown in the connection panel. OAuth reconnects reuse the same YouTube Music
    account by Google email when Google returns it.
 6. Pick one playlist, optionally choose individual tracks, and start the migration.
+   Spotify **Liked Songs** appears as an owned playlist backed by Spotify's saved
+   tracks library; reconnect Spotify if an older connection does not have the
+   `user-library-read` scope yet.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
    Spotify may block tracks from playlists you do not own or collaborate on; copy

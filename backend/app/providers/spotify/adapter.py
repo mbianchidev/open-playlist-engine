@@ -56,9 +56,18 @@ _ITEMS_PAGE = 100
 _RATE_LIMIT_STATUSES = {420, 429}
 _RATE_LIMIT_MAX_RETRIES = 2
 _RATE_LIMIT_MAX_AUTO_WAIT_S = 30
+SPOTIFY_SAVED_TRACKS_PLAYLIST_ID = "spotify:saved-tracks"
+_SAVED_TRACKS_NAME = "Liked Songs"
+_SAVED_TRACKS_HREF = "/me/tracks"
+_SAVED_TRACKS_SCOPE = "user-library-read"
+_SAVED_TRACKS_SCOPE_MESSAGE = (
+    "Spotify saved songs need the user-library-read scope; reconnect Spotify to migrate "
+    "saved songs."
+)
 
 _SCOPES = [
     "user-read-private",
+    _SAVED_TRACKS_SCOPE,
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",
@@ -194,6 +203,34 @@ def _raise_playlist_tracks_forbidden() -> None:
     raise AccessDenied(_PLAYLIST_TRACK_ACCESS_MESSAGE)
 
 
+def _raise_saved_tracks_forbidden() -> None:
+    raise AccessDenied(_SAVED_TRACKS_SCOPE_MESSAGE)
+
+
+def _spotify_user_id(cred: ProviderCredential) -> str | None:
+    provider_user_id = cred.extra.get("provider_user_id")
+    return provider_user_id if isinstance(provider_user_id, str) and provider_user_id else None
+
+
+def _saved_tracks_snapshot(total: int | None) -> str | None:
+    return f"{SPOTIFY_SAVED_TRACKS_PLAYLIST_ID}:total:{total}" if total is not None else None
+
+
+def _saved_tracks_ref(
+    cred: ProviderCredential, *, track_count: int | None = None, migration_note: str | None = None
+) -> PlaylistRef:
+    return PlaylistRef(
+        id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+        name=_SAVED_TRACKS_NAME,
+        track_count=track_count,
+        owner_id=_spotify_user_id(cred),
+        collaborative=False,
+        snapshot_id=_saved_tracks_snapshot(track_count),
+        tracks_href=_SAVED_TRACKS_HREF,
+        migration_note=migration_note,
+    )
+
+
 def _media_type(spotify_type: str | None, is_local: bool) -> MediaType:
     if is_local:
         return MediaType.LOCAL_FILE
@@ -325,6 +362,25 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _S
         if not data.get("next"):
             return None
         offset += _LIST_PAGE
+
+
+async def _saved_tracks_playlist_ref(
+    client: httpx.AsyncClient, cred: ProviderCredential
+) -> PlaylistRef:
+    if _SAVED_TRACKS_SCOPE not in cred.scopes:
+        return _saved_tracks_ref(cred, migration_note="Reconnect Spotify to migrate saved songs")
+    resp = await _spotify_request(
+        client,
+        "GET",
+        _SAVED_TRACKS_HREF,
+        params={"limit": 1, "offset": 0},
+    )
+    if resp.status_code == 403:
+        logger.warning("spotify saved songs unavailable; reconnect with user-library-read scope")
+        return _saved_tracks_ref(cred, migration_note="Reconnect Spotify to migrate saved songs")
+    data = _raise_for_status(resp).json()
+    total = data.get("total")
+    return _saved_tracks_ref(cred, track_count=total if isinstance(total, int) else None)
 
 
 def _track_from_item(item: dict) -> Track | None:
@@ -516,7 +572,10 @@ class SpotifyAuth(AuthStrategy):
             refresh_token=token.get("refresh_token"),
             expires_at=_expires_at(token.get("expires_in")),
             scopes=(token.get("scope") or " ".join(_SCOPES)).split(),
-            extra={"display_name": profile.get("display_name") or provider_user_id},
+            extra={
+                "display_name": profile.get("display_name") or provider_user_id,
+                "provider_user_id": provider_user_id,
+            },
         )
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
@@ -621,11 +680,16 @@ class SpotifyAdapter:
                 if not data.get("next"):
                     break
                 offset += _LIST_PAGE
+            yield await _saved_tracks_playlist_ref(client, cred)
 
     async def iter_playlist_items(
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
         async with self._client(cred) as client:
+            if ref.id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
+                async for track in self._iter_saved_tracks(client):
+                    yield track
+                return
             resp = await self._playlist_tracks_response(client, ref.id)
             if resp.status_code in {400, 403, 404}:
                 meta_resp = _raise_for_status(
@@ -648,6 +712,15 @@ class SpotifyAdapter:
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         async with self._client(cred) as client:
+            if ref.id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
+                tracks, total = await self._read_saved_tracks(client)
+                return Playlist(
+                    id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+                    name=_SAVED_TRACKS_NAME,
+                    owner_id=_spotify_user_id(cred),
+                    snapshot_id=_saved_tracks_snapshot(total),
+                    tracks=tracks,
+                )
             resp = await _spotify_request(client, "GET", f"/playlists/{ref.id}")
             if resp.status_code in {400, 403, 404}:
                 fallback = await self._read_saved_playlist(client, resp, ref)
@@ -713,6 +786,37 @@ class SpotifyAdapter:
                 raise ProviderError("spotify playlist tracks response did not include track items")
             return []
         return [track async for track in _iter_tracks_from_page(client, page)]
+
+    async def _iter_saved_tracks(self, client: httpx.AsyncClient) -> AsyncIterator[Track]:
+        resp = await self._saved_tracks_response(client)
+        if resp.status_code == 403:
+            _raise_saved_tracks_forbidden()
+        page = _playlist_item_page(_raise_for_status(resp).json())
+        if page is None:
+            return
+        async for track in _iter_tracks_from_page(client, page):
+            yield track
+
+    async def _read_saved_tracks(self, client: httpx.AsyncClient) -> tuple[list[Track], int | None]:
+        resp = await self._saved_tracks_response(client)
+        if resp.status_code == 403:
+            _raise_saved_tracks_forbidden()
+        data = _raise_for_status(resp).json()
+        page = _playlist_item_page(data)
+        if page is None:
+            return [], data.get("total") if isinstance(data.get("total"), int) else None
+        total = page.get("total")
+        return [track async for track in _iter_tracks_from_page(client, page)], (
+            total if isinstance(total, int) else None
+        )
+
+    async def _saved_tracks_response(self, client: httpx.AsyncClient) -> httpx.Response:
+        return await _spotify_request(
+            client,
+            "GET",
+            _SAVED_TRACKS_HREF,
+            params={"limit": _ITEMS_PAGE, "offset": 0},
+        )
 
     async def _playlist_tracks_response(
         self,

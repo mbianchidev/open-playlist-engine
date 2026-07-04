@@ -15,7 +15,12 @@ from app.core.adapter import (
     RefreshTokenExpired,
 )
 from app.core.models import MediaType, Track
-from app.providers.spotify.adapter import SpotifyAdapter, SpotifyAuth, _track_id
+from app.providers.spotify.adapter import (
+    SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+    SpotifyAdapter,
+    SpotifyAuth,
+    _track_id,
+)
 from app.settings import get_settings
 from tests.conformance.spotify_fixtures import SPOTIFY_PLAYLIST_ID, spotify_transport
 
@@ -156,6 +161,97 @@ async def test_read_maps_isrc_and_provider_uri_and_position() -> None:
     assert pl.tracks[1].release_date is None
     assert pl.tracks[1].release_year == 2020
     assert all(t.media_type is MediaType.TRACK for t in pl.tracks)
+
+
+async def test_iter_playlists_includes_liked_songs_owned_by_user() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/me/playlists"):
+            return httpx.Response(200, json={"items": [], "next": None})
+        if request.url.path.endswith("/me/tracks"):
+            return httpx.Response(200, json={"items": [], "total": 2, "next": None})
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    refs = [
+        ref
+        async for ref in adapter.iter_playlists(
+            _cred().model_copy(
+                update={
+                    "scopes": ["user-library-read"],
+                    "extra": {"provider_user_id": "spotify-user"},
+                }
+            )
+        )
+    ]
+
+    liked = next(ref for ref in refs if ref.id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID)
+    assert liked.name == "Liked Songs"
+    assert liked.track_count == 2
+    assert liked.owner_id == "spotify-user"
+    assert liked.collaborative is False
+    assert liked.snapshot_id == "spotify:saved-tracks:total:2"
+    assert liked.tracks_href == "/me/tracks"
+
+
+async def test_read_liked_songs_uses_saved_tracks_endpoint() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/me/tracks"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "added_at": "2026-01-01T00:00:00Z",
+                            "track": {
+                                "id": "liked1",
+                                "name": "Liked Song",
+                                "uri": "spotify:track:liked1",
+                                "type": "track",
+                                "duration_ms": 123000,
+                                "artists": [{"name": "Liked Artist"}],
+                                "album": {"name": "Liked Album"},
+                                "external_ids": {"isrc": "US0000000002"},
+                            },
+                        }
+                    ],
+                    "total": 1,
+                    "next": None,
+                },
+            )
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    playlist = await adapter.read_playlist(
+        _cred().model_copy(update={"extra": {"provider_user_id": "spotify-user"}}),
+        _ref(SPOTIFY_SAVED_TRACKS_PLAYLIST_ID, "Liked Songs"),
+    )
+
+    assert playlist.id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID
+    assert playlist.name == "Liked Songs"
+    assert playlist.owner_id == "spotify-user"
+    assert playlist.snapshot_id == "spotify:saved-tracks:total:1"
+    assert len(playlist.tracks) == 1
+    assert playlist.tracks[0].title == "Liked Song"
+    assert playlist.tracks[0].provider_uris["spotify"] == "spotify:track:liked1"
+    assert playlist.tracks[0].isrc == "US0000000002"
+
+
+async def test_read_liked_songs_forbidden_prompts_spotify_reconnect() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/me/tracks"):
+            return httpx.Response(
+                403,
+                json={"error": {"status": 403, "message": "Insufficient client scope"}},
+            )
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(AccessDenied) as excinfo:
+        await adapter.read_playlist(_cred(), _ref(SPOTIFY_SAVED_TRACKS_PLAYLIST_ID, "Liked Songs"))
+
+    assert "reconnect Spotify" in str(excinfo.value)
+    assert "saved songs" in str(excinfo.value)
 
 
 async def test_read_supports_playlist_item_field_shape() -> None:
