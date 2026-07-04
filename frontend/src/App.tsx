@@ -437,6 +437,11 @@ export default function App() {
   }
 
   function markPlaylistFullyMigrated(playlistId: string, migratedTrackCount: number) {
+    setSelectedPlaylists((prev) => {
+      const next = new Set(prev);
+      next.delete(playlistId);
+      return next;
+    });
     setPlaylists((prev) =>
       prev.map((playlist) =>
         playlist.id === playlistId

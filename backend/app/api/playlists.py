@@ -113,6 +113,16 @@ async def get_playlist(
                 playlist_id=playlist_id,
             )
             playlist.tracks = [_annotate_track(track, migrated) for track in playlist.tracks]
+            await _persist_discovered_full_migration(
+                session,
+                user_id=user_id,
+                source_provider=provider,
+                source_account_id=account_id,
+                target_provider=target_provider,
+                target_account_id=target_account_id,
+                playlist_id=playlist_id,
+                playlist=playlist,
+            )
         await session.commit()
         return playlist
     except KeyError as exc:
@@ -216,6 +226,114 @@ def _job_selected_full_playlist(job: orm.MigrationJob, playlist_id: str) -> bool
     if not isinstance(tracks, dict):
         return True
     return not tracks.get(playlist_id)
+
+
+async def _persist_discovered_full_migration(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    source_provider: str,
+    source_account_id: str,
+    target_provider: str,
+    target_account_id: str,
+    playlist_id: str,
+    playlist: Playlist,
+) -> None:
+    if not playlist.tracks or any(
+        track.migration_status != "migrated" for track in playlist.tracks
+    ):
+        return
+    if await _completed_full_playlist_exists(
+        session,
+        user_id=user_id,
+        source_provider=source_provider,
+        source_account_id=source_account_id,
+        target_provider=target_provider,
+        target_account_id=target_account_id,
+        playlist_id=playlist_id,
+    ):
+        return
+
+    job = orm.MigrationJob(
+        user_id=user_id,
+        source_provider=source_provider,
+        target_provider=target_provider,
+        source_account_id=source_account_id,
+        target_account_id=target_account_id,
+        selection={"playlist_ids": [playlist_id], "tracks": {}},
+        status="done",
+    )
+    session.add(job)
+    await session.flush()
+    for fallback_position, track in enumerate(playlist.tracks):
+        session.add(
+            orm.JobItem(
+                job_id=job.id,
+                source_playlist_id=playlist_id,
+                source_playlist_name=playlist.name,
+                target_playlist_id=track.migrated_target_playlist_id,
+                position=track.position if track.position is not None else fallback_position,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                duration_s=track.duration_s,
+                release_year=track.release_year,
+                explicit=track.explicit,
+                isrc=track.isrc,
+                source_metadata=track.model_dump(mode="json"),
+                target_uri=track.migrated_target_uri,
+                status="written",
+                reason="already migrated when playlist was discovered",
+            )
+        )
+    await session.flush()
+    job.total = len(playlist.tracks)
+    job.done = len(playlist.tracks)
+    job.failed = 0
+
+
+async def _completed_full_playlist_exists(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    source_provider: str,
+    source_account_id: str,
+    target_provider: str,
+    target_account_id: str,
+    playlist_id: str,
+) -> bool:
+    stmt = (
+        select(orm.JobItem, orm.MigrationJob)
+        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
+        .where(
+            orm.MigrationJob.user_id == user_id,
+            orm.MigrationJob.source_provider == source_provider,
+            provider_account_history(
+                orm.MigrationJob.source_account_id,
+                current_account_id=source_account_id,
+                user_id=user_id,
+                provider=source_provider,
+            ),
+            orm.MigrationJob.target_provider == target_provider,
+            provider_account_history(
+                orm.MigrationJob.target_account_id,
+                current_account_id=target_account_id,
+                user_id=user_id,
+                provider=target_provider,
+            ),
+            orm.MigrationJob.status == "done",
+            orm.JobItem.source_playlist_id == playlist_id,
+        )
+    )
+    job_items: dict[str, tuple[orm.MigrationJob, list[orm.JobItem]]] = {}
+    for item, job in (await session.execute(stmt)).all():
+        job_items.setdefault(job.id, (job, []))[1].append(item)
+    return any(
+        items
+        and _job_selected_full_playlist(job, playlist_id)
+        and all(_is_resolved_item(item) for item in items)
+        for job, items in job_items.values()
+    )
 
 
 async def _migrated_track_map(
