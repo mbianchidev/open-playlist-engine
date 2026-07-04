@@ -36,11 +36,38 @@ it contains secrets and session tokens.
 10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
     the requested scopes.
 
-## YouTube Music header-paste auth
+## YouTube Music device-code auth
 
-YouTube Music uses an unofficial self-host-only auth path. The pasted headers act
-like a browser session, so do not share them and clear/sign out of YouTube Music
-after testing if they were exposed.
+YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device
+flow. This is the default path when YouTube Music OAuth credentials are set.
+
+1. Open <https://console.cloud.google.com/apis/library/youtube.googleapis.com>
+   and enable the **YouTube Data API v3** for your Google Cloud project.
+2. Open <https://console.cloud.google.com/auth/clients>.
+3. Create an **OAuth client ID** with application type **TVs and Limited Input
+   devices**.
+4. Copy the client ID and client secret into the repo-root `.env`:
+
+   ```env
+   OPE_YTMUSIC_CLIENT_ID=your_client_id
+   OPE_YTMUSIC_CLIENT_SECRET=your_client_secret
+   ```
+
+5. Restart the backend and worker:
+
+   ```bash
+   docker compose up -d --force-recreate backend worker
+   ```
+
+6. In the UI, choose YouTube Music as **To**, click **Connect YouTube Music**,
+   open the verification URL, and enter the displayed code.
+
+## YouTube Music header-paste fallback
+
+If `OPE_YTMUSIC_CLIENT_ID` and `OPE_YTMUSIC_CLIENT_SECRET` are not set,
+self-host mode falls back to header paste. The pasted headers act like a browser
+session, so do not share them and clear/sign out of YouTube Music after testing
+if they were exposed. Hosted mode does not allow header paste.
 
 1. Open <https://music.youtube.com> in Chrome or Edge and sign in.
 2. Open DevTools with `Cmd+Option+I` on macOS or `Ctrl+Shift+I` on Windows/Linux.

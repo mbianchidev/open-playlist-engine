@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Provider write paths
     ytmusic_enabled: bool = True
     youtube_official_enabled: bool = False
+    ytmusic_client_id: str = ""
+    ytmusic_client_secret: str = ""
+    ytmusic_device_code_url: str = "https://www.youtube.com/o/oauth2/device/code"
+    ytmusic_token_url: str = "https://oauth2.googleapis.com/token"
 
     # Match graph: per-user/local by default. Sharing globally needs legal review.
     enable_shared_graph: bool = False
