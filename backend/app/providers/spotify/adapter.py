@@ -98,10 +98,27 @@ def _raise_for_status(resp: httpx.Response) -> httpx.Response:
         raise AccessDenied("spotify request forbidden")
     if resp.status_code == 404:
         raise NotFound(str(resp.request.url))
-    if resp.status_code == 429:
-        retry_after = resp.headers.get("Retry-After")
-        raise RateLimited(retry_after_s=float(retry_after) if retry_after else None)
+    if resp.status_code in {420, 429}:
+        retry_after_s = _retry_after_seconds(resp)
+        message = "spotify rate limited"
+        if retry_after_s is not None:
+            message = f"{message}; retry after {retry_after_s:g} seconds"
+        raise RateLimited(
+            retry_after_s=retry_after_s,
+            message=message,
+            status_code=resp.status_code,
+        )
     raise ProviderError(f"spotify HTTP {resp.status_code}: {_spotify_error_message(resp)}")
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    retry_after = resp.headers.get("Retry-After")
+    if not retry_after:
+        return None
+    try:
+        return float(retry_after)
+    except ValueError:
+        return None
 
 
 def _spotify_error_message(resp: httpx.Response) -> str:

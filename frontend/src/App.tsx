@@ -35,6 +35,7 @@ export default function App() {
   const [activeAuthProvider, setActiveAuthProvider] = useState<string | null>(null);
   const [blockingAlert, setBlockingAlert] = useState<BlockingAlert | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
@@ -75,6 +76,14 @@ export default function App() {
   const migrationCandidatePlaylists = availablePlaylists.filter(
     (playlist) => !isAnnotatedMigratedPlaylist(playlist),
   );
+  const showBlockedPlaylistDetails =
+    showBlockedSpotifyPlaylists ||
+    (migrationCandidatePlaylists.length === 0 && blockedSpotifyPlaylists.length > 0);
+  const showMigratedPlaylistDetails =
+    showMigratedPlaylists ||
+    (migrationCandidatePlaylists.length === 0 &&
+      blockedSpotifyPlaylists.length === 0 &&
+      migratedPlaylists.length > 0);
   const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
     selectedPlaylists.has(playlist.id),
   ).length;
@@ -85,9 +94,12 @@ export default function App() {
       try {
         const rows = await getPlaylists(source, sourceAccount.id, playlistContext);
         setPlaylists(rows);
+        setPlaylistError(null);
         if (options.resetSelection) setSelectedPlaylists(new Set());
       } catch (e: unknown) {
-        setError(errorMessage(e));
+        const message = errorMessage(e);
+        setPlaylistError(message);
+        setError(message);
       }
     },
     [source, sourceAccount?.id, target, targetAccount?.id],
@@ -107,6 +119,7 @@ export default function App() {
 
   useEffect(() => {
     setPlaylists([]);
+    setPlaylistError(null);
     setSelectedPlaylists(new Set());
     setPlaylistTracks({});
     setSelectedTracks({});
@@ -823,16 +836,16 @@ export default function App() {
               <button
                 className="migrated-playlists-toggle"
                 type="button"
-                aria-expanded={showMigratedPlaylists}
+                aria-expanded={showMigratedPlaylistDetails}
                 onClick={() => setShowMigratedPlaylists((open) => !open)}
               >
                 <span>Migrated playlists</span>
                 <span className="muted">
                   {migratedPlaylists.length} migrated or partially migrated
                 </span>
-                <span aria-hidden="true">{showMigratedPlaylists ? "Hide" : "Show"}</span>
+                <span aria-hidden="true">{showMigratedPlaylistDetails ? "Hide" : "Show"}</span>
               </button>
-              {showMigratedPlaylists ? (
+              {showMigratedPlaylistDetails ? (
                 <div className="playlist-list migrated-playlist-list">
                   {migratedPlaylists.map(renderPlaylistCard)}
                 </div>
@@ -844,24 +857,37 @@ export default function App() {
               <button
                 className="blocked-playlists-toggle"
                 type="button"
-                aria-expanded={showBlockedSpotifyPlaylists}
+                aria-expanded={showBlockedPlaylistDetails}
                 onClick={() => setShowBlockedSpotifyPlaylists((open) => !open)}
               >
                 <span>Spotify playlists to copy first</span>
                 <span className="muted">
                   {blockedSpotifyPlaylists.length} owned by someone else
                 </span>
-                <span aria-hidden="true">{showBlockedSpotifyPlaylists ? "Hide" : "Show"}</span>
+                <span aria-hidden="true">{showBlockedPlaylistDetails ? "Hide" : "Show"}</span>
               </button>
-              {showBlockedSpotifyPlaylists ? (
+              {showBlockedPlaylistDetails ? (
                 <div className="playlist-list blocked-playlist-list">
                   {blockedSpotifyPlaylists.map(renderBlockedPlaylistCard)}
                 </div>
               ) : null}
             </div>
           ) : null}
-          {playlists.length === 0 ? (
+          {playlistError && playlists.length === 0 ? (
+            <p className="empty-guidance error-guidance">
+              Could not load playlists: {playlistError}
+            </p>
+          ) : playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
+          ) : migrationCandidatePlaylists.length === 0 && blockedSpotifyPlaylists.length > 0 ? (
+            <p className="empty-guidance">
+              No Spotify playlists can be migrated directly. Copy the playlists above into ones
+              you own, then refresh.
+            </p>
+          ) : migrationCandidatePlaylists.length === 0 && migratedPlaylists.length > 0 ? (
+            <p className="empty-guidance">
+              No new playlist work right now. Migrated and partial playlists are shown above.
+            </p>
           ) : migrationCandidatePlaylists.length === 0 ? (
             <p className="muted">No migratable playlists left.</p>
           ) : (

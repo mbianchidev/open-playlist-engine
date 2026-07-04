@@ -552,6 +552,21 @@ button.compact {
   font-size: 0.82rem;
 }
 
+.empty-guidance {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  border: 1px solid #2a3039;
+  border-radius: 10px;
+  background: #0d0f12;
+  color: #c7cdd6;
+  font-size: 0.9rem;
+}
+
+.error-guidance {
+  border-color: #f0b450;
+  color: #f8d99a;
+}
+
 .account-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

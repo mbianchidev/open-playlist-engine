@@ -78,7 +78,7 @@ async def list_playlists(
     except AuthExpired as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except AccessDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:
@@ -135,7 +135,7 @@ async def get_playlist(
     except AuthExpired as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except AccessDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFound as exc:

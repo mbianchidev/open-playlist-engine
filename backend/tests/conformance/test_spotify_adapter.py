@@ -47,6 +47,16 @@ async def test_429_maps_to_rate_limited_with_retry_after() -> None:
     with pytest.raises(RateLimited) as excinfo:
         await adapter.search_tracks(_cred(), Track(title="x", artist="y"))
     assert excinfo.value.retry_after_s == 7.0
+    assert excinfo.value.status_code == 429
+    assert str(excinfo.value) == "spotify rate limited; retry after 7 seconds"
+
+
+async def test_420_maps_to_rate_limited_with_status_preserved() -> None:
+    adapter = _adapter_returning(420)
+    with pytest.raises(RateLimited) as excinfo:
+        [r async for r in adapter.iter_playlists(_cred())]
+    assert excinfo.value.status_code == 420
+    assert str(excinfo.value) == "spotify rate limited"
 
 
 async def test_missing_access_token_raises_auth_expired() -> None:

@@ -37,9 +37,15 @@ class AccessDenied(ProviderError):
 
 
 class RateLimited(ProviderError):
-    def __init__(self, retry_after_s: float | None = None, message: str = "rate limited"):
+    def __init__(
+        self,
+        retry_after_s: float | None = None,
+        message: str = "rate limited",
+        status_code: int = 429,
+    ):
         super().__init__(message)
         self.retry_after_s = retry_after_s
+        self.status_code = status_code
 
 
 class NotFound(ProviderError):

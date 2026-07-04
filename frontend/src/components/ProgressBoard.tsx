@@ -392,7 +392,7 @@ function confidenceAtOrBelowThreshold(confidence: number | null, thresholdPct: n
 }
 
 function isConfidenceAtOrBelow50(confidence: number | null): boolean {
-  return confidenceAtOrBelowThreshold(confidence, 50);
+  return confidence === null || confidenceAtOrBelowThreshold(confidence, 50);
 }
 
 function isReviewableItem(item: JobItemView): boolean {
@@ -443,7 +443,11 @@ function lowConfidenceSourceLink(
   item: JobItemView,
   sourceProvider: string | undefined,
 ): SourceLink | null {
-  if (item.status !== "needs_review" || !sourceProvider || !isConfidenceAtOrBelow50(item.confidence)) {
+  if (
+    !isReviewableItem(item) ||
+    !sourceProvider ||
+    !isConfidenceAtOrBelow50(item.confidence)
+  ) {
     return null;
   }
   const url = sourceTrackUrl(item, sourceProvider);
