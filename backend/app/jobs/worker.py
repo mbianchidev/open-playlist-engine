@@ -22,3 +22,4 @@ logging.basicConfig(
 class WorkerSettings:
     functions = [run_migration]
     redis_settings = RedisSettings.from_dsn(get_settings().valkey_url)
+    job_timeout = get_settings().migration_worker_job_timeout_s

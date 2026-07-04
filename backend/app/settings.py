@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     migration_safe_max_tracks_per_job: int = 50
     migration_safe_daily_tracks: int = 250
     migration_safe_min_job_gap_s: int = 120
+    migration_worker_job_timeout_s: int = 3600
 
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""

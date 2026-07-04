@@ -354,6 +354,27 @@ button.compact {
   margin-top: 0.2rem;
 }
 
+.selected-playlist-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-height: 7rem;
+  overflow: auto;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selected-playlist-names li {
+  max-width: 100%;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid #2a3039;
+  border-radius: 999px;
+  background: #0d0f12;
+  color: #c7d8ff;
+  font-size: 0.78rem;
+}
+
 .migration-progress-slot {
   display: block;
 }

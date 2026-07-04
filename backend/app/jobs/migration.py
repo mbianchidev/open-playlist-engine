@@ -9,6 +9,7 @@ Progress is derived from ``job_item`` rows so a disconnected client can replay.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from enum import StrEnum
 
@@ -65,14 +66,24 @@ async def run_migration(ctx: dict, job_id: str) -> None:
             return
         try:
             await _run(session, job)
+        except asyncio.CancelledError:
+            await session.rollback()
+            await _mark_job_failed(session, job_id, "migration cancelled or timed out")
+            logger.exception("migration job_id=%s cancelled or timed out", job_id)
+            raise
         except Exception as exc:
             await session.rollback()
-            job = await session.get(orm.MigrationJob, job_id)
-            if job is not None:
-                job.status = "failed"
-                job.error = str(exc)
-                await session.commit()
+            await _mark_job_failed(session, job_id, str(exc))
             logger.exception("migration job_id=%s failed", job_id)
+
+
+async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> None:
+    job = await session.get(orm.MigrationJob, job_id)
+    if job is None:
+        return
+    job.status = "failed"
+    job.error = error
+    await session.commit()
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:

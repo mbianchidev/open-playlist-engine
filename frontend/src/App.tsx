@@ -60,6 +60,9 @@ export default function App() {
     playlistTracks,
     selectedTracks,
   ).filter((id) => !blockedSpotifyPlaylistIds.has(id));
+  const selectedMigrationPlaylists = selectedMigrationPlaylistIds
+    .map((id) => availablePlaylists.find((playlist) => playlist.id === id))
+    .filter((playlist): playlist is PlaylistRef => Boolean(playlist));
   const startDisabled =
     !source ||
     !target ||
@@ -792,6 +795,13 @@ export default function App() {
                   {selectedMigrationPlaylistIds.length} playlist
                   {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
                 </p>
+                {selectedMigrationPlaylists.length >= 2 ? (
+                  <ul className="selected-playlist-names" aria-label="Selected playlists">
+                    {selectedMigrationPlaylists.map((playlist) => (
+                      <li key={playlist.id}>{playlist.name}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
               <button className="primary" disabled={startDisabled} onClick={() => start()}>
                 {busy ? "Starting…" : "Start migration"}

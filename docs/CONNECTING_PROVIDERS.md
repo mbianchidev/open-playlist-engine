@@ -150,6 +150,10 @@ playlist per job, 50 tracks per job, 250 tracks per day, and at least 120 second
 between jobs. If you exceed those defaults, the UI shows a warning popup and only
 continues after you acknowledge it.
 
+Large playlists can take longer than five minutes because each song may require a
+YouTube Music search. The worker timeout defaults to 3600 seconds and can be
+changed with `OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`.
+
 When a target playlist with the same name already exists, the app reads its songs.
 If they overlap with the source, the job reuses that playlist and skips duplicate
 songs with a progress notice. If the songs are completely different, the UI warns

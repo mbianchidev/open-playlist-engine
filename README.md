@@ -75,7 +75,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
-between jobs (`OPE_MIGRATION_SAFE_*`).
+between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
+by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
+ARQ's 5-minute default timeout.
 
 ## Spotify → YouTube Music
 
