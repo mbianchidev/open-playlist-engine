@@ -150,6 +150,25 @@ button.secondary:disabled {
   cursor: not-allowed;
 }
 
+a.button-link {
+  align-self: start;
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #3563b5;
+  background: #132241;
+  color: #c7d8ff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a.button-link:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #8fb4ff;
+  outline-offset: 2px;
+}
+
 button.compact {
   margin-top: 0;
   padding: 0.35rem 0.55rem;
@@ -224,6 +243,102 @@ button.compact {
   letter-spacing: 0.08em;
 }
 
+.fallback-callout {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2a3039;
+}
+
+.fallback-callout p {
+  margin: 0;
+  color: #f0b450;
+  font-size: 0.85rem;
+}
+
+.header-guide {
+  padding: 1rem;
+  border: 1px solid #2a3039;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(79, 140, 255, 0.1), transparent 36%),
+    #11141a;
+}
+
+.guide-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.guide-heading h3 {
+  margin: 0.15rem 0 0.25rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #8fb4ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.header-steps {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.75rem 0 0;
+  padding-left: 1.35rem;
+}
+
+.header-steps li {
+  padding-left: 0.15rem;
+}
+
+.header-steps code {
+  padding: 0.08rem 0.25rem;
+  border-radius: 5px;
+  background: #0d0f12;
+  color: #c7d8ff;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.82rem;
+}
+
+.endpoint-strip,
+.header-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.endpoint-strip span,
+.header-check {
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.endpoint-strip span {
+  border: 1px solid #2a3039;
+  color: #c7cdd6;
+  background: #0d0f12;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.header-check {
+  border: 1px solid #3a2610;
+  color: #f0b450;
+  background: #1d1710;
+}
+
+.header-check.ok {
+  border-color: #214b2e;
+  color: #7ddc95;
+  background: #102118;
+}
+
 textarea {
   min-height: 9rem;
   resize: vertical;
@@ -232,6 +347,18 @@ textarea {
   background: #0d0f12;
   color: inherit;
   padding: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .lanes,
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-heading,
+  .section-heading {
+    display: grid;
+  }
 }
 
 .playlist-list,

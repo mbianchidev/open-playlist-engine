@@ -43,6 +43,7 @@ export default function App() {
     playlistTracks,
     selectedTracks,
   );
+  const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
 
   useEffect(() => {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
@@ -99,7 +100,7 @@ export default function App() {
         return;
       }
       if (challenge.shape === "form") {
-        if (provider === "ytmusic") setYtHeaderFallback(true);
+        if (provider === "ytmusic") showYtHeaderFallback();
         setNotice(challenge.instructions ?? "Paste provider credentials below.");
         return;
       }
@@ -148,15 +149,32 @@ export default function App() {
         }
         if (authPollId.current !== pollId) return;
         setDeviceChallenge(null);
+        if (challenge.provider === "ytmusic" && isGoogleAccessDenied(message)) {
+          setYtHeaderFallback(true);
+          setError(`${message}. Use browser-session headers below instead.`);
+          return;
+        }
         setError(message);
         return;
       }
     }
   }
 
+  function showYtHeaderFallback() {
+    authPollId.current += 1;
+    setDeviceChallenge(null);
+    setYtHeaderFallback(true);
+    setError(null);
+    setNotice("Use browser-session headers below. Keep them private.");
+  }
+
   async function connectYouTubeMusic() {
     if (!ytHeaders.trim()) {
       setError("Paste YouTube Music request headers first.");
+      return;
+    }
+    if (!ytHeaderStatus.ready) {
+      setError(`Missing YouTube Music request headers: ${ytHeaderStatus.missing.join(", ")}.`);
       return;
     }
     setBusy(true);
@@ -388,20 +406,88 @@ export default function App() {
             </a>
             <code>{deviceChallenge.userCode}</code>
             <p className="muted">Waiting for Google to confirm authorization…</p>
+            {target === "ytmusic" ? (
+              <div className="fallback-callout">
+                <p>
+                  Google says the app is not verified? Skip OAuth and use your signed-in browser
+                  session instead.
+                </p>
+                <button className="secondary compact" disabled={busy} onClick={showYtHeaderFallback}>
+                  Use browser-session headers
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {target === "ytmusic" && !targetAccount && ytHeaderFallback ? (
-          <div className="form-block">
-            <label htmlFor="ytHeaders">YouTube Music request headers</label>
+          <div className="form-block header-guide">
+            <div className="guide-heading">
+              <div>
+                <p className="eyebrow">YouTube Music fallback</p>
+                <h3>Copy one real request from your browser</h3>
+                <p className="muted">
+                  These headers act like your YouTube Music session. Keep them local and do not
+                  share them.
+                </p>
+              </div>
+              <a className="button-link" href="https://music.youtube.com" target="_blank" rel="noreferrer">
+                Open YouTube Music
+              </a>
+            </div>
+            <ol className="header-steps">
+              <li>Open YouTube Music while signed in.</li>
+              <li>Open DevTools, then choose the Network tab.</li>
+              <li>Search for a song or open a playlist so requests appear.</li>
+              <li>
+                Pick a <code>POST</code> request to <code>music.youtube.com/youtubei/v1</code>.
+              </li>
+              <li>
+                In Headers, copy request headers from <code>authorization</code> through{" "}
+                <code>x-youtube-client-version</code>.
+              </li>
+              <li>Paste below. The checks light up when the important headers are found.</li>
+            </ol>
+            <div className="endpoint-strip" aria-label="Good request paths">
+              <span>/browse</span>
+              <span>/search</span>
+              <span>/music/get_search_suggestions</span>
+            </div>
+            <div className="header-checks" aria-live="polite">
+              {ytHeaderStatus.checks.map((check) => (
+                <span key={check.name} className={`header-check ${check.present ? "ok" : ""}`}>
+                  {check.present ? "Found" : "Missing"} {check.name}
+                </span>
+              ))}
+              {ytHeaderStatus.isJson ? (
+                <span className="header-check ok">Detected ytmusicapi JSON</span>
+              ) : null}
+            </div>
+            <label htmlFor="ytHeaders">Paste request headers</label>
             <textarea
               id="ytHeaders"
               value={ytHeaders}
               onChange={(e) => setYtHeaders(e.target.value)}
-              placeholder="Paste headers copied from an authenticated music.youtube.com /browse POST request."
+              placeholder={"authorization: SAPISIDHASH ...\ncookie: ...\nx-goog-authuser: 0\nx-youtube-client-version: ..."}
             />
-            <button className="secondary" disabled={busy} onClick={connectYouTubeMusic}>
-              Connect YouTube Music
-            </button>
+            {ytHeaders.trim() && !ytHeaderStatus.ready ? (
+              <p className="warn">Still missing: {ytHeaderStatus.missing.join(", ")}.</p>
+            ) : null}
+            <div className="toolbar">
+              <button
+                className="secondary"
+                disabled={busy || !ytHeaderStatus.ready}
+                onClick={connectYouTubeMusic}
+              >
+                Connect YouTube Music
+              </button>
+              <button
+                className="secondary"
+                disabled={busy || !ytHeaders}
+                onClick={() => setYtHeaders("")}
+              >
+                Clear pasted headers
+              </button>
+            </div>
           </div>
         ) : null}
         <button className="secondary" disabled={busy} onClick={refreshAccounts}>
@@ -587,6 +673,44 @@ interface DeviceChallenge {
   verificationUrl: string;
   state: string;
   pollIntervalS: number;
+}
+
+const YT_REQUIRED_HEADERS = ["authorization", "cookie", "x-goog-authuser", "x-youtube-client-version"];
+
+interface HeaderCheck {
+  name: string;
+  present: boolean;
+}
+
+interface YtHeaderStatus {
+  checks: HeaderCheck[];
+  missing: string[];
+  ready: boolean;
+  isJson: boolean;
+}
+
+function getYtHeaderStatus(raw: string): YtHeaderStatus {
+  const trimmed = raw.trim();
+  const isJson = trimmed.startsWith("{");
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim().toLowerCase())
+    .filter(Boolean);
+  const checks = YT_REQUIRED_HEADERS.map((name) => ({
+    name,
+    present: isJson || lines.some((line) => line === name || line.startsWith(`${name}:`)),
+  }));
+  const missing = checks.filter((check) => !check.present).map((check) => check.name);
+  return {
+    checks,
+    missing,
+    ready: isJson || (trimmed.length > 0 && missing.length === 0),
+    isJson,
+  };
+}
+
+function isGoogleAccessDenied(message: string): boolean {
+  return message.includes("access_denied") || message.toLowerCase().includes("authorization was denied");
 }
 
 interface AccountPanelProps {
