@@ -15,9 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import urllib.parse
+import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol
+
+import httpx
 
 from app.core.adapter import (
     AddItemResult,
@@ -31,6 +36,7 @@ from app.core.adapter import (
     ProviderCredential,
     ProviderError,
     ProviderInfo,
+    RateLimited,
     TrackCandidate,
     Unsupported,
 )
@@ -77,6 +83,25 @@ class YTMusicClient(Protocol):
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
 
+_YTMUSIC_SCOPE = "https://www.googleapis.com/auth/youtube"
+_OAUTH_GRANT_TYPE = "http://oauth.net/grant_type/device/1.0"
+_OAUTH_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) "
+    "Gecko/20100101 Firefox/88.0 Cobalt/Version"
+)
+_DEFAULT_POLL_INTERVAL_S = 5
+
+
+@dataclass
+class _PendingDeviceCode:
+    user_id: str
+    device_code: str
+    expires_at: float
+    interval_s: int
+
+
+_PENDING_DEVICE_CODES: dict[str, _PendingDeviceCode] = {}
+
 
 def _default_client_factory(cred: ProviderCredential) -> YTMusicClient:
     """Build a real ``YTMusic`` client from stored credentials.
@@ -84,11 +109,25 @@ def _default_client_factory(cred: ProviderCredential) -> YTMusicClient:
     Not exercised in CI (the conformance suite injects a fake). ``cred.extra``
     carries the ``ytmusicapi`` auth payload (oauth token JSON or pasted headers).
     """
-    from ytmusicapi import YTMusic
+    from ytmusicapi import OAuthCredentials, YTMusic
 
     auth = cred.extra.get("auth") or cred.access_token
     if not auth:
         raise AuthExpired("missing ytmusic credentials")
+    if cred.auth_kind is AuthKind.OAUTH_DEVICE:
+        s = get_settings()
+        if not _has_oauth_settings(s):
+            raise ProviderError(
+                "OPE_YTMUSIC_CLIENT_ID and OPE_YTMUSIC_CLIENT_SECRET are required "
+                "for YouTube Music OAuth credentials"
+            )
+        return YTMusic(
+            auth,
+            oauth_credentials=OAuthCredentials(
+                client_id=s.ytmusic_client_id,
+                client_secret=s.ytmusic_client_secret,
+            ),
+        )
     return YTMusic(auth)
 
 
@@ -184,47 +223,274 @@ def _succeeded(response: str | dict[str, Any]) -> bool:
     return isinstance(response, dict) and "SUCCEEDED" in str(response.get("status", ""))
 
 
+def _has_oauth_settings(settings) -> bool:
+    return bool(settings.ytmusic_client_id and settings.ytmusic_client_secret)
+
+
+def _has_partial_oauth_settings(settings) -> bool:
+    return bool(settings.ytmusic_client_id) != bool(settings.ytmusic_client_secret)
+
+
+def _oauth_settings_error() -> ProviderError:
+    return ProviderError(
+        "OPE_YTMUSIC_CLIENT_ID and OPE_YTMUSIC_CLIENT_SECRET are required before "
+        "connecting YouTube Music with device-code auth"
+    )
+
+
+def _cleanup_pending_device_codes(now: float) -> None:
+    expired = [
+        state for state, pending in _PENDING_DEVICE_CODES.items() if pending.expires_at <= now
+    ]
+    for state in expired:
+        _PENDING_DEVICE_CODES.pop(state, None)
+
+
+def _store_device_code(state: str, pending: _PendingDeviceCode) -> None:
+    _cleanup_pending_device_codes(time.time())
+    _PENDING_DEVICE_CODES[state] = pending
+
+
+def _get_device_code_state(state: str | None, user_id: str) -> _PendingDeviceCode:
+    if not state:
+        raise ProviderError("YouTube Music device auth requires state")
+    pending = _PENDING_DEVICE_CODES.get(state)
+    if pending is None:
+        raise ProviderError("YouTube Music device code is invalid or expired")
+    if pending.user_id != user_id:
+        raise ProviderError("YouTube Music device code does not match the current user")
+    if pending.expires_at <= time.time():
+        _PENDING_DEVICE_CODES.pop(state, None)
+        raise ProviderError("YouTube Music device code expired; start connection again")
+    return pending
+
+
+def _token_expires_at(expires_in: Any) -> int:
+    try:
+        seconds = int(expires_in)
+    except (TypeError, ValueError):
+        seconds = 0
+    return int(time.time()) + max(0, seconds - 30)
+
+
+def _required_token_value(token: dict[str, Any], key: str) -> str:
+    value = token.get(key)
+    if not isinstance(value, str) or not value:
+        raise ProviderError(f"YouTube Music OAuth response did not include {key}")
+    return value
+
+
+def _token_payload(token: dict[str, Any]) -> dict[str, Any]:
+    expires_in = token.get("expires_in")
+    return {
+        "access_token": _required_token_value(token, "access_token"),
+        "refresh_token": _required_token_value(token, "refresh_token"),
+        "scope": token.get("scope") or _YTMUSIC_SCOPE,
+        "token_type": token.get("token_type") or "Bearer",
+        "expires_at": _token_expires_at(expires_in),
+        "expires_in": token.get("refresh_token_expires_in") or expires_in or 0,
+    }
+
+
+def _refresh_payload(existing: dict[str, Any], token: dict[str, Any]) -> dict[str, Any]:
+    access_token = _required_token_value(token, "access_token")
+    return {
+        **existing,
+        "access_token": access_token,
+        "scope": token.get("scope") or existing.get("scope") or _YTMUSIC_SCOPE,
+        "token_type": token.get("token_type") or existing.get("token_type") or "Bearer",
+        "expires_at": _token_expires_at(token.get("expires_in")),
+    }
+
+
 class YTMusicAuth(AuthStrategy):
     kind = AuthKind.OAUTH_DEVICE
 
+    def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._transport = transport
+
+    async def _post_form(self, url: str, data: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
+            resp = await client.post(url, data=data, headers={"User-Agent": _OAUTH_USER_AGENT})
+        try:
+            payload = resp.json()
+        except json.JSONDecodeError as exc:
+            raise ProviderError(
+                f"YouTube Music OAuth returned invalid JSON (HTTP {resp.status_code})"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise ProviderError("YouTube Music OAuth returned an invalid response")
+        return resp.status_code, payload
+
+    async def _request_device_code(self) -> dict[str, Any]:
+        s = get_settings()
+        status, payload = await self._post_form(
+            s.ytmusic_device_code_url,
+            {"client_id": s.ytmusic_client_id, "scope": _YTMUSIC_SCOPE},
+        )
+        if status >= 400:
+            error = payload.get("error") or payload.get("error_code") or status
+            raise ProviderError(f"YouTube Music device-code request failed: {error}")
+        return payload
+
+    async def _poll_token(self, pending: _PendingDeviceCode) -> dict[str, Any]:
+        s = get_settings()
+        status, payload = await self._post_form(
+            s.ytmusic_token_url,
+            {
+                "client_id": s.ytmusic_client_id,
+                "client_secret": s.ytmusic_client_secret,
+                "grant_type": _OAUTH_GRANT_TYPE,
+                "code": pending.device_code,
+            },
+        )
+        error = payload.get("error")
+        if error == "authorization_pending":
+            raise ProviderError("authorization_pending")
+        if error == "slow_down":
+            pending.interval_s += 5
+            raise RateLimited(retry_after_s=float(pending.interval_s), message="slow_down")
+        if error in {"access_denied", "expired_token"}:
+            message = "denied" if error == "access_denied" else "expired"
+            raise ProviderError(f"YouTube Music device authorization was {message}")
+        if status >= 400 or error:
+            raise ProviderError(f"YouTube Music token exchange failed: {error or status}")
+        return payload
+
+    async def _refresh_token(self, refresh_token: str) -> dict[str, Any]:
+        s = get_settings()
+        status, payload = await self._post_form(
+            s.ytmusic_token_url,
+            {
+                "client_id": s.ytmusic_client_id,
+                "client_secret": s.ytmusic_client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+        )
+        if status >= 400 or payload.get("error"):
+            raise AuthExpired(f"YouTube Music refresh failed: {payload.get('error') or status}")
+        return payload
+
     async def begin(self, *, user_id: str, account_label: str | None = None) -> AuthChallenge:
-        if get_settings().allow_header_paste:
+        s = get_settings()
+        if _has_oauth_settings(s):
+            data = await self._request_device_code()
+            device_code = data.get("device_code")
+            user_code = data.get("user_code")
+            verification_url = data.get("verification_url")
+            if not all(
+                isinstance(v, str) and v for v in (device_code, user_code, verification_url)
+            ):
+                raise ProviderError(
+                    "YouTube Music device-code response was missing required fields"
+                )
+            interval_s = int(data.get("interval") or _DEFAULT_POLL_INTERVAL_S)
+            state = uuid.uuid4().hex
+            _store_device_code(
+                state,
+                _PendingDeviceCode(
+                    user_id=user_id,
+                    device_code=device_code,
+                    expires_at=time.time() + int(data.get("expires_in") or 1800),
+                    interval_s=interval_s,
+                ),
+            )
+            return AuthChallenge(
+                shape=ChallengeShape.DEVICE_CODE,
+                user_code=user_code,
+                verification_url=verification_url,
+                poll_interval_s=interval_s,
+                state=state,
+                instructions=(
+                    "Open the verification URL and enter the code to connect YouTube Music."
+                ),
+            )
+        if _has_partial_oauth_settings(s):
+            raise _oauth_settings_error()
+        if s.allow_header_paste:
             return AuthChallenge(
                 shape=ChallengeShape.FORM,
                 instructions=(
-                    "Self-host only: paste request headers from an authenticated "
-                    "music.youtube.com session, or use device-code auth."
+                    "Self-host fallback: paste request headers from an authenticated "
+                    "music.youtube.com session. Configure OPE_YTMUSIC_CLIENT_ID and "
+                    "OPE_YTMUSIC_CLIENT_SECRET to use device-code auth."
                 ),
                 form_schema={"headers_raw": {"type": "string", "format": "textarea"}},
             )
-        # Device-code flow (Google 'TV & Limited Input' OAuth client, post-2024).
-        return AuthChallenge(
-            shape=ChallengeShape.DEVICE_CODE,
-            user_code="TODO",
-            verification_url="https://www.google.com/device",
-            poll_interval_s=5,
-        )
+        raise _oauth_settings_error()
 
     async def complete(self, *, user_id: str, callback: dict) -> ProviderCredential:
-        if not get_settings().allow_header_paste:
-            raise Unsupported("YouTube Music header-paste auth is disabled outside self-host mode")
         headers_raw = callback.get("headers_raw")
-        if not isinstance(headers_raw, str):
-            raise ProviderError("YouTube Music header auth requires headers_raw")
-        auth_payload = await asyncio.to_thread(_auth_from_headers, headers_raw)
-        if not any(str(key).lower() == "authorization" for key in auth_payload):
-            raise ProviderError("YouTube Music headers must include Authorization")
-        if not any(str(key).lower() == "cookie" for key in auth_payload):
-            raise ProviderError("YouTube Music headers must include Cookie")
+        if headers_raw is not None:
+            if not get_settings().allow_header_paste:
+                raise Unsupported(
+                    "YouTube Music header-paste auth is disabled outside self-host mode"
+                )
+            if not isinstance(headers_raw, str):
+                raise ProviderError("YouTube Music header auth requires headers_raw")
+            auth_payload = await asyncio.to_thread(_auth_from_headers, headers_raw)
+            if not any(str(key).lower() == "authorization" for key in auth_payload):
+                raise ProviderError("YouTube Music headers must include Authorization")
+            if not any(str(key).lower() == "cookie" for key in auth_payload):
+                raise ProviderError("YouTube Music headers must include Cookie")
+            return ProviderCredential(
+                account_id="ytmusic-local",
+                provider="ytmusic",
+                auth_kind=AuthKind.HEADER_PASTE,
+                extra={"auth": auth_payload, "display_name": "YouTube Music"},
+            )
+        s = get_settings()
+        if not _has_oauth_settings(s):
+            raise _oauth_settings_error()
+        raw_state = callback.get("state")
+        state = raw_state if isinstance(raw_state, str) else None
+        pending = _get_device_code_state(state, user_id)
+        try:
+            token = await self._poll_token(pending)
+        except ProviderError as exc:
+            if str(exc) in {
+                "YouTube Music device authorization was denied",
+                "YouTube Music device authorization was expired",
+            }:
+                _PENDING_DEVICE_CODES.pop(state, None)
+            raise
+        _PENDING_DEVICE_CODES.pop(state, None)
+        auth_payload = _token_payload(token)
         return ProviderCredential(
-            account_id="ytmusic-local",
+            account_id="ytmusic-oauth",
             provider="ytmusic",
-            auth_kind=AuthKind.HEADER_PASTE,
+            auth_kind=AuthKind.OAUTH_DEVICE,
+            access_token=auth_payload["access_token"],
+            refresh_token=auth_payload["refresh_token"],
+            expires_at=auth_payload["expires_at"],
+            scopes=str(auth_payload["scope"]).split(),
             extra={"auth": auth_payload, "display_name": "YouTube Music"},
         )
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
-        return cred
+        if cred.auth_kind is not AuthKind.OAUTH_DEVICE:
+            return cred
+        s = get_settings()
+        if not _has_oauth_settings(s):
+            raise _oauth_settings_error()
+        refresh_token = cred.refresh_token or cred.extra.get("auth", {}).get("refresh_token")
+        if not isinstance(refresh_token, str) or not refresh_token:
+            raise AuthExpired("YouTube Music refresh token is missing")
+        current_auth = cred.extra.get("auth")
+        if not isinstance(current_auth, dict):
+            current_auth = {}
+        token = await self._refresh_token(refresh_token)
+        auth_payload = _refresh_payload(current_auth, token)
+        return cred.model_copy(
+            update={
+                "access_token": auth_payload["access_token"],
+                "refresh_token": auth_payload.get("refresh_token") or refresh_token,
+                "expires_at": auth_payload["expires_at"],
+                "scopes": str(auth_payload.get("scope") or _YTMUSIC_SCOPE).split(),
+                "extra": {**cred.extra, "auth": auth_payload},
+            }
+        )
 
     async def revoke(self, cred: ProviderCredential) -> None:
         return None

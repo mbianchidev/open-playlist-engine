@@ -36,7 +36,7 @@ read/search/write; `MatchService` owns matching.
 | Provider | Read / Search | Write | Test seam |
 |---|---|---|---|
 | Spotify | ✅ OAuth + live read/search (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
-| YouTube Music | ✅ header auth + library read/search (`ytmusicapi`) | ✅ live write (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+| YouTube Music | ✅ device-code/header auth + library read/search (`ytmusicapi`) | ✅ live write (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;

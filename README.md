@@ -71,6 +71,7 @@ npm run build
 
 All backend settings use the `OPE_` env prefix; see [`.env.example`](.env.example).
 Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
+`OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`,
 `OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
@@ -81,12 +82,14 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
 1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
    redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
 2. Put `OPE_SPOTIFY_CLIENT_ID`, optional `OPE_SPOTIFY_CLIENT_SECRET`,
-   `OPE_SECRET_KEY`, and `OPE_FRONTEND_URL` in `.env`.
+   `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`, `OPE_SECRET_KEY`, and
+   `OPE_FRONTEND_URL` in `.env`.
 3. Start Docker Compose, open `http://localhost:8080`, choose Spotify as source
    and YouTube Music as target.
 4. Connect Spotify in the popup.
-5. For YouTube Music, paste request headers copied from an authenticated
-   `music.youtube.com` `/browse` POST request.
+5. For YouTube Music, open the verification URL shown by the app and enter the
+   device code. Self-host users without YouTube Music OAuth credentials can use
+   the fallback header-paste flow.
 6. Pick one playlist, optionally choose individual tracks, and start the migration.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.

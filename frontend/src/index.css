@@ -199,6 +199,31 @@ button.compact {
   margin-top: 1rem;
 }
 
+.device-block {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.9rem;
+  border: 1px solid #2a3039;
+  border-radius: 10px;
+  background: #11141a;
+}
+
+.device-block a {
+  color: #8fb4ff;
+}
+
+.device-block code {
+  justify-self: start;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  background: #0d0f12;
+  color: #e6e8eb;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+}
+
 textarea {
   min-height: 9rem;
   resize: vertical;

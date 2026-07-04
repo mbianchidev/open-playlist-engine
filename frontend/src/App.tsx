@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   beginAuth,
@@ -22,12 +22,15 @@ export default function App() {
   const [playlistTracks, setPlaylistTracks] = useState<Record<string, Track[]>>({});
   const [selectedTracks, setSelectedTracks] = useState<Record<string, Set<string>>>({});
   const [ytHeaders, setYtHeaders] = useState("");
+  const [ytHeaderFallback, setYtHeaderFallback] = useState(false);
+  const [deviceChallenge, setDeviceChallenge] = useState<DeviceChallenge | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const authPollId = useRef(0);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
@@ -45,6 +48,12 @@ export default function App() {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
     refreshAccounts();
   }, []);
+
+  useEffect(() => {
+    authPollId.current += 1;
+    setDeviceChallenge(null);
+    setYtHeaderFallback(false);
+  }, [target]);
 
   useEffect(() => {
     setPlaylists([]);
@@ -75,9 +84,13 @@ export default function App() {
   }
 
   async function connect(provider: string) {
+    const pollId = authPollId.current + 1;
+    authPollId.current = pollId;
     setBusy(true);
     setError(null);
     setNotice(null);
+    setDeviceChallenge(null);
+    if (provider === "ytmusic") setYtHeaderFallback(false);
     try {
       const challenge = await beginAuth(provider);
       if (challenge.shape === "redirect" && challenge.redirect_url) {
@@ -86,14 +99,58 @@ export default function App() {
         return;
       }
       if (challenge.shape === "form") {
+        if (provider === "ytmusic") setYtHeaderFallback(true);
         setNotice(challenge.instructions ?? "Paste provider credentials below.");
         return;
       }
-      setNotice("Device-code auth is not implemented yet for this provider.");
+      if (challenge.shape === "device_code") {
+        if (!challenge.user_code || !challenge.verification_url || !challenge.state) {
+          throw new Error("Device-code challenge is missing required fields.");
+        }
+        const nextChallenge = {
+          provider,
+          userCode: challenge.user_code,
+          verificationUrl: challenge.verification_url,
+          state: challenge.state,
+          pollIntervalS: challenge.poll_interval_s ?? 5,
+        };
+        setDeviceChallenge(nextChallenge);
+        setNotice("Enter the device code in your browser to finish YouTube Music auth.");
+        void pollDeviceAuth(nextChallenge, pollId);
+        return;
+      }
+      setNotice("Unsupported auth challenge.");
     } catch (e: unknown) {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function pollDeviceAuth(challenge: DeviceChallenge, pollId: number) {
+    let intervalS = Math.max(1, challenge.pollIntervalS);
+    while (authPollId.current === pollId) {
+      await sleep(intervalS * 1000);
+      if (authPollId.current !== pollId) return;
+      try {
+        await completeAuth(challenge.provider, { state: challenge.state });
+        if (authPollId.current !== pollId) return;
+        setDeviceChallenge(null);
+        setNotice("YouTube Music connected.");
+        await refreshAccounts();
+        return;
+      } catch (e: unknown) {
+        const message = errorMessage(e);
+        if (message === "authorization_pending") continue;
+        if (message === "slow_down") {
+          intervalS += 5;
+          continue;
+        }
+        if (authPollId.current !== pollId) return;
+        setDeviceChallenge(null);
+        setError(message);
+        return;
+      }
     }
   }
 
@@ -323,7 +380,17 @@ export default function App() {
             onTest={testConnection}
           />
         </div>
-        {target === "ytmusic" && !targetAccount ? (
+        {deviceChallenge && deviceChallenge.provider === target && !targetAccount ? (
+          <div className="device-block">
+            <p className="muted">Open this page and enter the code:</p>
+            <a href={deviceChallenge.verificationUrl} target="_blank" rel="noreferrer">
+              {deviceChallenge.verificationUrl}
+            </a>
+            <code>{deviceChallenge.userCode}</code>
+            <p className="muted">Waiting for Google to confirm authorization…</p>
+          </div>
+        ) : null}
+        {target === "ytmusic" && !targetAccount && ytHeaderFallback ? (
           <div className="form-block">
             <label htmlFor="ytHeaders">YouTube Music request headers</label>
             <textarea
@@ -514,6 +581,14 @@ function warningMessage(detail: MigrationWarningDetail): string {
   ].join("\n");
 }
 
+interface DeviceChallenge {
+  provider: string;
+  userCode: string;
+  verificationUrl: string;
+  state: string;
+  pollIntervalS: number;
+}
+
 interface AccountPanelProps {
   label: string;
   provider: string | null;
@@ -549,4 +624,8 @@ function AccountPanel({ label, provider, account, busy, onConnect, onTest }: Acc
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
