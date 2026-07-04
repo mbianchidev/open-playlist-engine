@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getMigrationItems,
   reviewMigrationItem,
@@ -9,15 +9,17 @@ import type { JobItemView, JobView, ProgressEvent } from "../api/types";
 
 interface Props {
   jobId: string;
+  onMigrationChanged?: () => void | Promise<void>;
 }
 
 // Phase 5 — live progress. Reconnect/replay via Last-Event-ID is handled by the
 // browser's EventSource plus the backend's persisted job_item cursor.
-export default function ProgressBoard({ jobId }: Props) {
+export default function ProgressBoard({ jobId, onMigrationChanged }: Props) {
   const [job, setJob] = useState<JobView | null>(null);
   const [items, setItems] = useState<JobItemView[]>([]);
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const notifiedDoneForJob = useRef<string | null>(null);
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
   const targetPlaylists =
     job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
@@ -28,11 +30,17 @@ export default function ProgressBoard({ jobId }: Props) {
     getMigrationItems(jobId).then(setItems).catch(() => setItems([]));
     const dispose = subscribeProgress(jobId, (e) => {
       const payload = JSON.parse(e.data) as ProgressEvent;
-      if (payload.job) setJob(payload.job);
+      if (payload.job) {
+        setJob(payload.job);
+        if (payload.job.status === "done" && notifiedDoneForJob.current !== jobId) {
+          notifiedDoneForJob.current = jobId;
+          void onMigrationChanged?.();
+        }
+      }
       if (payload.items) setItems(payload.items);
     });
     return dispose;
-  }, [jobId]);
+  }, [jobId, onMigrationChanged]);
 
   return (
     <section className="card">
@@ -127,6 +135,7 @@ export default function ProgressBoard({ jobId }: Props) {
         target_uri: action === "approve" ? reviewInputs[item.id] ?? item.target_uri : null,
       });
       setItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      void onMigrationChanged?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -142,6 +151,7 @@ export default function ProgressBoard({ jobId }: Props) {
       });
       const byId = new Map(updated.map((item) => [item.id, item]));
       setItems((prev) => prev.map((row) => byId.get(row.id) ?? row));
+      void onMigrationChanged?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }

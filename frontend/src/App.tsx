@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   beginAuth,
@@ -52,6 +52,20 @@ export default function App() {
     busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
 
+  const refreshSourcePlaylists = useCallback(
+    async (options: { resetSelection?: boolean } = {}) => {
+      if (!source || !sourceAccount) return;
+      try {
+        const rows = await getPlaylists(source, sourceAccount.id, playlistContext);
+        setPlaylists(rows);
+        if (options.resetSelection) setSelectedPlaylists(new Set());
+      } catch (e: unknown) {
+        setError(errorMessage(e));
+      }
+    },
+    [source, sourceAccount?.id, target, targetAccount?.id],
+  );
+
   useEffect(() => {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
     refreshAccounts();
@@ -68,14 +82,8 @@ export default function App() {
     setSelectedPlaylists(new Set());
     setPlaylistTracks({});
     setSelectedTracks({});
-    if (!source || !sourceAccount) return;
-    getPlaylists(source, sourceAccount.id, playlistContext)
-      .then((rows) => {
-        setPlaylists(rows);
-        setSelectedPlaylists(new Set());
-      })
-      .catch((e: unknown) => setError(errorMessage(e)));
-  }, [source, sourceAccount?.id, target, targetAccount?.id]);
+    void refreshSourcePlaylists({ resetSelection: true });
+  }, [refreshSourcePlaylists]);
 
   async function refreshAccounts() {
     try {
@@ -627,7 +635,7 @@ export default function App() {
         </section>
       ) : null}
 
-      {jobId ? <ProgressBoard jobId={jobId} /> : null}
+      {jobId ? <ProgressBoard jobId={jobId} onMigrationChanged={refreshSourcePlaylists} /> : null}
     </div>
   );
 }
