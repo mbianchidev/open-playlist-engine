@@ -43,6 +43,11 @@ export default function App() {
     playlistTracks,
     selectedTracks,
   );
+  const deltaMigrationPlaylistIds = getDeltaMigrationPlaylistIds(
+    selectedPlaylists,
+    playlists,
+    playlistTracks,
+  );
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
 
   useEffect(() => {
@@ -222,7 +227,11 @@ export default function App() {
         target_provider: target,
         source_account_id: sourceAccount.id,
         target_account_id: targetAccount.id,
-        selection: { playlist_ids: selectedMigrationPlaylistIds, tracks },
+        selection: {
+          playlist_ids: selectedMigrationPlaylistIds,
+          tracks,
+          delta_playlist_ids: deltaMigrationPlaylistIds,
+        },
         acknowledge_warnings: acknowledgeWarnings,
       });
       setJobId(job.id);
@@ -287,10 +296,12 @@ export default function App() {
       }));
       setSelectedPlaylists((prev) => {
         const next = new Set(prev);
-        if (defaultSelected.length === 0) next.delete(playlist.id);
-        else next.add(playlist.id);
+        next.add(playlist.id);
         return next;
       });
+      if (defaultSelected.length === 0) {
+        setNotice(`No new songs found in "${playlist.name}". Select all songs to rerun it.`);
+      }
     } catch (e: unknown) {
       setError(errorMessage(e));
     } finally {
@@ -333,11 +344,12 @@ export default function App() {
     setSelectedTracks((prev) => ({ ...prev, [playlistId]: new Set(keys) }));
     setSelectedPlaylists((prev) => {
       const next = new Set(prev);
-      if (keys.length === 0) next.delete(playlistId);
-      else next.add(playlistId);
+      next.add(playlistId);
       return next;
     });
-    if (keys.length === 0) closePlaylistSongs(playlistId);
+    if (keys.length === 0) {
+      setNotice("No new songs found for that playlist. Select all songs to rerun it.");
+    }
   }
 
   function closePlaylistSongs(playlistId: string) {
@@ -502,6 +514,9 @@ export default function App() {
               <h2>Pick playlists</h2>
               <p className="muted">
                 {selectedPlaylists.size} of {playlists.length} selected
+                {deltaMigrationPlaylistIds.length > 0
+                  ? ` · ${deltaMigrationPlaylistIds.length} delta-only`
+                  : ""}
               </p>
             </div>
             <div className="toolbar">
@@ -544,13 +559,24 @@ export default function App() {
                     </span>
                   </label>
                   {selectedPlaylists.has(playlist.id) ? (
-                    <button
-                      className="secondary compact"
-                      disabled={busy}
-                      onClick={() => loadTracks(playlist)}
-                    >
-                      {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
-                    </button>
+                    <>
+                      <button
+                        className="secondary compact"
+                        disabled={busy}
+                        onClick={() => loadTracks(playlist)}
+                      >
+                        {playlistTracks[playlist.id]
+                          ? "Reload tracks"
+                          : isDeltaPlaylist(playlist)
+                            ? "Choose deltas"
+                            : "Choose tracks"}
+                      </button>
+                      {isDeltaPlaylist(playlist) && !playlistTracks[playlist.id] ? (
+                        <p className="muted delta-note">
+                          Starts as delta-only. Choose songs to override.
+                        </p>
+                      ) : null}
+                    </>
                   ) : null}
                   {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
                     <div className="track-list">
@@ -567,7 +593,7 @@ export default function App() {
                           disabled={busy}
                           onClick={() => selectPlaylistSongs(playlist.id, "leftovers")}
                         >
-                          Select leftovers
+                          Select new songs
                         </button>
                         <button
                           className="secondary compact"
@@ -638,6 +664,22 @@ function getSelectedMigrationPlaylistIds(
     if (!loaded) return true;
     return (selectedTracks[id]?.size ?? 0) > 0;
   });
+}
+
+function getDeltaMigrationPlaylistIds(
+  selectedPlaylists: Set<string>,
+  playlists: PlaylistRef[],
+  playlistTracks: Record<string, Track[]>,
+): string[] {
+  const playlistById = new Map(playlists.map((playlist) => [playlist.id, playlist]));
+  return [...selectedPlaylists].filter((id) => {
+    if (playlistTracks[id]) return false;
+    return isDeltaPlaylist(playlistById.get(id));
+  });
+}
+
+function isDeltaPlaylist(playlist?: PlaylistRef): boolean {
+  return playlist?.migration_status === "migrated" || playlist?.migration_status === "partial";
 }
 
 function trackKey(track: Track): string {

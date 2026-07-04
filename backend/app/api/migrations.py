@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.adapter import AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
 from app.core.migration_state import (
+    filter_unmigrated_tracks,
     has_track_overlap,
     keys_from_metadata,
     track_keys,
@@ -35,6 +36,7 @@ from app.core.models import Playlist, PlaylistRef
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
+from app.db.migration_history import migrated_track_keys
 from app.db.repositories import (
     AccountNotFound,
     CredentialNotFound,
@@ -52,6 +54,8 @@ class Selection(BaseModel):
     playlist_ids: list[str] = []
     # optional per-playlist track filtering: {playlist_id: [track_ids]}
     tracks: dict[str, list[str]] = {}
+    # rerun mode for playlists that already have a migration history
+    delta_playlist_ids: list[str] = []
 
 
 class CreateMigration(BaseModel):
@@ -184,7 +188,7 @@ async def create_migration(
         await load_credential(
             session, account_id=body.target_account_id, provider=body.target_provider
         )
-        warnings = await _preflight_warnings(session, body, user_id=user_id)
+        warnings, selected_track_count = await _preflight_warnings(session, body, user_id=user_id)
     except (AccountNotFound, CredentialNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AuthExpired as exc:
@@ -195,6 +199,12 @@ async def create_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if selected_track_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No new tracks to migrate for the selected playlists",
+        )
 
     if warnings and not body.acknowledge_warnings:
         await session.commit()
@@ -227,7 +237,7 @@ async def _preflight_warnings(
     body: CreateMigration,
     *,
     user_id: str,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], int]:
     settings = get_settings()
     source = get(body.source_provider)
     target = get(body.target_provider)
@@ -244,7 +254,7 @@ async def _preflight_warnings(
         provider=body.target_provider,
     )
 
-    selected = await _selected_playlists(source, source_cred, body.selection)
+    selected = await _selected_playlists(session, source, source_cred, body, user_id=user_id)
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     warnings: list[dict[str, str]] = []
     if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
@@ -297,20 +307,33 @@ async def _preflight_warnings(
         )
 
     warnings.extend(await _same_name_warnings(target, target_cred, selected))
-    return warnings
+    return warnings, total_tracks
 
 
 async def _selected_playlists(
-    source, source_cred, selection: Selection
+    session: AsyncSession, source, source_cred, body: CreateMigration, *, user_id: str
 ) -> dict[str, Playlist]:
     selected: dict[str, Playlist] = {}
+    selection = body.selection
     track_filters = selection.tracks or {}
+    delta_playlist_ids = set(selection.delta_playlist_ids or [])
     for playlist_id in selection.playlist_ids:
         playlist = await source.read_playlist(
             source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
         )
         wanted = set(track_filters.get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
+        if playlist_id in delta_playlist_ids:
+            migrated_keys = await migrated_track_keys(
+                session,
+                user_id=user_id,
+                source_provider=body.source_provider,
+                source_account_id=body.source_account_id,
+                target_provider=body.target_provider,
+                target_account_id=body.target_account_id,
+                playlist_id=playlist_id,
+            )
+            tracks = filter_unmigrated_tracks(tracks, migrated_keys)
         selected[playlist_id] = playlist.model_copy(update={"tracks": tracks})
     return selected
 

@@ -75,9 +75,11 @@ and resubmits with `acknowledge_warnings=true` only after user acknowledgement.
 Completed `job_item` rows are the private migration ledger. Playlist and track read
 responses can include migration status when the frontend supplies target context,
 so a rerun can label a source playlist as partially migrated and mark leftover
-songs. The worker reuses a previously observed target playlist, or a same-name
-target playlist whose songs overlap, and skips duplicate target songs with a
-per-item reason instead of adding them twice.
+songs. Already migrated or partially migrated playlists can be rerun in
+delta-only mode so only new source songs are matched and written. The worker
+reuses a previously observed target playlist, or a same-name target playlist
+whose songs overlap, and skips duplicate target songs with a per-item reason
+instead of adding them twice.
 
 ---
 

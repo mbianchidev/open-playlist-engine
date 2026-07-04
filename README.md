@@ -100,8 +100,9 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
 9. Re-running a playlist reuses an existing migrated target playlist, labels
-   partial source playlists/tracks, and skips duplicate target songs with an item
-   notice instead of adding them twice.
+   partial source playlists/tracks, and can migrate only new source songs for
+   already migrated playlists. Duplicate target songs are skipped with an item
+   notice instead of being added twice.
 
 Detailed Spotify app and YouTube Music header-copy steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).

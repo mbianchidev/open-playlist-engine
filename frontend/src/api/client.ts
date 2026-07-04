@@ -5,6 +5,7 @@ import type {
   ConnectionTestView,
   JobItemView,
   JobView,
+  MigrationSelection,
   Playlist,
   PlaylistRef,
   ProviderView,
@@ -111,7 +112,7 @@ export interface CreateMigrationBody {
   target_provider: string;
   source_account_id: string;
   target_account_id: string;
-  selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
+  selection: MigrationSelection;
   acknowledge_warnings?: boolean;
 }
 

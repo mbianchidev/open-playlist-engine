@@ -49,8 +49,9 @@ The implemented self-host path uses Spotify as the source and YouTube Music as t
 target. Docker Compose applies Alembic migrations before starting the backend and
 worker. For local development, run `alembic upgrade head` before `uvicorn` and
 `arq`. Playlist detail and migration item review endpoints support track-level
-selection, partial-migration labels, duplicate skips, batch review actions, and
-low-confidence match correction in the UI. Migration creation performs a preflight
+selection, partial-migration labels, delta-only reruns for already migrated
+playlists, duplicate skips, batch review actions, and low-confidence match
+correction in the UI. Migration creation performs a preflight
 that warns before exceeding the conservative defaults: 1 playlist/job, 50
 tracks/job, 250 tracks/day, and 120 seconds between jobs.
 

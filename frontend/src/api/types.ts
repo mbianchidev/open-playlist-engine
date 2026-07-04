@@ -56,6 +56,12 @@ export interface PlaylistRef {
   migration_note: string | null;
 }
 
+export interface MigrationSelection {
+  playlist_ids: string[];
+  tracks: Record<string, string[]>;
+  delta_playlist_ids?: string[];
+}
+
 export interface Credit {
   role: string;
   name: string;

@@ -112,6 +112,12 @@ def track_selected(track: Track, wanted: set[str]) -> bool:
     return bool(identifiers & wanted)
 
 
+def filter_unmigrated_tracks(tracks: list[Track], migrated_keys: set[str]) -> list[Track]:
+    if not migrated_keys:
+        return tracks
+    return [track for track in tracks if not track_keys(track) & migrated_keys]
+
+
 def _provider_item_id(uri: str) -> str | None:
     parsed = urllib.parse.urlparse(uri)
     if parsed.query:

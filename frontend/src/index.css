@@ -392,6 +392,10 @@ textarea {
   margin: 0.5rem 0 0 1.75rem;
 }
 
+.delta-note {
+  margin: 0.15rem 0 0 1.75rem;
+}
+
 .track-toolbar {
   display: flex;
   flex-wrap: wrap;

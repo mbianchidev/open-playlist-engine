@@ -135,3 +135,8 @@ When a target playlist with the same name already exists, the app reads its song
 If they overlap with the source, the job reuses that playlist and skips duplicate
 songs with a progress notice. If the songs are completely different, the UI warns
 before creating a new migrated playlist with the same name.
+
+After a playlist has been migrated, selecting it again starts as a delta-only
+rerun: only new source songs are matched and added. Open the playlist's song list
+and choose "Select all songs" if you intentionally want to rerun the whole
+playlist.

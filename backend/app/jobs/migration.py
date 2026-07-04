@@ -24,6 +24,7 @@ from app.core.adapter import (
 )
 from app.core.match_service import MatchService
 from app.core.migration_state import (
+    filter_unmigrated_tracks,
     has_track_overlap,
     keys_from_metadata,
     track_keys,
@@ -34,6 +35,7 @@ from app.core.models import PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_sessionmaker
+from app.db.migration_history import migrated_track_keys
 from app.db.repositories import load_fresh_credential
 from app.settings import get_settings
 
@@ -87,6 +89,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
 
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
+    delta_playlist_ids = set(selection.get("delta_playlist_ids") or [])
     if not playlist_ids:
         raise ValueError("migration has no selected playlists")
 
@@ -97,6 +100,24 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         )
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
+        if playlist_id in delta_playlist_ids:
+            migrated_keys = await migrated_track_keys(
+                session,
+                user_id=job.user_id,
+                source_provider=job.source_provider,
+                source_account_id=job.source_account_id,
+                target_provider=job.target_provider,
+                target_account_id=job.target_account_id,
+                playlist_id=playlist_id,
+            )
+            tracks = filter_unmigrated_tracks(tracks, migrated_keys)
+            if not tracks:
+                logger.info(
+                    "migration job_id=%s playlist_id=%s has no delta tracks",
+                    job.id,
+                    playlist_id,
+                )
+                continue
 
         target_playlist_id = await _resolve_target_playlist(
             session,
