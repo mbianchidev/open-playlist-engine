@@ -254,6 +254,7 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _S
                         name=pl.get("name") or "",
                         track_count=tracks.get("total"),
                         owner_id=(pl.get("owner") or {}).get("id"),
+                        collaborative=pl.get("collaborative"),
                     ),
                     tracks_href=_href_from_page(tracks),
                 )
@@ -538,6 +539,7 @@ class SpotifyAdapter:
                         name=pl.get("name") or "",
                         track_count=(pl.get("tracks") or {}).get("total"),
                         owner_id=(pl.get("owner") or {}).get("id"),
+                        collaborative=pl.get("collaborative"),
                     )
                 if not data.get("next"):
                     break

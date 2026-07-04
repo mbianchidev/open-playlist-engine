@@ -33,12 +33,14 @@ export default function App() {
   const [ytHeaderFallback, setYtHeaderFallback] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<DeviceChallenge | null>(null);
   const [activeAuthProvider, setActiveAuthProvider] = useState<string | null>(null);
+  const [blockingAlert, setBlockingAlert] = useState<BlockingAlert | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
+  const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
 
@@ -48,11 +50,16 @@ export default function App() {
     targetProvider: target,
     targetAccountId: targetAccount?.id ?? null,
   };
+  const blockedSpotifyPlaylists = playlists.filter((playlist) =>
+    isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
+  );
+  const blockedSpotifyPlaylistIds = new Set(blockedSpotifyPlaylists.map((playlist) => playlist.id));
+  const availablePlaylists = playlists.filter((playlist) => !blockedSpotifyPlaylistIds.has(playlist.id));
   const selectedMigrationPlaylistIds = getSelectedMigrationPlaylistIds(
     selectedPlaylists,
     playlistTracks,
     selectedTracks,
-  );
+  ).filter((id) => !blockedSpotifyPlaylistIds.has(id));
   const startDisabled =
     !source ||
     !target ||
@@ -61,8 +68,8 @@ export default function App() {
     selectedMigrationPlaylistIds.length === 0 ||
     busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
-  const migratedPlaylists = playlists.filter(isAnnotatedMigratedPlaylist);
-  const migrationCandidatePlaylists = playlists.filter(
+  const migratedPlaylists = availablePlaylists.filter(isAnnotatedMigratedPlaylist);
+  const migrationCandidatePlaylists = availablePlaylists.filter(
     (playlist) => !isAnnotatedMigratedPlaylist(playlist),
   );
   const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
@@ -102,6 +109,32 @@ export default function App() {
     setSelectedTracks({});
     void refreshSourcePlaylists({ resetSelection: true });
   }, [refreshSourcePlaylists]);
+
+  useEffect(() => {
+    if (!blockingAlert) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setBlockingAlert(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [blockingAlert]);
+
+  function showAppError(error: unknown) {
+    const message = errorMessage(error);
+    const alert = spotifyExternalPlaylistAlert(message);
+    if (alert) {
+      setBlockingAlert(alert);
+      setError(null);
+      setNotice(null);
+      return;
+    }
+    setError(message);
+  }
+
+  function showSpotifyCopyInstructions() {
+    const alert = spotifyExternalPlaylistAlert(SPOTIFY_EXTERNAL_PLAYLIST_MESSAGE);
+    if (alert) setBlockingAlert(alert);
+  }
 
   async function refreshAccounts() {
     try {
@@ -276,17 +309,22 @@ export default function App() {
           setJobId(job.id);
           deselectStartedPlaylists(playlistIds);
         } catch (retryError: unknown) {
-          setError(errorMessage(retryError));
+          showAppError(retryError);
         }
         return;
       }
-      setError(errorMessage(e));
+      showAppError(e);
     } finally {
       setBusy(false);
     }
   }
 
   function togglePlaylist(id: string) {
+    const playlist = playlists.find((item) => item.id === id);
+    if (playlist && isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount)) {
+      showSpotifyCopyInstructions();
+      return;
+    }
     if (selectedPlaylists.has(id)) {
       setSelectedPlaylists((prev) => {
         const next = new Set(prev);
@@ -375,7 +413,7 @@ export default function App() {
         return next;
       });
     } catch (e: unknown) {
-      setError(errorMessage(e));
+      showAppError(e);
     } finally {
       setBusy(false);
     }
@@ -544,8 +582,34 @@ export default function App() {
     );
   }
 
+  function renderBlockedPlaylistCard(playlist: PlaylistRef) {
+    return (
+      <div key={playlist.id} className="playlist-card blocked-playlist-card">
+        <div className="playlist-row blocked-playlist-row">
+          <span className="blocked-lock" aria-hidden="true">
+            !
+          </span>
+          <span>{playlist.name}</span>
+          <span className="badge migration-blocked">Copy first</span>
+          <span className="muted">
+            {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
+          </span>
+        </div>
+        <p className="blocked-playlist-note">
+          Spotify blocks track access here. Copy it into your own playlist before migrating.
+        </p>
+        <button className="secondary compact" disabled={busy} onClick={showSpotifyCopyInstructions}>
+          Show copy instructions
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
+      {blockingAlert ? (
+        <BlockingAlertBanner alert={blockingAlert} onClose={() => setBlockingAlert(null)} />
+      ) : null}
       <h1>Open Playlist Engine</h1>
       <p className="subtitle">Migrate playlists between any two music services.</p>
 
@@ -696,7 +760,7 @@ export default function App() {
             <div>
               <h2>Pick playlists</h2>
               <p className="muted">
-                {selectedPlaylists.size} of {playlists.length} selected
+                {selectedMigrationPlaylistIds.length} of {availablePlaylists.length} migratable selected
               </p>
             </div>
             <div className="toolbar">
@@ -765,10 +829,31 @@ export default function App() {
               ) : null}
             </div>
           ) : null}
+          {blockedSpotifyPlaylists.length > 0 ? (
+            <div className="blocked-playlists-panel">
+              <button
+                className="blocked-playlists-toggle"
+                type="button"
+                aria-expanded={showBlockedSpotifyPlaylists}
+                onClick={() => setShowBlockedSpotifyPlaylists((open) => !open)}
+              >
+                <span>Spotify playlists to copy first</span>
+                <span className="muted">
+                  {blockedSpotifyPlaylists.length} owned by someone else
+                </span>
+                <span aria-hidden="true">{showBlockedSpotifyPlaylists ? "Hide" : "Show"}</span>
+              </button>
+              {showBlockedSpotifyPlaylists ? (
+                <div className="playlist-list blocked-playlist-list">
+                  {blockedSpotifyPlaylists.map(renderBlockedPlaylistCard)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
           ) : migrationCandidatePlaylists.length === 0 ? (
-            <p className="muted">No unmigrated playlists left.</p>
+            <p className="muted">No migratable playlists left.</p>
           ) : (
             <div className="playlist-list">
               {migrationCandidatePlaylists.map(renderPlaylistCard)}
@@ -830,6 +915,40 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
+interface BlockingAlert {
+  title: string;
+  message: string;
+  action: string;
+}
+
+const SPOTIFY_EXTERNAL_PLAYLIST_PREFIX =
+  "Spotify does not allow this app to read tracks from playlists you do not own";
+const SPOTIFY_EXTERNAL_PLAYLIST_MESSAGE =
+  "Spotify does not allow this app to read tracks from playlists you do not own or collaborate on. In Spotify, use 'Add to other playlist' to copy it into a playlist you own, then migrate that copy. Delta migration is not available for the original external playlist because Spotify blocks track access.";
+
+function spotifyExternalPlaylistAlert(message: string): BlockingAlert | null {
+  if (!message.includes(SPOTIFY_EXTERNAL_PLAYLIST_PREFIX)) return null;
+  return {
+    title: "Spotify blocks this playlist",
+    message,
+    action: "Copy it in Spotify with Add to other playlist, then migrate your copy.",
+  };
+}
+
+function isSpotifyCopyRequiredPlaylist(
+  playlist: PlaylistRef,
+  source: string | null,
+  sourceAccount: AccountView | null,
+): boolean {
+  return (
+    source === "spotify" &&
+    playlist.collaborative !== true &&
+    Boolean(playlist.owner_id) &&
+    Boolean(sourceAccount?.provider_user_id) &&
+    playlist.owner_id !== sourceAccount?.provider_user_id
+  );
+}
+
 const YT_REQUIRED_HEADERS = ["authorization", "cookie", "x-goog-authuser", "x-youtube-client-version"];
 
 interface HeaderCheck {
@@ -866,6 +985,38 @@ function getYtHeaderStatus(raw: string): YtHeaderStatus {
 
 function isGoogleAccessDenied(message: string): boolean {
   return message.includes("access_denied") || message.toLowerCase().includes("authorization was denied");
+}
+
+interface BlockingAlertBannerProps {
+  alert: BlockingAlert;
+  onClose: () => void;
+}
+
+function BlockingAlertBanner({ alert, onClose }: BlockingAlertBannerProps) {
+  return (
+    <div className="blocking-alert-layer" role="presentation">
+      <section
+        className="blocking-alert"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="blocking-alert-title"
+        aria-describedby="blocking-alert-message"
+      >
+        <span className="blocking-alert-icon" aria-hidden="true">
+          ⚠
+        </span>
+        <div className="blocking-alert-copy">
+          <p className="eyebrow">Spotify access limit</p>
+          <h2 id="blocking-alert-title">{alert.title}</h2>
+          <p id="blocking-alert-message">{alert.message}</p>
+          <p className="blocking-alert-action">{alert.action}</p>
+        </div>
+        <button className="blocking-alert-close" type="button" onClick={onClose} autoFocus>
+          Close
+        </button>
+      </section>
+    </div>
+  );
 }
 
 interface AccountPanelProps {

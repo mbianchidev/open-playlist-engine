@@ -50,6 +50,7 @@ export interface PlaylistRef {
   name: string;
   track_count: number | null;
   owner_id: string | null;
+  collaborative: boolean | null;
   migration_status: string | null;
   migrated_track_count: number;
   remaining_track_count: number | null;

@@ -78,6 +78,7 @@ class PlaylistRef(BaseModel):
     name: str
     track_count: int | None = None
     owner_id: str | None = None
+    collaborative: bool | None = None
     migration_status: str | None = None
     migrated_track_count: int = 0
     remaining_track_count: int | None = None
