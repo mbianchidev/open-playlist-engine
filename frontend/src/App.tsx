@@ -482,7 +482,11 @@ export default function App() {
             disabled={busy}
             onClick={() => loadTracks(playlist)}
           >
-            {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
+            {playlistTracks[playlist.id]
+              ? "Reload tracks"
+              : playlist.migration_status === "delta"
+                ? "Choose new tracks"
+                : "Choose tracks"}
           </button>
         ) : null}
         {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
@@ -524,6 +528,8 @@ export default function App() {
                     {track.explicit ? <span className="badge inline">explicit</span> : null}
                     {track.migration_status === "migrated" ? (
                       <span className="badge inline migration-migrated">migrated</span>
+                    ) : playlist.migration_status === "delta" ? (
+                      <span className="badge inline migration-delta">new</span>
                     ) : playlist.migration_status === "partial" ? (
                       <span className="badge inline migration-partial">leftover</span>
                     ) : null}

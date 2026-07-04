@@ -26,6 +26,7 @@ class _PlaylistMigrationSummary:
     migrated_keys: set[str] = field(default_factory=set)
     skipped_keys: set[str] = field(default_factory=set)
     completed_full_playlist: bool = False
+    completed_item_count: int = 0
 
     @property
     def migrated_count(self) -> int:
@@ -37,7 +38,7 @@ class _PlaylistMigrationSummary:
 
     @property
     def resolved_count(self) -> int:
-        return len(self.migrated_keys | self.skipped_keys)
+        return max(len(self.migrated_keys | self.skipped_keys), self.completed_item_count)
 
 
 @router.get("", response_model=list[PlaylistRef])
@@ -206,6 +207,7 @@ async def _migration_summaries(
         ):
             summary = summaries.setdefault(playlist_id, _PlaylistMigrationSummary())
             summary.completed_full_playlist = True
+            summary.completed_item_count = max(summary.completed_item_count, len(items))
     return summaries
 
 
@@ -388,24 +390,32 @@ def _annotate_playlist_ref(
     ref: PlaylistRef, summary: _PlaylistMigrationSummary | None
 ) -> PlaylistRef:
     migrated_count = summary.migrated_count if summary else 0
-    remaining = None if ref.track_count is None else max(ref.track_count - migrated_count, 0)
     skipped_count = summary.skipped_count if summary else 0
     resolved_count = summary.resolved_count if summary else 0
-    fully_resolved = bool(
-        summary
-        and (
-            summary.completed_full_playlist
-            or (ref.track_count is not None and resolved_count >= ref.track_count)
-        )
+    remaining = None if ref.track_count is None else max(ref.track_count - resolved_count, 0)
+    full_without_known_total = bool(
+        summary and summary.completed_full_playlist and ref.track_count is None
     )
-    if skipped_count and remaining is not None:
-        remaining = max(remaining, skipped_count)
+    fully_resolved = bool(
+        summary and (full_without_known_total or (ref.track_count is not None and remaining == 0))
+    )
+    delta_count = (
+        remaining
+        if summary
+        and summary.completed_full_playlist
+        and ref.track_count is not None
+        and remaining > 0
+        else 0
+    )
     status = None
     note = None
     if fully_resolved:
         status = "migrated"
         note = "Migrated"
         remaining = None if ref.track_count is None else 0
+    elif delta_count:
+        status = "delta"
+        note = f"Delta available: {delta_count} new"
     elif skipped_count:
         status = "partial"
         note = (

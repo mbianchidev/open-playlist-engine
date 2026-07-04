@@ -89,6 +89,11 @@ h1 {
   color: #7ddc95;
 }
 
+.migration-delta {
+  background: #132b3d;
+  color: #7cc7ff;
+}
+
 .warn {
   color: #f0b450;
   font-size: 0.75rem;
