@@ -35,8 +35,10 @@ it contains secrets and session tokens.
 
 10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
     the requested scopes.
-11. Use **Test connection** after connecting. If Spotify refresh expires, **Refresh
-    accounts** removes the stale account so you can reconnect cleanly.
+11. Use **Test connection** after connecting. Spotify refresh tokens expire after
+    six months; when Spotify returns `invalid_grant`, the app discards the stale
+    account before asking you to reconnect. **Refresh accounts** also removes stale
+    accounts so you can reconnect cleanly.
 
 ## YouTube Music device-code auth
 

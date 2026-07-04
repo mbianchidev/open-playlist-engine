@@ -34,6 +34,7 @@ from app.core.adapter import (
     ProviderError,
     ProviderInfo,
     RateLimited,
+    RefreshTokenExpired,
     TrackCandidate,
 )
 from app.core.capabilities import (
@@ -109,6 +110,17 @@ def _spotify_error_message(resp: httpx.Response) -> str:
     if isinstance(error, str) and error:
         return error
     return resp.reason_phrase
+
+
+def _spotify_error_code(resp: httpx.Response) -> str | None:
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("error")
+    return error if isinstance(error, str) and error else None
 
 
 def _media_type(spotify_type: str | None, is_local: bool) -> MediaType:
@@ -355,6 +367,9 @@ def _token_auth(settings) -> tuple[str, str] | None:
 class SpotifyAuth(AuthStrategy):
     kind = AuthKind.OAUTH_PKCE
 
+    def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._transport = transport
+
     async def begin(self, *, user_id: str, account_label: str | None = None) -> AuthChallenge:
         s = get_settings()
         if not s.spotify_client_id:
@@ -385,7 +400,7 @@ class SpotifyAuth(AuthStrategy):
             raise ProviderError("spotify callback is missing code")
         pending = _consume_state(callback.get("state"), user_id)
         s = get_settings()
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
             resp = await client.post(
                 _TOKEN_URL,
                 data={
@@ -424,9 +439,9 @@ class SpotifyAuth(AuthStrategy):
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
         if not cred.refresh_token:
-            raise AuthExpired("spotify refresh token is missing")
+            raise RefreshTokenExpired("spotify refresh token is missing; reconnect Spotify")
         s = get_settings()
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
             resp = await client.post(
                 _TOKEN_URL,
                 data={
@@ -437,6 +452,8 @@ class SpotifyAuth(AuthStrategy):
                 auth=_token_auth(s),
             )
         if not resp.is_success:
+            if resp.status_code == 400 and _spotify_error_code(resp) == "invalid_grant":
+                raise RefreshTokenExpired("spotify refresh token expired; reconnect Spotify")
             raise AuthExpired("spotify authorization expired; reconnect Spotify")
         token = resp.json()
         access_token = token.get("access_token")

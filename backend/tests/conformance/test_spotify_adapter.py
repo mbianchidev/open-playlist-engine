@@ -11,9 +11,11 @@ from app.core.adapter import (
     AuthKind,
     ProviderCredential,
     RateLimited,
+    RefreshTokenExpired,
 )
 from app.core.models import MediaType, Track
-from app.providers.spotify.adapter import SpotifyAdapter, _track_id
+from app.providers.spotify.adapter import SpotifyAdapter, SpotifyAuth, _track_id
+from app.settings import get_settings
 from tests.conformance.spotify_fixtures import SPOTIFY_PLAYLIST_ID, spotify_transport
 
 
@@ -51,6 +53,34 @@ async def test_missing_access_token_raises_auth_expired() -> None:
     cred = ProviderCredential(account_id="a", provider="spotify", auth_kind=AuthKind.OAUTH_PKCE)
     with pytest.raises(AuthExpired):
         [r async for r in adapter.iter_playlists(cred)]
+
+
+async def test_refresh_invalid_grant_requires_reauthorization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPE_SPOTIFY_CLIENT_ID", "client-id")
+    get_settings.cache_clear()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "error": "invalid_grant",
+                "error_description": "Refresh token has expired",
+            },
+        )
+
+    cred = ProviderCredential(
+        account_id="a",
+        provider="spotify",
+        auth_kind=AuthKind.OAUTH_PKCE,
+        refresh_token="expired-refresh-token",
+    )
+
+    with pytest.raises(RefreshTokenExpired):
+        await SpotifyAuth(transport=httpx.MockTransport(handler)).refresh(cred)
+
+    get_settings.cache_clear()
 
 
 async def test_read_maps_isrc_and_provider_uri_and_position() -> None:
