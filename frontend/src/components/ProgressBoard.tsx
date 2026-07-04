@@ -28,8 +28,10 @@ export default function ProgressBoard({
   const [approveThresholdPct, setApproveThresholdPct] = useState(70);
   const [skipThresholdPct, setSkipThresholdPct] = useState(50);
   const [collapsed, setCollapsed] = useState(false);
+  const [reviewCollapsed, setReviewCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const notifiedDoneForJob = useRef<string | null>(null);
+  const locallyReviewedItems = useRef<Map<string, JobItemView>>(new Map());
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
   const targetPlaylists =
     job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
@@ -42,18 +44,22 @@ export default function ProgressBoard({
   const waitingCount = Math.max(total - processedCount, 0);
   const progressPct = total > 0 ? Math.min(100, Math.round((migratedCount / total) * 100)) : 0;
   const playlistLabel = summarizePlaylists(items);
-  const doubtfulItems = items.filter((item) => item.status === "needs_review");
-  const thresholdApprovableItems = doubtfulItems.filter(
+  const uncertainItems = items.filter((item) => item.status === "needs_review");
+  const reviewableItems = items.filter(isReviewableItem).sort(compareReviewItems);
+  const migrationItems = items.filter((item) => !isReviewableItem(item));
+  const thresholdApprovableItems = uncertainItems.filter(
     (item) => item.target_uri && confidenceAtOrAboveThreshold(item.confidence, approveThresholdPct),
   );
-  const thresholdSkippableItems = doubtfulItems.filter((item) =>
+  const thresholdSkippableItems = uncertainItems.filter((item) =>
     confidenceAtOrBelowThreshold(item.confidence, skipThresholdPct),
   );
   const reconnectProvider =
     job?.error && shouldPromptReconnect(job.error) ? providerForReconnect(job, job.error) : null;
 
   useEffect(() => {
-    getMigrationItems(jobId).then(setItems).catch(() => setItems([]));
+    locallyReviewedItems.current.clear();
+    setReviewCollapsed(false);
+    getMigrationItems(jobId).then(updateItemsFromServer).catch(() => setItems([]));
     const dispose = subscribeProgress(jobId, (e) => {
       const payload = JSON.parse(e.data) as ProgressEvent;
       if (payload.job) {
@@ -63,7 +69,7 @@ export default function ProgressBoard({
           void onMigrationChanged?.();
         }
       }
-      if (payload.items) setItems(payload.items);
+      if (payload.items) updateItemsFromServer(payload.items);
     });
     return dispose;
   }, [jobId, onMigrationChanged]);
@@ -139,52 +145,78 @@ export default function ProgressBoard({
             </div>
           ) : null}
           {error ? <p className="warn">{error}</p> : null}
-          {doubtfulItems.length > 0 ? (
-            <div className="review-toolbar">
-              <div className="bulk-review-action">
-                <label htmlFor="approveThreshold">Approve above</label>
-                <input
-                  id="approveThreshold"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={approveThresholdPct}
-                  onChange={(e) =>
-                    setApproveThresholdPct(normalizeThreshold(e.target.value, 70))
-                  }
-                />
-                <span>%</span>
-                <button
-                  className="secondary compact"
-                  disabled={thresholdApprovableItems.length === 0}
-                  onClick={() => reviewMany(thresholdApprovableItems, "approve")}
-                >
-                  Approve above {approveThresholdPct}% ({thresholdApprovableItems.length})
-                </button>
-              </div>
-              <div className="bulk-review-action">
-                <label htmlFor="skipThreshold">Skip below</label>
-                <input
-                  id="skipThreshold"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={skipThresholdPct}
-                  onChange={(e) =>
-                    setSkipThresholdPct(normalizeThreshold(e.target.value, 50))
-                  }
-                />
-                <span>%</span>
-                <button
-                  className="secondary compact"
-                  disabled={thresholdSkippableItems.length === 0}
-                  onClick={() => reviewMany(thresholdSkippableItems, "skip")}
-                >
-                  Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
-                </button>
-              </div>
+          {reviewableItems.length > 0 ? (
+            <div className="review-bin">
+              <button
+                className="review-bin-toggle"
+                type="button"
+                aria-expanded={!reviewCollapsed}
+                onClick={() => setReviewCollapsed((value) => !value)}
+              >
+                <span>
+                  <strong>Review uncertain songs</strong>
+                  <span className="muted">
+                    {uncertainItems.length} uncertain
+                    {counts.failed ? ` · ${counts.failed} failed` : ""}
+                  </span>
+                </span>
+                <span className="muted">{reviewCollapsed ? "Show" : "Hide"}</span>
+              </button>
+              {!reviewCollapsed ? (
+                <div className="review-bin-body">
+                  {uncertainItems.length > 0 ? (
+                    <div className="review-toolbar">
+                      <div className="bulk-review-action">
+                        <label htmlFor="approveThreshold">Approve above</label>
+                        <input
+                          id="approveThreshold"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={approveThresholdPct}
+                          onChange={(e) =>
+                            setApproveThresholdPct(normalizeThreshold(e.target.value, 70))
+                          }
+                        />
+                        <span>%</span>
+                        <button
+                          className="secondary compact"
+                          disabled={thresholdApprovableItems.length === 0}
+                          onClick={() => reviewMany(thresholdApprovableItems, "approve")}
+                        >
+                          Approve above {approveThresholdPct}% ({thresholdApprovableItems.length})
+                        </button>
+                      </div>
+                      <div className="bulk-review-action">
+                        <label htmlFor="skipThreshold">Skip below</label>
+                        <input
+                          id="skipThreshold"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={skipThresholdPct}
+                          onChange={(e) =>
+                            setSkipThresholdPct(normalizeThreshold(e.target.value, 50))
+                          }
+                        />
+                        <span>%</span>
+                        <button
+                          className="secondary compact"
+                          disabled={thresholdSkippableItems.length === 0}
+                          onClick={() => reviewMany(thresholdSkippableItems, "skip")}
+                        >
+                          Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="progress-list review-list">
+                    {reviewableItems.map(renderProgressRow)}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="progress-list">
@@ -193,32 +225,7 @@ export default function ProgressBoard({
                 {job?.status === "failed" ? "No tracks were created." : "Waiting for tracks…"}
               </p>
             ) : (
-              items.map((item) => (
-                <div key={item.id} className="progress-row">
-                  <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
-                  <span className="progress-track-title">{formatTrack(item)}</span>
-                  {item.reason ? (
-                    <span className="muted progress-row-reason">{item.reason}</span>
-                  ) : null}
-                  {item.status === "needs_review" || item.status === "failed" ? (
-                    <div className="review-controls">
-                      <input
-                        value={reviewInputs[item.id] ?? item.target_uri ?? ""}
-                        onChange={(e) =>
-                          setReviewInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
-                        }
-                        placeholder="ytmusic:video:id or YouTube Music URL"
-                      />
-                      <button className="secondary compact" onClick={() => review(item, "approve")}>
-                        Approve
-                      </button>
-                      <button className="secondary compact" onClick={() => review(item, "skip")}>
-                        Skip
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ))
+              migrationItems.map(renderProgressRow)
             )}
           </div>
         </div>
@@ -233,10 +240,13 @@ export default function ProgressBoard({
         action,
         target_uri: action === "approve" ? reviewInputs[item.id] ?? item.target_uri : null,
       });
-      setItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      applyReviewedItems([updated]);
+      const refreshError = await refreshItemsAfterReview();
+      if (refreshError) setError(`Review saved, but refresh failed: ${refreshError}`);
       void onMigrationChanged?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const refreshError = await refreshItemsAfterReview();
+      setError(reviewErrorMessage(e, refreshError));
     }
   }
 
@@ -248,11 +258,86 @@ export default function ProgressBoard({
         action,
         item_ids: reviewItems.map((item) => item.id),
       });
-      const byId = new Map(updated.map((item) => [item.id, item]));
-      setItems((prev) => prev.map((row) => byId.get(row.id) ?? row));
+      applyReviewedItems(updated);
+      const refreshError = await refreshItemsAfterReview();
+      if (refreshError) setError(`Review saved, but refresh failed: ${refreshError}`);
       void onMigrationChanged?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const refreshError = await refreshItemsAfterReview();
+      setError(reviewErrorMessage(e, refreshError));
+    }
+  }
+
+  function renderProgressRow(item: JobItemView) {
+    return (
+      <div key={item.id} className={`progress-row ${isReviewableItem(item) ? "review-row" : ""}`}>
+        <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
+        <span className="progress-track-title">
+          {formatTrack(item)}
+          {item.status === "needs_review" ? (
+            <span className="badge inline confidence-badge">{formatConfidence(item.confidence)}</span>
+          ) : null}
+        </span>
+        {item.reason ? <span className="muted progress-row-reason">{item.reason}</span> : null}
+        {isReviewableItem(item) ? (
+          <div className="review-controls">
+            <input
+              value={reviewInputs[item.id] ?? item.target_uri ?? ""}
+              onChange={(e) =>
+                setReviewInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+              }
+              placeholder="ytmusic:video:id or YouTube Music URL"
+            />
+            <button className="secondary compact" onClick={() => review(item, "approve")}>
+              Approve
+            </button>
+            <button className="secondary compact" onClick={() => review(item, "skip")}>
+              Skip
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function applyReviewedItems(updated: JobItemView[]) {
+    const byId = new Map(updated.map((item) => [item.id, item]));
+    setItems((prev) => prev.map((row) => byId.get(row.id) ?? row));
+    for (const item of updated) {
+      if (!isReviewableItem(item)) {
+        locallyReviewedItems.current.set(item.id, item);
+      }
+    }
+    setReviewInputs((prev) => {
+      const next = { ...prev };
+      for (const item of updated) {
+        if (!isReviewableItem(item)) delete next[item.id];
+      }
+      return next;
+    });
+  }
+
+  function updateItemsFromServer(nextItems: JobItemView[]) {
+    setItems(mergeLocallyReviewedItems(nextItems));
+  }
+
+  function mergeLocallyReviewedItems(nextItems: JobItemView[]): JobItemView[] {
+    return nextItems.map((item) => {
+      const reviewed = locallyReviewedItems.current.get(item.id);
+      if (!reviewed) return item;
+      if (isReviewableItem(item)) return reviewed;
+      locallyReviewedItems.current.delete(item.id);
+      return item;
+    });
+  }
+
+  async function refreshItemsAfterReview(): Promise<string | null> {
+    try {
+      const latest = await getMigrationItems(jobId);
+      updateItemsFromServer(latest);
+      return null;
+    } catch (e: unknown) {
+      return e instanceof Error ? e.message : String(e);
     }
   }
 }
@@ -279,6 +364,39 @@ function confidenceAtOrAboveThreshold(confidence: number | null, thresholdPct: n
 
 function confidenceAtOrBelowThreshold(confidence: number | null, thresholdPct: number): boolean {
   return confidence !== null && confidence * 100 <= thresholdPct;
+}
+
+function isReviewableItem(item: JobItemView): boolean {
+  return item.status === "needs_review" || item.status === "failed";
+}
+
+function compareReviewItems(a: JobItemView, b: JobItemView): number {
+  const statusDelta = reviewStatusRank(a.status) - reviewStatusRank(b.status);
+  if (statusDelta !== 0) return statusDelta;
+  const confidenceDelta = (a.confidence ?? Number.POSITIVE_INFINITY) - (
+    b.confidence ?? Number.POSITIVE_INFINITY
+  );
+  if (confidenceDelta !== 0) return confidenceDelta;
+  if (a.source_playlist_id !== b.source_playlist_id) {
+    return a.source_playlist_id.localeCompare(b.source_playlist_id);
+  }
+  return a.position - b.position;
+}
+
+function reviewStatusRank(status: string): number {
+  if (status === "needs_review") return 0;
+  if (status === "failed") return 1;
+  return 2;
+}
+
+function formatConfidence(confidence: number | null): string {
+  if (confidence === null) return "No score";
+  return `${Math.round(confidence * 100)}% match`;
+}
+
+function reviewErrorMessage(error: unknown, refreshError: string | null): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return refreshError ? `${message}. Refresh failed too: ${refreshError}` : message;
 }
 
 function countStatuses(items: JobItemView[]): Record<string, number> {

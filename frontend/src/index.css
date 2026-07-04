@@ -299,6 +299,45 @@ button.compact {
   padding-right: 0.35rem;
 }
 
+.review-bin {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid #3a3320;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(240, 180, 80, 0.12), transparent 42%),
+    #11141a;
+}
+
+.review-bin-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.review-bin-toggle span:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.review-bin-body {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.review-list {
+  max-height: min(42vh, 26rem);
+}
+
 .migrated-playlists-panel {
   display: grid;
   gap: 0.65rem;
@@ -543,6 +582,13 @@ textarea {
   align-items: start;
 }
 
+.review-row {
+  padding: 0.65rem;
+  border: 1px solid #2f2a1f;
+  border-radius: 10px;
+  background: rgba(13, 15, 18, 0.62);
+}
+
 .progress-track-title,
 .progress-row-reason {
   min-width: 0;
@@ -564,7 +610,7 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin: 0.75rem 0;
+  margin: 0;
 }
 
 .auth-reconnect-callout {
@@ -627,5 +673,10 @@ textarea {
 .status-failed,
 .status-needs_review {
   background: #3a2610;
+  color: #f0b450;
+}
+
+.confidence-badge {
+  background: #2a2317;
   color: #f0b450;
 }

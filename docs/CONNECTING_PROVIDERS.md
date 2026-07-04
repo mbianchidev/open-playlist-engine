@@ -42,6 +42,8 @@ it contains secrets and session tokens.
 
 YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device
 flow. This is the default path when YouTube Music OAuth credentials are set.
+The app requests YouTube Data API plus Google userinfo email scope so reconnects
+can reuse the same YouTube Music account row by email when Google returns it.
 
 1. Open <https://console.cloud.google.com/apis/library/youtube.googleapis.com>
    and enable the **YouTube Data API v3** for your Google Cloud project.
@@ -54,6 +56,10 @@ flow. This is the default path when YouTube Music OAuth credentials are set.
    OPE_YTMUSIC_CLIENT_ID=your_client_id
    OPE_YTMUSIC_CLIENT_SECRET=your_client_secret
    ```
+
+   The device-code prompt should include these scopes:
+   `https://www.googleapis.com/auth/youtube` and
+   `https://www.googleapis.com/auth/userinfo.email`.
 
 5. Restart the backend and worker:
 
@@ -116,7 +122,9 @@ guided fallback appears without changing `.env`.
 7. Paste that block into **YouTube Music request headers** in the app and click
    **Connect YouTube Music**.
 8. Click **Test connection** before migrating. Header-paste credentials can expire
-   with the browser session; reconnect if the test fails.
+   with the browser session; reconnect if the test fails. Header-paste sessions do
+   not expose the Google account email, so account matching falls back to local
+   YouTube Music session identity.
 
 Do not paste response headers (`alt-svc`, `server`, `date`, etc.), pseudo headers
 (`:authority`, `:method`, etc.), or the request body.

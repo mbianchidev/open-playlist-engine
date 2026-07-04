@@ -90,7 +90,8 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
 5. For YouTube Music, open the verification URL shown by the app and enter the
    device code. If Google blocks the unverified OAuth app, or if YouTube Music
    OAuth credentials are not set, use the guided browser-session header fallback
-   shown in the connection panel.
+   shown in the connection panel. OAuth reconnects reuse the same YouTube Music
+   account by Google email when Google returns it.
 6. Pick one playlist, optionally choose individual tracks, and start the migration.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.

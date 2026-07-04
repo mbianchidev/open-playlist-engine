@@ -88,7 +88,11 @@ class YTMusicClient(Protocol):
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
 
-_YTMUSIC_SCOPE = "https://www.googleapis.com/auth/youtube"
+_YTMUSIC_SCOPES = (
+    "https://www.googleapis.com/auth/youtube",
+    "https://www.googleapis.com/auth/userinfo.email",
+)
+_YTMUSIC_SCOPE = " ".join(_YTMUSIC_SCOPES)
 _OAUTH_GRANT_TYPE = "http://oauth.net/grant_type/device/1.0"
 _OAUTH_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) "
@@ -384,6 +388,26 @@ class YTMusicAuth(AuthStrategy):
             raise ProviderError("YouTube Music OAuth returned an invalid response")
         return resp.status_code, payload
 
+    async def _get_userinfo(self, access_token: str) -> dict[str, Any]:
+        s = get_settings()
+        async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
+            resp = await client.get(
+                s.ytmusic_userinfo_url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "User-Agent": _OAUTH_USER_AGENT,
+                },
+            )
+        if resp.status_code >= 400:
+            raise ProviderError(f"YouTube Music userinfo lookup failed: HTTP {resp.status_code}")
+        try:
+            payload = resp.json()
+        except json.JSONDecodeError as exc:
+            raise ProviderError("YouTube Music userinfo returned invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ProviderError("YouTube Music userinfo returned an invalid response")
+        return payload
+
     async def _request_device_code(self) -> dict[str, Any]:
         s = get_settings()
         status, payload = await self._post_form(
@@ -519,16 +543,39 @@ class YTMusicAuth(AuthStrategy):
             raise
         _PENDING_DEVICE_CODES.pop(state, None)
         auth_payload = _token_payload(token)
+        identity = await self._oauth_identity(auth_payload["access_token"])
         return ProviderCredential(
-            account_id="ytmusic-oauth",
+            account_id=identity["account_id"],
             provider="ytmusic",
             auth_kind=AuthKind.OAUTH_DEVICE,
             access_token=auth_payload["access_token"],
             refresh_token=auth_payload["refresh_token"],
             expires_at=auth_payload["expires_at"],
             scopes=str(auth_payload["scope"]).split(),
-            extra={"auth": auth_payload, "display_name": "YouTube Music"},
+            extra={
+                "auth": auth_payload,
+                "display_name": identity["display_name"],
+                "email": identity.get("email"),
+            },
         )
+
+    async def _oauth_identity(self, access_token: str) -> dict[str, str | None]:
+        try:
+            userinfo = await self._get_userinfo(access_token)
+        except (ProviderError, httpx.HTTPError) as exc:
+            logger.warning("ytmusic oauth email lookup failed error=%s", exc)
+            return {"account_id": "ytmusic-oauth", "display_name": "YouTube Music", "email": None}
+
+        raw_email = userinfo.get("email")
+        email = (
+            raw_email.strip().lower()
+            if isinstance(raw_email, str) and raw_email.strip()
+            else None
+        )
+        if not email:
+            logger.warning("ytmusic oauth userinfo did not include email")
+            return {"account_id": "ytmusic-oauth", "display_name": "YouTube Music", "email": None}
+        return {"account_id": email, "display_name": email, "email": email}
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
         if cred.auth_kind is not AuthKind.OAUTH_DEVICE:
