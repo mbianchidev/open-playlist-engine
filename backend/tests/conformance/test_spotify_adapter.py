@@ -126,13 +126,22 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
                             "id": playlist_id,
                             "name": "Saved from someone",
                             "owner": {"id": "other-user"},
-                            "tracks": {"total": 1},
+                            "tracks": {
+                                "total": 1,
+                                "href": (
+                                    f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+                                    "?saved_ref=1"
+                                ),
+                            },
                         }
                     ],
                     "next": None,
                 },
             )
-        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+        if (
+            request.url.path.endswith(f"/playlists/{playlist_id}/tracks")
+            and request.url.params.get("saved_ref") == "1"
+        ):
             return httpx.Response(
                 200,
                 json={
@@ -154,6 +163,11 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
                     "next": None,
                 },
             )
+        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+            return httpx.Response(
+                400,
+                json={"error": {"status": 400, "message": "Invalid playlist id"}},
+            )
         if request.url.path.endswith(f"/playlists/{playlist_id}"):
             return httpx.Response(
                 400,
@@ -169,6 +183,63 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
     assert pl.owner_id == "other-user"
     assert len(pl.tracks) == 1
     assert pl.tracks[0].title == "Shared Song"
+
+
+async def test_read_playlist_uses_tracks_href_when_metadata_track_items_are_empty() -> None:
+    playlist_id = "shared-empty-page"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+            if request.url.params.get("from_meta") != "1":
+                return httpx.Response(
+                    400,
+                    json={"error": {"status": 400, "message": "Invalid playlist id"}},
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "added_at": "2026-01-01T00:00:00Z",
+                            "is_local": False,
+                            "track": {
+                                "id": "shared2",
+                                "name": "Href Song",
+                                "uri": "spotify:track:shared2",
+                                "type": "track",
+                                "duration_ms": 123000,
+                                "artists": [{"name": "Href Artist"}],
+                                "album": {"name": "Href Album"},
+                            },
+                        }
+                    ],
+                    "next": None,
+                },
+            )
+        if request.url.path.endswith(f"/playlists/{playlist_id}"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": playlist_id,
+                    "name": "Shared empty page",
+                    "tracks": {
+                        "href": (
+                            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+                            "?from_meta=1"
+                        ),
+                        "items": [],
+                        "total": 1,
+                    },
+                },
+            )
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    pl = await adapter.read_playlist(_cred(), _ref(playlist_id, "Shared empty page"))
+
+    assert pl.id == playlist_id
+    assert len(pl.tracks) == 1
+    assert pl.tracks[0].title == "Href Song"
 
 
 async def test_search_prefers_isrc_query() -> None:

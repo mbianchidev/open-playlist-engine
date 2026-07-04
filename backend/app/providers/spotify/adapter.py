@@ -68,6 +68,12 @@ class _PendingState:
     created_at: float
 
 
+@dataclass(frozen=True)
+class _SavedPlaylist:
+    ref: PlaylistRef
+    tracks_href: str | None
+
+
 _PENDING_STATES: dict[str, _PendingState] = {}
 
 
@@ -167,6 +173,28 @@ def _playlist_item_page(payload: dict) -> dict | None:
     return None
 
 
+def _playlist_tracks_href(payload: dict) -> str | None:
+    tracks = payload.get("tracks")
+    if not isinstance(tracks, dict):
+        return None
+    return _href_from_page(tracks)
+
+
+def _href_from_page(page: dict) -> str | None:
+    href = page.get("href")
+    return href if isinstance(href, str) and href else None
+
+
+def _page_needs_href_fetch(page: dict) -> bool:
+    total = page.get("total")
+    return (
+        isinstance(total, int)
+        and total > 0
+        and page.get("items") == []
+        and bool(page.get("href"))
+    )
+
+
 async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> AsyncIterator[Track]:
     position = 0
     while True:
@@ -187,7 +215,7 @@ async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> Async
         page = next_page
 
 
-async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> PlaylistRef | None:
+async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _SavedPlaylist | None:
     offset = 0
     while True:
         resp = _raise_for_status(
@@ -196,11 +224,15 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> Pl
         data = resp.json()
         for pl in data.get("items", []):
             if pl.get("id") == playlist_id:
-                return PlaylistRef(
-                    id=pl["id"],
-                    name=pl.get("name") or "",
-                    track_count=(pl.get("tracks") or {}).get("total"),
-                    owner_id=(pl.get("owner") or {}).get("id"),
+                tracks = pl.get("tracks") if isinstance(pl.get("tracks"), dict) else {}
+                return _SavedPlaylist(
+                    ref=PlaylistRef(
+                        id=pl["id"],
+                        name=pl.get("name") or "",
+                        track_count=tracks.get("total"),
+                        owner_id=(pl.get("owner") or {}).get("id"),
+                    ),
+                    tracks_href=_href_from_page(tracks),
                 )
         if not data.get("next"):
             return None
@@ -487,15 +519,8 @@ class SpotifyAdapter:
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
         async with self._client(cred) as client:
-            resp = await client.get(
-                f"/playlists/{ref.id}/tracks",
-                params={
-                    "limit": _ITEMS_PAGE,
-                    "offset": 0,
-                    "additional_types": "track,episode",
-                },
-            )
-            if resp.status_code == 403:
+            resp = await self._playlist_tracks_response(client, ref.id)
+            if resp.status_code in {400, 403, 404}:
                 meta_resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
                 page = _playlist_item_page(meta_resp.json())
                 if page is None:
@@ -519,10 +544,14 @@ class SpotifyAdapter:
                     return fallback
             meta = _raise_for_status(resp).json()
             page = _playlist_item_page(meta)
-            if page is not None:
+            if page is not None and not _page_needs_href_fetch(page):
                 tracks = [track async for track in _iter_tracks_from_page(client, page)]
             else:
-                tracks = [track async for track in self.iter_playlist_items(cred, ref)]
+                tracks = await self._read_playlist_tracks(
+                    client,
+                    ref.id,
+                    tracks_href=_playlist_tracks_href(meta) or _href_from_page(page or {}),
+                )
         return Playlist(
             id=meta.get("id") or ref.id,
             name=meta.get("name") or ref.name,
@@ -534,27 +563,58 @@ class SpotifyAdapter:
     async def _read_saved_playlist(
         self, client: httpx.AsyncClient, original_resp: httpx.Response, ref: PlaylistRef
     ) -> Playlist | None:
-        saved_ref = await _saved_playlist_ref(client, ref.id)
-        if saved_ref is None:
+        saved = await _saved_playlist_ref(client, ref.id)
+        if saved is None:
             _raise_for_status(original_resp)
             return None
-        tracks_resp = _raise_for_status(
-            await client.get(
-                f"/playlists/{ref.id}/tracks",
-                params={
-                    "limit": _ITEMS_PAGE,
-                    "offset": 0,
-                    "additional_types": "track,episode",
-                },
-            )
+        tracks = await self._read_playlist_tracks(
+            client,
+            ref.id,
+            tracks_href=saved.tracks_href,
+            expected_total=saved.ref.track_count,
         )
-        page = _playlist_item_page(tracks_resp.json())
-        tracks = [track async for track in _iter_tracks_from_page(client, page)] if page else []
         return Playlist(
-            id=saved_ref.id,
-            name=saved_ref.name,
-            owner_id=saved_ref.owner_id,
+            id=saved.ref.id,
+            name=saved.ref.name,
+            owner_id=saved.ref.owner_id,
             tracks=tracks,
+        )
+
+    async def _read_playlist_tracks(
+        self,
+        client: httpx.AsyncClient,
+        playlist_id: str,
+        *,
+        tracks_href: str | None = None,
+        expected_total: int | None = None,
+    ) -> list[Track]:
+        resp = _raise_for_status(
+            await self._playlist_tracks_response(client, playlist_id, tracks_href=tracks_href)
+        )
+        page = _playlist_item_page(resp.json())
+        if page is None:
+            if expected_total:
+                raise ProviderError("spotify playlist tracks response did not include track items")
+            return []
+        return [track async for track in _iter_tracks_from_page(client, page)]
+
+    async def _playlist_tracks_response(
+        self,
+        client: httpx.AsyncClient,
+        playlist_id: str,
+        *,
+        tracks_href: str | None = None,
+    ) -> httpx.Response:
+        url = tracks_href or f"/playlists/{playlist_id}/tracks"
+        if "?" in url:
+            return await client.get(url)
+        return await client.get(
+            url,
+            params={
+                "limit": _ITEMS_PAGE,
+                "offset": 0,
+                "additional_types": "track,episode",
+            },
         )
 
     async def test_connection(self, cred: ProviderCredential) -> None:
