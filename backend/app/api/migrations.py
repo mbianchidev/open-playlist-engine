@@ -104,6 +104,12 @@ class BatchReview(BaseModel):
     item_ids: list[str] = []
 
 
+class MigrationWarningsView(BaseModel):
+    code: str = "migration_warnings"
+    message: str = "Review and acknowledge migration warnings before starting."
+    warnings: list[dict[str, str]] = []
+
+
 def _job_view(job: orm.MigrationJob) -> JobView:
     return JobView(
         id=job.id,
@@ -145,7 +151,7 @@ async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> 
         try:
             await redis.enqueue_job("run_migration", job_id)
         finally:
-            redis.close(close_connection_pool=True)
+            await redis.close(close_connection_pool=True)
     except (ConnectionError, OSError, RedisError, TimeoutError) as exc:
         logger.warning(
             "queue unavailable; running migration inline job_id=%s error=%s", job_id, exc
@@ -163,30 +169,9 @@ async def create_migration(
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
     try:
-        source = get(body.source_provider)
-        target = get(body.target_provider)
+        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    source_caps = source.info.capabilities
-    target_caps = target.info.capabilities
-    if not source_caps.can(Capability.READ_TRACKS):
-        raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
-    if not (
-        target_caps.can(Capability.CREATE_PLAYLIST) and target_caps.can(Capability.ADD_TRACKS)
-    ):
-        raise HTTPException(
-            status_code=400, detail=f"{body.target_provider} cannot write playlists"
-        )
-
-    try:
-        await load_credential(
-            session, account_id=body.source_account_id, provider=body.source_provider
-        )
-        await load_credential(
-            session, account_id=body.target_account_id, provider=body.target_provider
-        )
-        warnings = await _preflight_warnings(session, body, user_id=user_id)
     except (AccountNotFound, CredentialNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AuthExpired as exc:
@@ -202,11 +187,7 @@ async def create_migration(
         await session.commit()
         raise HTTPException(
             status_code=409,
-            detail={
-                "code": "migration_warnings",
-                "message": "Review and acknowledge migration warnings before starting.",
-                "warnings": warnings,
-            },
+            detail=MigrationWarningsView(warnings=warnings).model_dump(),
         )
 
     job = orm.MigrationJob(
@@ -222,6 +203,61 @@ async def create_migration(
     await session.commit()
     await _enqueue_or_inline(background_tasks, job.id)
     return _job_view(job)
+
+
+@router.post("/preflight", response_model=MigrationWarningsView)
+async def preflight_migration(
+    body: CreateMigration,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: str = "local",
+) -> MigrationWarningsView:
+    if not body.selection.playlist_ids:
+        raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
+    try:
+        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        await session.commit()
+        return MigrationWarningsView(warnings=warnings)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (AccountNotFound, CredentialNotFound) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthExpired as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RateLimited as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _validated_preflight_warnings(
+    session: AsyncSession,
+    body: CreateMigration,
+    *,
+    user_id: str,
+) -> list[dict[str, str]]:
+    source = get(body.source_provider)
+    target = get(body.target_provider)
+
+    source_caps = source.info.capabilities
+    target_caps = target.info.capabilities
+    if not source_caps.can(Capability.READ_TRACKS):
+        raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
+    if not (
+        target_caps.can(Capability.CREATE_PLAYLIST) and target_caps.can(Capability.ADD_TRACKS)
+    ):
+        raise HTTPException(
+            status_code=400, detail=f"{body.target_provider} cannot write playlists"
+        )
+
+    await load_credential(
+        session, account_id=body.source_account_id, provider=body.source_provider
+    )
+    await load_credential(
+        session, account_id=body.target_account_id, provider=body.target_provider
+    )
+    return await _preflight_warnings(session, body, user_id=user_id)
 
 
 async def _preflight_warnings(

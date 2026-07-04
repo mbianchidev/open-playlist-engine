@@ -8,9 +8,17 @@ import {
   getPlaylist,
   getPlaylists,
   getProviders,
+  preflightMigration,
   testAccountConnection,
 } from "./api/client";
-import type { AccountView, PlaylistRef, ProviderView, Track } from "./api/types";
+import type {
+  AccountView,
+  CreateMigrationBody,
+  MigrationWarningsView,
+  PlaylistRef,
+  ProviderView,
+  Track,
+} from "./api/types";
 import ProviderPicker from "./components/ProviderPicker";
 import ProgressBoard from "./components/ProgressBoard";
 
@@ -238,7 +246,7 @@ export default function App() {
     }
   }
 
-  async function start(acknowledgeWarnings = false) {
+  async function start() {
     if (!source || !target || !sourceAccount || !targetAccount) return;
     const playlistIds = selectedMigrationPlaylistIds;
     const tracks = Object.fromEntries(
@@ -246,22 +254,30 @@ export default function App() {
         .filter((id) => playlistTracks[id])
         .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
     );
+    const body: CreateMigrationBody = {
+      source_provider: source,
+      target_provider: target,
+      source_account_id: sourceAccount.id,
+      target_account_id: targetAccount.id,
+      selection: { playlist_ids: playlistIds, tracks },
+    };
     setBusy(true);
     setError(null);
     try {
-      const job = await createMigration({
-        source_provider: source,
-        target_provider: target,
-        source_account_id: sourceAccount.id,
-        target_account_id: targetAccount.id,
-        selection: { playlist_ids: playlistIds, tracks },
-        acknowledge_warnings: acknowledgeWarnings,
-      });
+      const preflight = await preflightMigration(body);
+      if (preflight.warnings.length > 0 && !confirm(warningMessage(preflight))) return;
+      const job = await createMigration({ ...body, acknowledge_warnings: true });
       setJobId(job.id);
       deselectStartedPlaylists(playlistIds);
     } catch (e: unknown) {
       if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
-        await start(true);
+        try {
+          const job = await createMigration({ ...body, acknowledge_warnings: true });
+          setJobId(job.id);
+          deselectStartedPlaylists(playlistIds);
+        } catch (retryError: unknown) {
+          setError(errorMessage(retryError));
+        }
         return;
       }
       setError(errorMessage(e));
@@ -778,20 +794,14 @@ function trackKey(track: Track): string {
   return track.source_item_id ?? track.id ?? String(track.position ?? track.title);
 }
 
-interface MigrationWarningDetail {
-  code: string;
-  message: string;
-  warnings: { code: string; message: string }[];
-}
-
-function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningDetail } {
+function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningsView } {
   if (!(error instanceof ApiError) || error.status !== 409) return false;
   if (!error.detail || typeof error.detail !== "object") return false;
-  const detail = error.detail as Partial<MigrationWarningDetail>;
+  const detail = error.detail as Partial<MigrationWarningsView>;
   return detail.code === "migration_warnings" && Array.isArray(detail.warnings);
 }
 
-function warningMessage(detail: MigrationWarningDetail): string {
+function warningMessage(detail: MigrationWarningsView): string {
   return [
     detail.message,
     "",

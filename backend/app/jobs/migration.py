@@ -92,6 +92,13 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     playlist_ids = list(selection.get("playlist_ids") or [])
     if not playlist_ids:
         raise ValueError("migration has no selected playlists")
+    logger.info(
+        "migration job_id=%s running source=%s target=%s playlist_count=%s",
+        job.id,
+        job.source_provider,
+        job.target_provider,
+        len(playlist_ids),
+    )
 
     review_threshold = get_settings().review_confidence_threshold
     matcher = MatchService(graph=None, review_threshold=review_threshold)
@@ -99,11 +106,23 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         session, job=job, review_threshold=review_threshold
     )
     for playlist_id in playlist_ids:
+        logger.info(
+            "migration job_id=%s reading source playlist playlist_id=%s", job.id, playlist_id
+        )
         playlist = await source.read_playlist(
             source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
         )
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
+        logger.info(
+            "migration job_id=%s loaded source playlist playlist_id=%s name=%r "
+            "total_tracks=%s selected_tracks=%s",
+            job.id,
+            playlist_id,
+            playlist.name,
+            len(playlist.tracks),
+            len(tracks),
+        )
 
         target_playlist_id = await _resolve_target_playlist(
             session,
@@ -116,10 +135,29 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
             source_tracks=tracks,
         )
+        logger.info(
+            "migration job_id=%s using target playlist source_playlist_id=%s "
+            "target_playlist_id=%s",
+            job.id,
+            playlist_id,
+            target_playlist_id,
+        )
         target_existing_keys = await _target_playlist_keys(target, target_cred, target_playlist_id)
+        logger.info(
+            "migration job_id=%s loaded target duplicate keys target_playlist_id=%s count=%s",
+            job.id,
+            target_playlist_id,
+            len(target_existing_keys),
+        )
         await session.commit()
 
         item_pairs = await _create_items(session, job, playlist_id, playlist.name, tracks)
+        logger.info(
+            "migration job_id=%s created migration items playlist_id=%s count=%s",
+            job.id,
+            playlist_id,
+            len(item_pairs),
+        )
         matched: list[orm.JobItem] = []
         for item, track in item_pairs:
             item.target_playlist_id = target_playlist_id
@@ -179,6 +217,15 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 existing_keys=target_existing_keys,
                 force=True,
             )
+        status_counts = await _playlist_status_counts(session, job.id, playlist_id)
+        logger.info(
+            "migration job_id=%s finished playlist playlist_id=%s target_playlist_id=%s "
+            "status_counts=%s",
+            job.id,
+            playlist_id,
+            target_playlist_id,
+            status_counts,
+        )
 
     await commit_job_counts(session, job)
     job.status = "done"
@@ -537,6 +584,14 @@ async def _skip_duplicate_items(
         if keys & seen:
             item.status = "skipped"
             item.reason = "duplicate already exists in target playlist"
+            logger.info(
+                "migration job_id=%s skipped duplicate item source_playlist_id=%s position=%s "
+                "title=%r",
+                job.id,
+                item.source_playlist_id,
+                item.position,
+                item.title,
+            )
             await commit_job_counts(session, job)
             continue
         seen.update(keys)
@@ -575,3 +630,17 @@ async def commit_job_counts(session: AsyncSession, job: orm.MigrationJob) -> Non
     job.done = int(done or 0)
     job.failed = int(failed or 0)
     await session.commit()
+
+
+async def _playlist_status_counts(
+    session: AsyncSession, job_id: str, playlist_id: str
+) -> dict[str, int]:
+    rows = await session.execute(
+        select(orm.JobItem.status, func.count())
+        .where(
+            orm.JobItem.job_id == job_id,
+            orm.JobItem.source_playlist_id == playlist_id,
+        )
+        .group_by(orm.JobItem.status)
+    )
+    return {status: int(count) for status, count in rows.all()}

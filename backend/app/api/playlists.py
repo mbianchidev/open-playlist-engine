@@ -35,6 +35,10 @@ class _PlaylistMigrationSummary:
     def skipped_count(self) -> int:
         return len(self.skipped_keys - self.migrated_keys)
 
+    @property
+    def resolved_count(self) -> int:
+        return len(self.migrated_keys | self.skipped_keys)
+
 
 @router.get("", response_model=list[PlaylistRef])
 async def list_playlists(
@@ -268,19 +272,30 @@ def _annotate_playlist_ref(
     migrated_count = summary.migrated_count if summary else 0
     remaining = None if ref.track_count is None else max(ref.track_count - migrated_count, 0)
     skipped_count = summary.skipped_count if summary else 0
+    resolved_count = summary.resolved_count if summary else 0
+    fully_resolved = bool(
+        summary
+        and (
+            summary.completed_full_playlist
+            or (ref.track_count is not None and resolved_count >= ref.track_count)
+        )
+    )
     if skipped_count and remaining is not None:
         remaining = max(remaining, skipped_count)
     status = None
     note = None
-    full_migration = bool(summary and summary.completed_full_playlist)
-    if skipped_count:
+    if fully_resolved:
+        status = "migrated"
+        note = "Migrated"
+        remaining = None if ref.track_count is None else 0
+    elif skipped_count:
         status = "partial"
         note = (
             f"Partially migrated: {remaining} left"
             if remaining is not None
             else f"Partially migrated: {skipped_count} skipped"
         )
-    elif migrated_count and (full_migration or remaining == 0):
+    elif migrated_count and remaining == 0:
         status = "migrated"
         note = "Migrated"
         remaining = None if ref.track_count is None else 0

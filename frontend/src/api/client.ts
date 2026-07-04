@@ -3,8 +3,10 @@ import type {
   AuthChallenge,
   ConnectionView,
   ConnectionTestView,
+  CreateMigrationBody,
   JobItemView,
   JobView,
+  MigrationWarningsView,
   Playlist,
   PlaylistRef,
   ProviderView,
@@ -106,18 +108,21 @@ export async function getPlaylist(
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
 }
 
-export interface CreateMigrationBody {
-  source_provider: string;
-  target_provider: string;
-  source_account_id: string;
-  target_account_id: string;
-  selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
-  acknowledge_warnings?: boolean;
-}
-
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {
   return json<JobView>(
     await fetch("/api/migrations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function preflightMigration(
+  body: CreateMigrationBody,
+): Promise<MigrationWarningsView> {
+  return json<MigrationWarningsView>(
+    await fetch("/api/migrations/preflight", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),

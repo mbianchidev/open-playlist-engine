@@ -104,6 +104,15 @@ export interface Playlist {
   updated_at: string | null;
 }
 
+export interface CreateMigrationBody {
+  source_provider: string;
+  target_provider: string;
+  source_account_id: string;
+  target_account_id: string;
+  selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
+  acknowledge_warnings?: boolean;
+}
+
 export interface JobView {
   id: string;
   status: string;
@@ -113,6 +122,12 @@ export interface JobView {
   done: number;
   failed: number;
   error: string | null;
+}
+
+export interface MigrationWarningsView {
+  code: string;
+  message: string;
+  warnings: { code: string; message: string }[];
 }
 
 export interface JobItemView {
