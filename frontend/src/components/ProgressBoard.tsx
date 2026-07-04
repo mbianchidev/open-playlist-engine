@@ -20,6 +20,7 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
   const [items, setItems] = useState<JobItemView[]>([]);
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
   const [approveThresholdPct, setApproveThresholdPct] = useState(70);
+  const [skipThresholdPct, setSkipThresholdPct] = useState(50);
   const [error, setError] = useState<string | null>(null);
   const notifiedDoneForJob = useRef<string | null>(null);
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
@@ -27,7 +28,10 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
     job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
   const doubtfulItems = items.filter((item) => item.status === "needs_review");
   const thresholdApprovableItems = doubtfulItems.filter(
-    (item) => item.target_uri && meetsConfidenceThreshold(item.confidence, approveThresholdPct),
+    (item) => item.target_uri && confidenceAtOrAboveThreshold(item.confidence, approveThresholdPct),
+  );
+  const thresholdSkippableItems = doubtfulItems.filter((item) =>
+    confidenceAtOrBelowThreshold(item.confidence, skipThresholdPct),
   );
 
   useEffect(() => {
@@ -81,31 +85,48 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
       {error ? <p className="warn">{error}</p> : null}
       {doubtfulItems.length > 0 ? (
         <div className="review-toolbar">
-          <label className="approve-threshold">
-            <span>Approve confidence</span>
+          <div className="bulk-review-action">
+            <label htmlFor="approveThreshold">Approve above</label>
             <input
+              id="approveThreshold"
               type="number"
               min="0"
               max="100"
               step="1"
               value={approveThresholdPct}
-              onChange={(e) => setApproveThresholdPct(clampPercent(e.target.valueAsNumber))}
+              onChange={(e) =>
+                setApproveThresholdPct(clampPercent(e.target.valueAsNumber, 70))
+              }
             />
-            <span>%+</span>
-          </label>
-          <button
-            className="secondary compact"
-            disabled={thresholdApprovableItems.length === 0}
-            onClick={() => reviewMany(thresholdApprovableItems, "approve")}
-          >
-            Approve all ({thresholdApprovableItems.length})
-          </button>
-          <button
-            className="secondary compact"
-            onClick={() => reviewMany(doubtfulItems, "skip")}
-          >
-            Deny all doubtful
-          </button>
+            <span>%</span>
+            <button
+              className="secondary compact"
+              disabled={thresholdApprovableItems.length === 0}
+              onClick={() => reviewMany(thresholdApprovableItems, "approve")}
+            >
+              Approve above {approveThresholdPct}% ({thresholdApprovableItems.length})
+            </button>
+          </div>
+          <div className="bulk-review-action">
+            <label htmlFor="skipThreshold">Skip below</label>
+            <input
+              id="skipThreshold"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={skipThresholdPct}
+              onChange={(e) => setSkipThresholdPct(clampPercent(e.target.valueAsNumber, 50))}
+            />
+            <span>%</span>
+            <button
+              className="secondary compact"
+              disabled={thresholdSkippableItems.length === 0}
+              onClick={() => reviewMany(thresholdSkippableItems, "skip")}
+            >
+              Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
+            </button>
+          </div>
         </div>
       ) : null}
       <div className="progress-list">
@@ -182,13 +203,17 @@ function formatTrack(item: JobItemView): string {
   return bits.join(" · ");
 }
 
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 70;
+function clampPercent(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
-function meetsConfidenceThreshold(confidence: number | null, thresholdPct: number): boolean {
+function confidenceAtOrAboveThreshold(confidence: number | null, thresholdPct: number): boolean {
   return confidence !== null && confidence * 100 >= thresholdPct;
+}
+
+function confidenceAtOrBelowThreshold(confidence: number | null, thresholdPct: number): boolean {
+  return confidence === null || confidence * 100 <= thresholdPct;
 }
 
 interface TargetPlaylist {

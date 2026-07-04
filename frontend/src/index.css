@@ -517,7 +517,7 @@ textarea {
   margin: 0.75rem 0;
 }
 
-.approve-threshold {
+.bulk-review-action {
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -525,12 +525,12 @@ textarea {
   font-size: 0.8rem;
 }
 
-.approve-threshold input {
+.bulk-review-action input {
   width: 4.5rem;
 }
 
 .review-controls input,
-.approve-threshold input {
+.bulk-review-action input {
   border-radius: 8px;
   border: 1px solid #2a3039;
   background: #0d0f12;
