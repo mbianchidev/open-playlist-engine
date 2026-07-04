@@ -33,6 +33,7 @@ from app.core.migration_state import (
 from app.core.models import PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
+from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
 from app.db.repositories import load_fresh_credential
 from app.settings import get_settings
@@ -276,9 +277,19 @@ async def _previous_target_playlist_id(
             orm.MigrationJob.id != job.id,
             orm.MigrationJob.user_id == job.user_id,
             orm.MigrationJob.source_provider == job.source_provider,
-            orm.MigrationJob.source_account_id == job.source_account_id,
+            provider_account_history(
+                orm.MigrationJob.source_account_id,
+                current_account_id=job.source_account_id,
+                user_id=job.user_id,
+                provider=job.source_provider,
+            ),
             orm.MigrationJob.target_provider == job.target_provider,
-            orm.MigrationJob.target_account_id == job.target_account_id,
+            provider_account_history(
+                orm.MigrationJob.target_account_id,
+                current_account_id=job.target_account_id,
+                user_id=job.user_id,
+                provider=job.target_provider,
+            ),
             orm.JobItem.source_playlist_id == playlist_id,
             orm.JobItem.target_playlist_id.is_not(None),
         )

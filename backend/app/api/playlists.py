@@ -14,6 +14,7 @@ from app.core.migration_state import keys_from_metadata, track_keys
 from app.core.models import Playlist, PlaylistRef
 from app.core.registry import get
 from app.db import models as orm
+from app.db.account_scope import provider_account_history
 from app.db.base import get_session
 from app.db.repositories import AccountNotFound, CredentialNotFound, load_fresh_credential
 
@@ -138,9 +139,19 @@ async def _migration_summaries(
         .where(
             orm.MigrationJob.user_id == user_id,
             orm.MigrationJob.source_provider == source_provider,
-            orm.MigrationJob.source_account_id == source_account_id,
+            provider_account_history(
+                orm.MigrationJob.source_account_id,
+                current_account_id=source_account_id,
+                user_id=user_id,
+                provider=source_provider,
+            ),
             orm.MigrationJob.target_provider == target_provider,
-            orm.MigrationJob.target_account_id == target_account_id,
+            provider_account_history(
+                orm.MigrationJob.target_account_id,
+                current_account_id=target_account_id,
+                user_id=user_id,
+                provider=target_provider,
+            ),
         )
     )
     summaries: dict[str, _PlaylistMigrationSummary] = {}
@@ -204,9 +215,19 @@ async def _migrated_track_map(
         .where(
             orm.MigrationJob.user_id == user_id,
             orm.MigrationJob.source_provider == source_provider,
-            orm.MigrationJob.source_account_id == source_account_id,
+            provider_account_history(
+                orm.MigrationJob.source_account_id,
+                current_account_id=source_account_id,
+                user_id=user_id,
+                provider=source_provider,
+            ),
             orm.MigrationJob.target_provider == target_provider,
-            orm.MigrationJob.target_account_id == target_account_id,
+            provider_account_history(
+                orm.MigrationJob.target_account_id,
+                current_account_id=target_account_id,
+                user_id=user_id,
+                provider=target_provider,
+            ),
             orm.JobItem.source_playlist_id == playlist_id,
         )
     )
