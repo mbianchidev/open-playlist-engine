@@ -19,13 +19,16 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
   const [job, setJob] = useState<JobView | null>(null);
   const [items, setItems] = useState<JobItemView[]>([]);
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
+  const [approveThresholdPct, setApproveThresholdPct] = useState(70);
   const [error, setError] = useState<string | null>(null);
   const notifiedDoneForJob = useRef<string | null>(null);
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
   const targetPlaylists =
     job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
   const doubtfulItems = items.filter((item) => item.status === "needs_review");
-  const approvableItems = doubtfulItems.filter((item) => item.target_uri);
+  const thresholdApprovableItems = doubtfulItems.filter(
+    (item) => item.target_uri && meetsConfidenceThreshold(item.confidence, approveThresholdPct),
+  );
 
   useEffect(() => {
     getMigrationItems(jobId).then(setItems).catch(() => setItems([]));
@@ -78,12 +81,24 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
       {error ? <p className="warn">{error}</p> : null}
       {doubtfulItems.length > 0 ? (
         <div className="review-toolbar">
+          <label className="approve-threshold">
+            <span>Approve confidence</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={approveThresholdPct}
+              onChange={(e) => setApproveThresholdPct(clampPercent(e.target.valueAsNumber))}
+            />
+            <span>%+</span>
+          </label>
           <button
             className="secondary compact"
-            disabled={approvableItems.length === 0}
-            onClick={() => reviewMany(approvableItems, "approve")}
+            disabled={thresholdApprovableItems.length === 0}
+            onClick={() => reviewMany(thresholdApprovableItems, "approve")}
           >
-            Approve all suggested
+            Approve all ({thresholdApprovableItems.length})
           </button>
           <button
             className="secondary compact"
@@ -165,6 +180,15 @@ function formatTrack(item: JobItemView): string {
   if (item.release_year) bits.push(String(item.release_year));
   if (item.explicit) bits.push("explicit");
   return bits.join(" · ");
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 70;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function meetsConfidenceThreshold(confidence: number | null, thresholdPct: number): boolean {
+  return confidence !== null && confidence * 100 >= thresholdPct;
 }
 
 interface TargetPlaylist {
