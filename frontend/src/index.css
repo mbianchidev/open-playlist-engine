@@ -567,6 +567,23 @@ button.compact {
   color: #f8d99a;
 }
 
+.playlist-error-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.75rem 0;
+  padding: 0.8rem;
+  border: 1px solid #f0b450;
+  border-radius: 10px;
+  background: rgba(240, 180, 80, 0.1);
+}
+
+.playlist-error-panel p {
+  margin: 0.25rem 0 0;
+  color: #f8d99a;
+}
+
 .account-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

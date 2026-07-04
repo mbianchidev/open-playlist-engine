@@ -74,6 +74,7 @@ export default function App() {
   const migrationCandidatePlaylists = availablePlaylists.filter(
     (playlist) => !isAnnotatedMigratedPlaylist(playlist),
   );
+  const playlistErrorTitle = playlistError ? playlistErrorHeading(playlistError) : null;
   const showBlockedPlaylistDetails =
     showBlockedSpotifyPlaylists ||
     (migrationCandidatePlaylists.length === 0 && blockedSpotifyPlaylists.length > 0);
@@ -108,7 +109,13 @@ export default function App() {
         if (loadId !== playlistLoadId.current) return;
         const message = errorMessage(e);
         setPlaylistError(message);
-        setError(message);
+        const alert = spotifyRateLimitAlert(e, message);
+        if (alert) {
+          setBlockingAlert(alert);
+          setError(null);
+        } else {
+          setError(message);
+        }
       } finally {
         if (loadId === playlistLoadId.current) setPlaylistLoading(false);
       }
@@ -847,6 +854,21 @@ export default function App() {
               </div>
             ) : null}
           </div>
+          {playlistError && playlistErrorTitle ? (
+            <div className="playlist-error-panel error-guidance" role="alert">
+              <div>
+                <strong>{playlistErrorTitle}</strong>
+                <p>{playlistErrorHelp(playlistError)}</p>
+              </div>
+              <button
+                className="secondary compact"
+                disabled={playlistLoading}
+                onClick={() => void refreshSourcePlaylists()}
+              >
+                {playlistLoading ? "Checking…" : "Retry now"}
+              </button>
+            </div>
+          ) : null}
           {migratedPlaylists.length > 0 ? (
             <div className="migrated-playlists-panel">
               <button
@@ -893,7 +915,7 @@ export default function App() {
             <p className="empty-guidance">Loading playlists…</p>
           ) : playlistError && playlists.length === 0 ? (
             <p className="empty-guidance error-guidance">
-              Could not load playlists: {playlistError}
+              {playlistErrorHelp(playlistError)}
             </p>
           ) : playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
@@ -987,6 +1009,60 @@ function spotifyExternalPlaylistAlert(message: string): BlockingAlert | null {
     message,
     action: "Copy it in Spotify with Add to other playlist, then migrate your copy.",
   };
+}
+
+function spotifyRateLimitAlert(error: unknown, message: string): BlockingAlert | null {
+  if (!isRateLimitError(error, message)) return null;
+  return {
+    title: "Spotify rate limit",
+    message: playlistErrorHelp(message),
+    action: "Wait for Spotify's retry window, then refresh playlists.",
+  };
+}
+
+function playlistErrorHeading(message: string): string {
+  return isRateLimitMessage(message) ? "Spotify rate limit" : "Could not load playlists";
+}
+
+function playlistErrorHelp(message: string): string {
+  const retryAfter = retryAfterSeconds(message);
+  if (isRateLimitMessage(message)) {
+    const wait = retryAfter === null ? null : formatWait(retryAfter);
+    return wait
+      ? `Spotify asked us to retry after ${wait}. I stopped waiting so the app does not hang.`
+      : "Spotify is rate limiting playlist requests. Wait a bit, then refresh playlists.";
+  }
+  return message;
+}
+
+function isRateLimitError(error: unknown, message: string): boolean {
+  return (
+    (error instanceof ApiError && (error.status === 420 || error.status === 429)) ||
+    isRateLimitMessage(message)
+  );
+}
+
+function isRateLimitMessage(message: string): boolean {
+  return message.toLowerCase().includes("rate limited");
+}
+
+function retryAfterSeconds(message: string): number | null {
+  const match = message.match(/retry after ([0-9.]+) seconds/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatWait(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const restSeconds = rounded % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}m`);
+  if (!hours && restSeconds) parts.push(`${restSeconds}s`);
+  return parts.join(" ") || "0s";
 }
 
 function isSpotifyCopyRequiredPlaylist(
