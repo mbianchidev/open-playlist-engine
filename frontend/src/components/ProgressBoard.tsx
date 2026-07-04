@@ -270,7 +270,7 @@ export default function ProgressBoard({
 
   function renderProgressRow(item: JobItemView) {
     const targetUri = reviewInputs[item.id] ?? item.target_uri ?? "";
-    const verifyUrl = youtubeWatchUrl(targetUri);
+    const verifyUrl = youtubeMusicWatchUrl(targetUri);
     return (
       <div key={item.id} className={`progress-row ${isReviewableItem(item) ? "review-row" : ""}`}>
         <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
@@ -296,7 +296,7 @@ export default function ProgressBoard({
                 href={verifyUrl}
                 target="_blank"
                 rel="noreferrer"
-                aria-label={`Verify ${item.title} on YouTube`}
+                aria-label={`Verify ${item.title} on YouTube Music`}
               >
                 Verify <span aria-hidden="true">↗</span>
               </a>
@@ -412,10 +412,10 @@ function reviewErrorMessage(error: unknown, refreshError: string | null): string
   return refreshError ? `${message}. Refresh failed too: ${refreshError}` : message;
 }
 
-function youtubeWatchUrl(targetUri: string): string | null {
+function youtubeMusicWatchUrl(targetUri: string): string | null {
   const match = targetUri.trim().match(/^ytmusic:video:([^/?#&\s]+)$/);
   if (!match) return null;
-  return `https://www.youtube.com/watch?v=${encodeURIComponent(match[1])}`;
+  return `https://music.youtube.com/watch?v=${encodeURIComponent(match[1])}`;
 }
 
 function countStatuses(items: JobItemView[]): Record<string, number> {
