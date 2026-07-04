@@ -11,11 +11,17 @@ interface Props {
   jobId: string;
   className?: string;
   onMigrationChanged?: () => void | Promise<void>;
+  onReconnectProvider?: (provider: string) => void | Promise<void>;
 }
 
 // Phase 5 — live progress. Reconnect/replay via Last-Event-ID is handled by the
 // browser's EventSource plus the backend's persisted job_item cursor.
-export default function ProgressBoard({ jobId, className, onMigrationChanged }: Props) {
+export default function ProgressBoard({
+  jobId,
+  className,
+  onMigrationChanged,
+  onReconnectProvider,
+}: Props) {
   const [job, setJob] = useState<JobView | null>(null);
   const [items, setItems] = useState<JobItemView[]>([]);
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
@@ -33,6 +39,8 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
   const thresholdSkippableItems = doubtfulItems.filter((item) =>
     confidenceAtOrBelowThreshold(item.confidence, skipThresholdPct),
   );
+  const reconnectProvider =
+    job?.error && shouldPromptReconnect(job.error) ? providerForReconnect(job, job.error) : null;
 
   useEffect(() => {
     getMigrationItems(jobId).then(setItems).catch(() => setItems([]));
@@ -82,6 +90,18 @@ export default function ProgressBoard({ jobId, className, onMigrationChanged }: 
         </div>
       ) : null}
       {job?.error ? <p className="warn">{job.error}</p> : null}
+      {reconnectProvider ? (
+        <div className="auth-reconnect-callout">
+          <p>Reconnect {providerLabel(reconnectProvider)}, then start the migration again.</p>
+          <button
+            className="secondary compact"
+            disabled={!onReconnectProvider}
+            onClick={() => void onReconnectProvider?.(reconnectProvider)}
+          >
+            Reconnect {providerLabel(reconnectProvider)}
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="warn">{error}</p> : null}
       {doubtfulItems.length > 0 ? (
         <div className="review-toolbar">
@@ -214,6 +234,26 @@ function confidenceAtOrAboveThreshold(confidence: number | null, thresholdPct: n
 
 function confidenceAtOrBelowThreshold(confidence: number | null, thresholdPct: number): boolean {
   return confidence === null || confidence * 100 <= thresholdPct;
+}
+
+function shouldPromptReconnect(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("reconnect") || normalized.includes("signed-in session");
+}
+
+function providerForReconnect(job: JobView, message: string): string {
+  const normalized = message.toLowerCase();
+  if (mentionsProvider(normalized, job.source_provider)) return job.source_provider;
+  if (mentionsProvider(normalized, job.target_provider)) return job.target_provider;
+  return job.target_provider;
+}
+
+function mentionsProvider(message: string, provider: string): boolean {
+  const normalizedProvider = provider.toLowerCase();
+  return (
+    message.includes(normalizedProvider) ||
+    message.includes(providerLabel(provider).toLowerCase())
+  );
 }
 
 interface TargetPlaylist {

@@ -66,6 +66,7 @@ class CreateMigration(BaseModel):
 class JobView(BaseModel):
     id: str
     status: str
+    source_provider: str
     target_provider: str
     total: int = 0
     done: int = 0
@@ -107,6 +108,7 @@ def _job_view(job: orm.MigrationJob) -> JobView:
     return JobView(
         id=job.id,
         status=job.status,
+        source_provider=job.source_provider,
         target_provider=job.target_provider,
         total=job.total,
         done=job.done,

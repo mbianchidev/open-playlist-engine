@@ -107,6 +107,7 @@ export interface Playlist {
 export interface JobView {
   id: string;
   status: string;
+  source_provider: string;
   target_provider: string;
   total: number;
   done: number;

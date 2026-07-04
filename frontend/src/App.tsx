@@ -648,6 +648,7 @@ export default function App() {
                   className="progress-popover"
                   jobId={jobId}
                   onMigrationChanged={refreshSourcePlaylists}
+                  onReconnectProvider={connect}
                 />
               </div>
             ) : null}

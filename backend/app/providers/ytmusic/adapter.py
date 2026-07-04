@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import urllib.parse
 import uuid
@@ -178,12 +179,37 @@ def _playlist_id(item: dict[str, Any]) -> str | None:
     return str(value) if value else None
 
 
+def _is_auth_error_message(message: str) -> bool:
+    normalized = message.lower()
+    return (
+        "401" in normalized
+        or "unauthorized" in normalized
+        or "must be signed in" in normalized
+        or re.search(
+            r"""["'](?:logged_in|yt_li)["']\s*[:,][^}\]]*["']value["']\s*:\s*["']0["']""",
+            normalized,
+        )
+        is not None
+    )
+
+
+def _auth_error(action: str, message: str) -> AuthExpired:
+    return AuthExpired(
+        f"YouTube Music {action} requires a signed-in session that can write playlists; "
+        f"reconnect YouTube Music. {message}"
+    )
+
+
 async def _run_client_call(
     action: str, call: Callable[[], Any], *, playlist_id: str | None = None
 ) -> Any:
     try:
         return await asyncio.to_thread(call)
     except (KeyError, IndexError) as exc:
+        message = str(exc)
+        if _is_auth_error_message(message):
+            logger.warning("ytmusic %s response indicates signed-out session error=%s", action, exc)
+            raise _auth_error(action, message) from exc
         if "Unable to find" in str(exc):
             if playlist_id:
                 logger.warning(
@@ -199,8 +225,10 @@ async def _run_client_call(
             raise ProviderError(f"YouTube Music {action} returned an unexpected response") from exc
         raise
     except Exception as exc:
+        message = str(exc) or type(exc).__name__
+        if _is_auth_error_message(message):
+            raise _auth_error(action, message) from exc
         if type(exc).__module__.startswith("ytmusicapi."):
-            message = str(exc) or type(exc).__name__
             raise ProviderError(f"YouTube Music {action} failed: {message}") from exc
         raise
 
@@ -631,9 +659,11 @@ class YTMusicAdapter:
 
     async def test_connection(self, cred: ProviderCredential) -> None:
         client = self._client(cred)
-        await _run_client_call(
-            "test connection", lambda: client.search("test", filter="songs", limit=1)
+        rows = await _run_client_call(
+            "test connection", lambda: client.get_library_playlists(limit=1)
         )
+        if not isinstance(rows, list):
+            raise ProviderError("YouTube Music test connection returned an invalid response")
 
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
@@ -684,6 +714,9 @@ class YTMusicAdapter:
             lambda: client.create_playlist(spec.name, spec.description or "", privacy),
         )
         if not isinstance(result, str):
+            message = str(result)
+            if _is_auth_error_message(message):
+                raise _auth_error("create playlist", message)
             raise ProviderError(f"ytmusic create_playlist failed: {result}")
         return result
 

@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from app.core.adapter import (
+    AuthExpired,
     AuthKind,
     ChallengeShape,
     CreatePlaylistSpec,
@@ -222,6 +223,20 @@ async def test_read_playlist_maps_missing_contents_parser_error_to_not_found() -
         await adapter.read_playlist(_cred(), PlaylistRef(id="VLPLZFL31xAfxGg", name="Broken"))
 
 
+async def test_read_playlist_maps_logged_out_parser_error_to_auth_expired() -> None:
+    class LoggedOut:
+        def get_playlist(self, *a, **k):
+            raise KeyError(
+                "Unable to find 'contents' using path ['contents'] on "
+                "{'serviceTrackingParams': [{'params': [{'key': 'logged_in', 'value': '0'}]}]}"
+            )
+
+    adapter = _adapter(LoggedOut())
+
+    with pytest.raises(AuthExpired, match="reconnect YouTube Music"):
+        await adapter.read_playlist(_cred(), PlaylistRef(id="VLPLI5E2GCcNSnE", name="Logged out"))
+
+
 async def test_add_tracks_persists_video_ids() -> None:
     fake = FakeYTMusic()
     adapter = _adapter(fake)
@@ -266,6 +281,20 @@ async def test_create_playlist_failure_raises() -> None:
 
     adapter = _adapter(Failing())
     with pytest.raises(ProviderError):
+        await adapter.create_playlist(_cred(), CreatePlaylistSpec(name="M"))
+
+
+async def test_create_playlist_unauthorized_raises_auth_expired() -> None:
+    class Unauthorized:
+        def create_playlist(self, *a, **k):
+            raise RuntimeError(
+                "Server returned HTTP 401: Unauthorized. "
+                "You must be signed in to perform this operation."
+            )
+
+    adapter = _adapter(Unauthorized())
+
+    with pytest.raises(AuthExpired, match="reconnect YouTube Music"):
         await adapter.create_playlist(_cred(), CreatePlaylistSpec(name="M"))
 
 
