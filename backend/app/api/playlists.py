@@ -24,11 +24,16 @@ router = APIRouter(prefix="/api/playlists", tags=["playlists"])
 @dataclass
 class _PlaylistMigrationSummary:
     migrated_keys: set[str] = field(default_factory=set)
+    skipped_keys: set[str] = field(default_factory=set)
     completed_full_playlist: bool = False
 
     @property
     def migrated_count(self) -> int:
         return len(self.migrated_keys)
+
+    @property
+    def skipped_count(self) -> int:
+        return len(self.skipped_keys - self.migrated_keys)
 
 
 @router.get("", response_model=list[PlaylistRef])
@@ -124,6 +129,14 @@ def _is_migrated_item(item: orm.JobItem) -> bool:
     return item.status == "written" or (item.status == "skipped" and bool(item.target_uri))
 
 
+def _is_real_skipped_item(item: orm.JobItem) -> bool:
+    return item.status == "skipped" and not item.target_uri
+
+
+def _is_resolved_item(item: orm.JobItem) -> bool:
+    return _is_migrated_item(item) or _is_real_skipped_item(item)
+
+
 async def _migration_summaries(
     session: AsyncSession,
     *,
@@ -158,10 +171,12 @@ async def _migration_summaries(
     job_items: dict[tuple[str, str], tuple[orm.MigrationJob, list[orm.JobItem]]] = {}
     for item, job in (await session.execute(stmt)).all():
         summary = summaries.setdefault(item.source_playlist_id, _PlaylistMigrationSummary())
+        keys = _source_item_keys(item)
+        if _is_real_skipped_item(item) and keys:
+            summary.skipped_keys.add(sorted(keys)[0])
         if not _is_migrated_item(item):
             job_items.setdefault((job.id, item.source_playlist_id), (job, []))[1].append(item)
             continue
-        keys = _source_item_keys(item)
         if not keys:
             job_items.setdefault((job.id, item.source_playlist_id), (job, []))[1].append(item)
             continue
@@ -173,7 +188,7 @@ async def _migration_summaries(
             items
             and job.status == "done"
             and _job_selected_full_playlist(job, playlist_id)
-            and all(_is_migrated_item(item) for item in items)
+            and all(_is_resolved_item(item) for item in items)
         ):
             summary = summaries.setdefault(playlist_id, _PlaylistMigrationSummary())
             summary.completed_full_playlist = True
@@ -252,19 +267,23 @@ def _annotate_playlist_ref(
 ) -> PlaylistRef:
     migrated_count = summary.migrated_count if summary else 0
     remaining = None if ref.track_count is None else max(ref.track_count - migrated_count, 0)
+    skipped_count = summary.skipped_count if summary else 0
+    if skipped_count and remaining is not None:
+        remaining = max(remaining, skipped_count)
     status = None
     note = None
     full_migration = bool(summary and summary.completed_full_playlist)
-    if migrated_count and (remaining == 0 or (remaining is None and full_migration)):
-        status = "migrated"
-        note = "Migrated"
-    elif migrated_count:
+    if skipped_count:
         status = "partial"
         note = (
             f"Partially migrated: {remaining} left"
             if remaining is not None
-            else "Partially migrated"
+            else f"Partially migrated: {skipped_count} skipped"
         )
+    elif migrated_count and (full_migration or remaining == 0):
+        status = "migrated"
+        note = "Migrated"
+        remaining = None if ref.track_count is None else 0
     return ref.model_copy(
         update={
             "migration_status": status,
