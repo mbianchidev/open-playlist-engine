@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { getMigrationItems, reviewMigrationItem, subscribeProgress } from "../api/client";
+import {
+  getMigrationItems,
+  reviewMigrationItem,
+  reviewMigrationItems,
+  subscribeProgress,
+} from "../api/client";
 import type { JobItemView, JobView, ProgressEvent } from "../api/types";
 
 interface Props {
@@ -16,6 +21,8 @@ export default function ProgressBoard({ jobId }: Props) {
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
   const targetPlaylists =
     job?.status === "done" ? getTargetPlaylists(items, job.target_provider) : [];
+  const doubtfulItems = items.filter((item) => item.status === "needs_review");
+  const approvableItems = doubtfulItems.filter((item) => item.target_uri);
 
   useEffect(() => {
     getMigrationItems(jobId).then(setItems).catch(() => setItems([]));
@@ -60,6 +67,23 @@ export default function ProgressBoard({ jobId }: Props) {
       ) : null}
       {job?.error ? <p className="warn">{job.error}</p> : null}
       {error ? <p className="warn">{error}</p> : null}
+      {doubtfulItems.length > 0 ? (
+        <div className="review-toolbar">
+          <button
+            className="secondary compact"
+            disabled={approvableItems.length === 0}
+            onClick={() => reviewMany(approvableItems, "approve")}
+          >
+            Approve all suggested
+          </button>
+          <button
+            className="secondary compact"
+            onClick={() => reviewMany(doubtfulItems, "skip")}
+          >
+            Deny all doubtful
+          </button>
+        </div>
+      ) : null}
       <div className="progress-list">
         {items.length === 0 ? (
           <p className="muted">
@@ -103,6 +127,21 @@ export default function ProgressBoard({ jobId }: Props) {
         target_uri: action === "approve" ? reviewInputs[item.id] ?? item.target_uri : null,
       });
       setItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function reviewMany(reviewItems: JobItemView[], action: "approve" | "skip") {
+    if (reviewItems.length === 0) return;
+    setError(null);
+    try {
+      const updated = await reviewMigrationItems(jobId, {
+        action,
+        item_ids: reviewItems.map((item) => item.id),
+      });
+      const byId = new Map(updated.map((item) => [item.id, item]));
+      setItems((prev) => prev.map((row) => byId.get(row.id) ?? row));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }

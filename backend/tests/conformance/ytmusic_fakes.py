@@ -16,6 +16,43 @@ class FakeYTMusic:
         self.playlists: dict[str, dict[str, Any]] = {}
         self._counter = 0
 
+    def get_library_playlists(self, limit: int = 100) -> list[dict[str, Any]]:
+        rows = [
+            {
+                "playlistId": playlist_id,
+                "title": playlist["title"],
+                "count": len(playlist["tracks"]),
+            }
+            for playlist_id, playlist in self.playlists.items()
+        ]
+        return rows[:limit]
+
+    def get_playlist(self, playlistId: str, limit: int | None = 100) -> dict[str, Any]:
+        playlist = self.playlists.get(playlistId)
+        if playlist is None:
+            return {"error": "playlist not found"}
+        track_limit = limit if limit is not None else len(playlist["tracks"])
+        tracks = [
+            {
+                "videoId": video_id,
+                "title": title,
+                "artists": [{"name": artist}],
+                "album": {"name": album},
+                "duration_seconds": duration,
+                "isExplicit": False,
+            }
+            for video_id, title, artist, album, duration in (
+                _VIDEO_FIXTURES.get(video_id, (video_id, video_id, "", None, None))
+                for video_id in playlist["tracks"][:track_limit]
+            )
+        ]
+        return {
+            "id": playlistId,
+            "title": playlist["title"],
+            "description": playlist["description"],
+            "tracks": tracks,
+        }
+
     def create_playlist(
         self,
         title: str,
@@ -62,3 +99,10 @@ class FakeYTMusic:
                 "isExplicit": False,
             }
         ][:limit]
+
+
+_VIDEO_FIXTURES: dict[str, tuple[str, str, str, str | None, int | None]] = {
+    "yt_song_one": ("yt_song_one", "Song One", "Artist One", "Album One", 180),
+    "aaa111": ("aaa111", "Song One", "Artist One", "Album One", 180),
+    "bbb222": ("bbb222", "Song Two", "Artist Two", "Album Two", 200),
+}

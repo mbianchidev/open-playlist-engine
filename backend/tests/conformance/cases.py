@@ -6,7 +6,7 @@ A case advertises the capabilities it exercises (``reads`` / ``searches`` /
 while real adapters are driven only over the surface this PR implements:
 
 * Spotify — READ + SEARCH (against recorded HTTP fixtures).
-* YouTube Music — WRITE (against an injected in-memory client).
+* YouTube Music — READ + WRITE (against an injected in-memory client).
 """
 
 from __future__ import annotations
@@ -80,6 +80,7 @@ def _spotify_case() -> Case:
 
 def _ytmusic_case() -> Case:
     fake = FakeYTMusic()
+    created = fake.create_playlist("Mirror", "", "PRIVATE", ["aaa111", "bbb222"])
     return Case(
         id="ytmusic",
         adapter=YTMusicAdapter(client_factory=lambda cred: fake),
@@ -89,8 +90,10 @@ def _ytmusic_case() -> Case:
             auth_kind=AuthKind.OAUTH_DEVICE,
             access_token="fixture-token",
         ),
+        reads=True,
         writes=True,
-        create_spec=CreatePlaylistSpec(name="Mirror"),
+        missing_ref=PlaylistRef(id="missing", name="missing"),
+        create_spec=CreatePlaylistSpec(name=f"Mirror {created}"),
         add_uris=[
             "https://music.youtube.com/watch?v=aaa111",
             "https://music.youtube.com/watch?v=bbb222",

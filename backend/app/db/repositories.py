@@ -45,6 +45,19 @@ async def list_accounts(
     return list((await session.execute(stmt)).scalars())
 
 
+async def delete_account(session: AsyncSession, *, account_id: str, user_id: str) -> bool:
+    stmt = select(orm.ProviderAccount).where(
+        orm.ProviderAccount.id == account_id,
+        orm.ProviderAccount.user_id == user_id,
+    )
+    account = (await session.execute(stmt)).scalar_one_or_none()
+    if account is None:
+        return False
+    await session.delete(account)
+    await session.flush()
+    return True
+
+
 async def save_credential(
     session: AsyncSession,
     *,

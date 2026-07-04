@@ -79,7 +79,7 @@ def _raise_for_status(resp: httpx.Response) -> httpx.Response:
     if resp.is_success:
         return resp
     if resp.status_code == 401:
-        raise AuthExpired("spotify access token expired")
+        raise AuthExpired("spotify authorization expired; reconnect Spotify")
     if resp.status_code == 403:
         raise ProviderError("spotify request forbidden (insufficient scope?)")
     if resp.status_code == 404:
@@ -370,7 +370,7 @@ class SpotifyAuth(AuthStrategy):
                 auth=_token_auth(s),
             )
         if not resp.is_success:
-            raise AuthExpired(f"spotify refresh failed with HTTP {resp.status_code}")
+            raise AuthExpired("spotify authorization expired; reconnect Spotify")
         token = resp.json()
         access_token = token.get("access_token")
         if not access_token:
@@ -491,6 +491,10 @@ class SpotifyAdapter:
             owner_id=(meta.get("owner") or {}).get("id"),
             tracks=tracks,
         )
+
+    async def test_connection(self, cred: ProviderCredential) -> None:
+        async with self._client(cred) as client:
+            _raise_for_status(await client.get("/me"))
 
     # SEARCH ---------------------------------------------------------------- #
     async def search_tracks(

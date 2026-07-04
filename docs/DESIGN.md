@@ -33,10 +33,11 @@ and lets a user migrate playlists from any source to any target through a UI.
 ### Current implementation status
 The self-hosted MVP currently exposes only implemented capabilities in the UI:
 Spotify is a source provider (OAuth + playlist read/search) and YouTube Music is a
-target provider (header-paste auth + text search + playlist write through
+target provider (header-paste auth + playlist read/search/write through
 `ytmusicapi`). The persisted job pipeline supports import → match → write with SSE
 item progress; low-confidence matches are marked `needs_review` and can be
-approved, corrected, or skipped from the progress panel.
+approved, batch-approved, corrected, skipped, or batch-denied from the progress
+panel.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -61,6 +62,22 @@ created.
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
 | 4 | **Write**: create playlists and add tracks, idempotently | arq job + operation ledger |
 | 5 | UI shows live progress | Frontend SSE progress board |
+
+### Safe migration defaults
+Spotify → YouTube Music conversion is deliberately boring and slow by default:
+1 playlist per job, 50 selected tracks per job, 250 target tracks per day, and 120
+seconds between jobs. `POST /api/migrations` performs the preflight and returns a
+409 warning payload when a job exceeds those defaults or when a same-name target
+playlist has completely different songs. The frontend shows a confirmation popup
+and resubmits with `acknowledge_warnings=true` only after user acknowledgement.
+
+### Partial reruns and duplicate handling
+Completed `job_item` rows are the private migration ledger. Playlist and track read
+responses can include migration status when the frontend supplies target context,
+so a rerun can label a source playlist as partially migrated and mark leftover
+songs. The worker reuses a previously observed target playlist, or a same-name
+target playlist whose songs overlap, and skips duplicate target songs with a
+per-item reason instead of adding them twice.
 
 ---
 
@@ -134,6 +151,7 @@ class ProviderAdapter(Protocol):
     def iter_playlists(self, cred) -> AsyncIterator[PlaylistRef]: ...
     def iter_playlist_items(self, cred, ref) -> AsyncIterator[Track]: ...
     async def read_playlist(self, cred, ref) -> Playlist: ...
+    async def test_connection(self, cred) -> None: ...
 
     # SEARCH (used by MatchService; returns candidates, scores nothing)
     async def search_tracks(self, cred, track, *, limit=5) -> list[TrackCandidate]: ...

@@ -99,6 +99,9 @@ class FakeAdapter:
             raise NotFound(ref.id)
         return pl
 
+    async def test_connection(self, cred: ProviderCredential) -> None:
+        return None
+
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
     ) -> list[TrackCandidate]:

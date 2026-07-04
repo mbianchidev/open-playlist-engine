@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     enable_shared_graph: bool = False
     review_confidence_threshold: float = 0.8
 
+    # Conservative migration guardrails. Users can override after acknowledging warnings.
+    migration_safe_max_playlists_per_job: int = 1
+    migration_safe_max_tracks_per_job: int = 50
+    migration_safe_daily_tracks: int = 250
+    migration_safe_min_job_gap_s: int = 120
+
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""

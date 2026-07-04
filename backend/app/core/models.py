@@ -54,6 +54,9 @@ class Track(BaseModel):
     artwork_uri: str | None = None
     provider_uris: dict[str, str] = Field(default_factory=dict)
     metadata: dict[str, object] = Field(default_factory=dict)
+    migration_status: str | None = None
+    migrated_target_playlist_id: str | None = None
+    migrated_target_uri: str | None = None
 
     # Fidelity / lossy-migration tracking
     position: int | None = None
@@ -75,6 +78,10 @@ class PlaylistRef(BaseModel):
     name: str
     track_count: int | None = None
     owner_id: str | None = None
+    migration_status: str | None = None
+    migrated_track_count: int = 0
+    remaining_track_count: int | None = None
+    migration_note: str | None = None
 
 
 class Playlist(BaseModel):

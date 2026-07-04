@@ -32,6 +32,7 @@ from app.core.adapter import (
     AuthStrategy,
     ChallengeShape,
     CreatePlaylistSpec,
+    NotFound,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
@@ -53,6 +54,10 @@ from app.settings import get_settings
 
 class YTMusicClient(Protocol):
     """The narrow slice of ``ytmusicapi.YTMusic`` this adapter depends on."""
+
+    def get_library_playlists(self, limit: int = 100) -> list[dict[str, Any]]: ...
+
+    def get_playlist(self, playlistId: str, limit: int | None = 100) -> dict[str, Any]: ...
 
     def create_playlist(
         self,
@@ -158,6 +163,37 @@ def _artist_names(value: Any) -> str:
         return ""
     names = [artist.get("name", "") for artist in value if isinstance(artist, dict)]
     return ", ".join(name for name in names if name)
+
+
+def _playlist_title(item: dict[str, Any]) -> str:
+    return str(item.get("title") or item.get("name") or "")
+
+
+def _playlist_id(item: dict[str, Any]) -> str | None:
+    value = item.get("playlistId") or item.get("id") or item.get("playlist_id")
+    return str(value) if value else None
+
+
+def _track_from_video(item: dict[str, Any], position: int) -> Track | None:
+    video_id = item.get("videoId") or item.get("video_id")
+    title = item.get("title") or item.get("name")
+    if not video_id or not title:
+        return None
+    duration = item.get("duration_seconds") or _duration_s(item.get("duration"))
+    uri = f"ytmusic:video:{video_id}"
+    return Track(
+        id=str(video_id),
+        title=str(title),
+        artist=_artist_names(item.get("artists")),
+        album=(item.get("album") or {}).get("name")
+        if isinstance(item.get("album"), dict)
+        else None,
+        duration_s=duration,
+        explicit=item.get("isExplicit"),
+        provider_uris={"ytmusic": uri},
+        position=position,
+        source_item_id=str(video_id),
+    )
 
 
 def _auth_from_headers(raw: str) -> dict[str, Any]:
@@ -467,6 +503,8 @@ class YTMusicAdapter:
         auth_kind=AuthKind.OAUTH_DEVICE,
         capabilities=CapabilityDescriptor(
             capabilities={
+                Capability.READ_PLAYLISTS,
+                Capability.READ_TRACKS,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
                 Capability.SET_DESCRIPTION,
@@ -489,20 +527,63 @@ class YTMusicAdapter:
     def _client(self, cred: ProviderCredential) -> YTMusicClient:
         return self._client_factory(cred)
 
-    # READ (TODO — out of scope for this PR) -------------------------------- #
     async def iter_playlists(self, cred: ProviderCredential) -> AsyncIterator[PlaylistRef]:
-        raise NotImplementedError("TODO: ytmusic.get_library_playlists()")
-        yield  # pragma: no cover
+        client = self._client(cred)
+        rows = await asyncio.to_thread(lambda: client.get_library_playlists(limit=1000))
+        for item in rows:
+            playlist_id = _playlist_id(item)
+            if not playlist_id:
+                continue
+            count = item.get("count") or item.get("trackCount")
+            yield PlaylistRef(
+                id=playlist_id,
+                name=_playlist_title(item),
+                track_count=count if isinstance(count, int) else None,
+            )
 
     async def iter_playlist_items(
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
-        raise NotImplementedError("TODO: ytmusic.get_playlist(id)")
-        yield  # pragma: no cover
+        client = self._client(cred)
+        playlist = await asyncio.to_thread(lambda: client.get_playlist(ref.id, limit=5000))
+        if playlist.get("error"):
+            raise NotFound(ref.id)
+        tracks = playlist.get("tracks")
+        if not isinstance(tracks, list):
+            raise ProviderError("ytmusic playlist response did not include tracks")
+        for position, item in enumerate(tracks):
+            if not isinstance(item, dict):
+                continue
+            track = _track_from_video(item, position)
+            if track is not None:
+                yield track
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
-        tracks = [t async for t in self.iter_playlist_items(cred, ref)]
-        return Playlist(id=ref.id, name=ref.name, tracks=tracks)
+        client = self._client(cred)
+        raw = await asyncio.to_thread(lambda: client.get_playlist(ref.id, limit=5000))
+        if raw.get("error"):
+            raise NotFound(ref.id)
+        raw_tracks = raw.get("tracks")
+        if not isinstance(raw_tracks, list):
+            raise ProviderError("ytmusic playlist response did not include tracks")
+        tracks = [
+            track
+            for position, item in enumerate(raw_tracks)
+            if isinstance(item, dict)
+            for track in [_track_from_video(item, position)]
+            if track is not None
+        ]
+        name = str(raw.get("title") or raw.get("name") or ref.name)
+        return Playlist(
+            id=ref.id,
+            name=name,
+            description=raw.get("description") if isinstance(raw.get("description"), str) else None,
+            tracks=tracks,
+        )
+
+    async def test_connection(self, cred: ProviderCredential) -> None:
+        client = self._client(cred)
+        await asyncio.to_thread(lambda: client.search("test", filter="songs", limit=1))
 
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5

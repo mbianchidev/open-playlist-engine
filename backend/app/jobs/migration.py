@@ -15,8 +15,21 @@ from enum import StrEnum
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.adapter import CreatePlaylistSpec, ProviderError
+from app.core.adapter import (
+    CreatePlaylistSpec,
+    NotFound,
+    ProviderAdapter,
+    ProviderCredential,
+    ProviderError,
+)
 from app.core.match_service import MatchService
+from app.core.migration_state import (
+    has_track_overlap,
+    keys_from_metadata,
+    track_keys,
+    track_selected,
+    uri_keys,
+)
 from app.core.models import PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
@@ -83,30 +96,20 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
         )
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
-        tracks = [
-            track
-            for track in playlist.tracks
-            if not wanted or _track_selected(track, wanted)
-        ]
+        tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
 
-        target_playlist_id = await target.create_playlist(
-            target_cred,
-            CreatePlaylistSpec(
-                name=playlist.name,
-                description=playlist.description
-                or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
-                public=False,
-            ),
+        target_playlist_id = await _resolve_target_playlist(
+            session,
+            job=job,
+            target=target,
+            target_cred=target_cred,
+            playlist_id=playlist_id,
+            playlist_name=playlist.name,
+            description=playlist.description
+            or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            source_tracks=tracks,
         )
-        session.add(
-            orm.OperationLedger(
-                job_id=job.id,
-                op="create_playlist",
-                intent={"source_playlist_id": playlist_id, "name": playlist.name},
-                observed_target_id=target_playlist_id,
-                state="done",
-            )
-        )
+        target_existing_keys = await _target_playlist_keys(target, target_cred, target_playlist_id)
         await session.commit()
 
         item_pairs = await _create_items(session, job, playlist_id, playlist.name, tracks)
@@ -142,17 +145,22 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             await commit_job_counts(session, job)
 
         if matched:
+            write_items = await _skip_duplicate_items(
+                session, job, matched, existing_keys=target_existing_keys
+            )
             try:
                 results = await target.add_tracks(
-                    target_cred, target_playlist_id, [item.target_uri or "" for item in matched]
+                    target_cred,
+                    target_playlist_id,
+                    [item.target_uri or "" for item in write_items],
                 )
             except ProviderError as exc:
-                for item in matched:
+                for item in write_items:
                     item.status = "failed"
                     item.reason = str(exc)
                 await commit_job_counts(session, job)
                 continue
-            for item, result in zip(matched, results, strict=False):
+            for item, result in zip(write_items, results, strict=False):
                 session.add(
                     orm.OperationLedger(
                         job_id=job.id,
@@ -170,7 +178,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                     item.status = "failed"
                     item.reason = result.error or "target rejected track"
                 await commit_job_counts(session, job)
-            for item in matched[len(results) :]:
+            for item in write_items[len(results) :]:
                 item.status = "failed"
                 item.reason = "target did not return a result for this track"
                 await commit_job_counts(session, job)
@@ -179,16 +187,6 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     job.status = "done"
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
-
-
-def _track_selected(track: Track, wanted: set[str]) -> bool:
-    position = str(track.position) if track.position is not None else None
-    identifiers = {
-        value
-        for value in [track.id, track.source_item_id, position]
-        if value
-    }
-    return bool(identifiers & wanted)
 
 
 async def _create_items(
@@ -219,6 +217,126 @@ async def _create_items(
         pairs.append((item, track))
     await commit_job_counts(session, job)
     return pairs
+
+
+async def _resolve_target_playlist(
+    session: AsyncSession,
+    *,
+    job: orm.MigrationJob,
+    target: ProviderAdapter,
+    target_cred: ProviderCredential,
+    playlist_id: str,
+    playlist_name: str,
+    description: str,
+    source_tracks: list[Track],
+) -> str:
+    previous = await _previous_target_playlist_id(session, job=job, playlist_id=playlist_id)
+    if previous and await _target_playlist_exists(target, target_cred, previous):
+        return previous
+
+    same_name_refs = [
+        ref
+        async for ref in target.iter_playlists(target_cred)
+        if ref.name.strip() == playlist_name.strip()
+    ]
+    for ref in same_name_refs:
+        target_playlist = await target.read_playlist(target_cred, ref)
+        if not target_playlist.tracks or has_track_overlap(source_tracks, target_playlist.tracks):
+            return ref.id
+
+    target_playlist_id = await target.create_playlist(
+        target_cred,
+        CreatePlaylistSpec(name=playlist_name, description=description, public=False),
+    )
+    session.add(
+        orm.OperationLedger(
+            job_id=job.id,
+            op="create_playlist",
+            intent={"source_playlist_id": playlist_id, "name": playlist_name},
+            observed_target_id=target_playlist_id,
+            state="done",
+        )
+    )
+    return target_playlist_id
+
+
+async def _previous_target_playlist_id(
+    session: AsyncSession, *, job: orm.MigrationJob, playlist_id: str
+) -> str | None:
+    return await session.scalar(
+        select(orm.JobItem.target_playlist_id)
+        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
+        .where(
+            orm.MigrationJob.id != job.id,
+            orm.MigrationJob.user_id == job.user_id,
+            orm.MigrationJob.source_provider == job.source_provider,
+            orm.MigrationJob.source_account_id == job.source_account_id,
+            orm.MigrationJob.target_provider == job.target_provider,
+            orm.MigrationJob.target_account_id == job.target_account_id,
+            orm.JobItem.source_playlist_id == playlist_id,
+            orm.JobItem.target_playlist_id.is_not(None),
+        )
+        .order_by(orm.JobItem.updated_at.desc())
+        .limit(1)
+    )
+
+
+async def _target_playlist_exists(
+    target: ProviderAdapter, target_cred: ProviderCredential, playlist_id: str
+) -> bool:
+    try:
+        await target.read_playlist(target_cred, PlaylistRef(id=playlist_id, name=playlist_id))
+        return True
+    except NotFound:
+        return False
+
+
+async def _target_playlist_keys(
+    target: ProviderAdapter, target_cred: ProviderCredential, playlist_id: str
+) -> set[str]:
+    playlist = await target.read_playlist(
+        target_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+    )
+    keys: set[str] = set()
+    for track in playlist.tracks:
+        keys.update(track_keys(track))
+    return keys
+
+
+async def _skip_duplicate_items(
+    session: AsyncSession,
+    job: orm.MigrationJob,
+    items: list[orm.JobItem],
+    *,
+    existing_keys: set[str],
+) -> list[orm.JobItem]:
+    write_items: list[orm.JobItem] = []
+    seen = set(existing_keys)
+    for item in items:
+        keys = _item_target_keys(item)
+        if keys & seen:
+            item.status = "skipped"
+            item.reason = "duplicate already exists in target playlist"
+            await commit_job_counts(session, job)
+            continue
+        seen.update(keys)
+        write_items.append(item)
+    return write_items
+
+
+def _item_target_keys(item: orm.JobItem) -> set[str]:
+    keys = uri_keys(item.target_uri)
+    keys.update(
+        keys_from_metadata(
+            item.source_metadata,
+            title=item.title,
+            artist=item.artist,
+            album=item.album,
+            duration_s=item.duration_s,
+            isrc=item.isrc,
+        )
+    )
+    return keys
 
 
 async def commit_job_counts(session: AsyncSession, job: orm.MigrationJob) -> None:
