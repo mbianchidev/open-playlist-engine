@@ -10,6 +10,7 @@ from app.core.adapter import (
     AuthExpired,
     AuthKind,
     ProviderCredential,
+    ProviderError,
     RateLimited,
 )
 from app.core.models import MediaType, Track
@@ -51,6 +52,67 @@ async def test_missing_access_token_raises_auth_expired() -> None:
     cred = ProviderCredential(account_id="a", provider="spotify", auth_kind=AuthKind.OAUTH_PKCE)
     with pytest.raises(AuthExpired):
         [r async for r in adapter.iter_playlists(cred)]
+
+
+async def test_refresh_invalid_grant_maps_to_auth_expired_without_retry() -> None:
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        assert str(request.url) == "https://accounts.spotify.com/api/token"
+        assert b"grant_type=refresh_token" in request.content
+        return httpx.Response(
+            400,
+            json={
+                "error": "invalid_grant",
+                "error_description": "Refresh token expired",
+            },
+        )
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    cred = _cred().model_copy(update={"refresh_token": "expired-refresh-token"})
+
+    with pytest.raises(AuthExpired) as excinfo:
+        await adapter.auth.refresh(cred)
+
+    assert requests == 1
+    assert "reconnect Spotify" in str(excinfo.value)
+
+
+async def test_refresh_transient_token_error_is_not_auth_expired() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "server_error"})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    cred = _cred().model_copy(update={"refresh_token": "refresh-token"})
+
+    with pytest.raises(ProviderError) as excinfo:
+        await adapter.auth.refresh(cred)
+
+    assert not isinstance(excinfo.value, AuthExpired)
+    assert str(excinfo.value) == "spotify token refresh failed with HTTP 500"
+
+
+async def test_refresh_preserves_refresh_token_when_spotify_omits_rotation() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "new-access-token",
+                "expires_in": 3600,
+                "scope": "user-read-private playlist-read-private",
+            },
+        )
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    cred = _cred().model_copy(update={"refresh_token": "existing-refresh-token"})
+
+    refreshed = await adapter.auth.refresh(cred)
+
+    assert refreshed.access_token == "new-access-token"
+    assert refreshed.refresh_token == "existing-refresh-token"
+    assert refreshed.scopes == ["user-read-private", "playlist-read-private"]
 
 
 async def test_read_maps_isrc_and_provider_uri_and_position() -> None:

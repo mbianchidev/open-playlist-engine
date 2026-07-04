@@ -67,20 +67,38 @@ export default function App() {
         setPlaylists(rows);
         setSelectedPlaylists(new Set());
       })
-      .catch((e: unknown) => setError(errorMessage(e)));
+      .catch((e: unknown) => {
+        void handleRequestError(e);
+      });
   }, [source, sourceAccount?.id, target, targetAccount?.id]);
 
-  async function refreshAccounts() {
+  async function refreshAccounts(
+    expiredNotice = "Expired account disconnected. Reconnect before migrating.",
+  ) {
     try {
       const rows = await getAccounts(undefined, true);
       setAccounts((prev) => {
         if (prev.length > rows.length) {
-          setNotice("Expired account disconnected. Reconnect before migrating.");
+          setNotice(expiredNotice);
         }
         return rows;
       });
     } catch (e: unknown) {
       setError(errorMessage(e));
+    }
+  }
+
+  async function handleRequestError(
+    e: unknown,
+    expiredNotice = "Provider authorization expired. Reconnect before migrating.",
+  ) {
+    setError(errorMessage(e));
+    if (e instanceof ApiError && e.status === 401) {
+      setPlaylists([]);
+      setSelectedPlaylists(new Set());
+      setPlaylistTracks({});
+      setSelectedTracks({});
+      await refreshAccounts(expiredNotice);
     }
   }
 
@@ -200,8 +218,7 @@ export default function App() {
       setNotice(result.message);
       await refreshAccounts();
     } catch (e: unknown) {
-      setError(errorMessage(e));
-      await refreshAccounts();
+      await handleRequestError(e);
     } finally {
       setBusy(false);
     }
@@ -231,7 +248,7 @@ export default function App() {
         await start(true);
         return;
       }
-      setError(errorMessage(e));
+      await handleRequestError(e);
     } finally {
       setBusy(false);
     }
@@ -292,7 +309,7 @@ export default function App() {
         return next;
       });
     } catch (e: unknown) {
-      setError(errorMessage(e));
+      await handleRequestError(e);
     } finally {
       setBusy(false);
     }
@@ -490,7 +507,7 @@ export default function App() {
             </div>
           </div>
         ) : null}
-        <button className="secondary" disabled={busy} onClick={refreshAccounts}>
+        <button className="secondary" disabled={busy} onClick={() => void refreshAccounts()}>
           Refresh accounts
         </button>
       </section>

@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.adapter import ProviderAdapter
+from app.core.adapter import AuthExpired, ProviderAdapter
 from app.core.adapter import ProviderCredential as RuntimeCredential
 from app.core.security import decrypt, encrypt
 from app.db import models as orm
+
+logger = logging.getLogger(__name__)
 
 
 class AccountNotFound(Exception):
@@ -143,7 +146,17 @@ async def load_fresh_credential(
 ) -> tuple[RuntimeCredential, orm.ProviderAccount]:
     credential, account = await load_credential(session, account_id=account_id, provider=provider)
     if credential.expires_at and credential.expires_at <= time.time() + 60:
-        refreshed = await adapter.auth.refresh(credential)
+        try:
+            refreshed = await adapter.auth.refresh(credential)
+        except AuthExpired:
+            logger.info(
+                "discarding expired provider credential provider=%s account_id=%s",
+                account.provider,
+                account.id,
+            )
+            await delete_account(session, account_id=account.id, user_id=account.user_id)
+            await session.commit()
+            raise
         account = await save_credential(
             session,
             user_id=account.user_id,

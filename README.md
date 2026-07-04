@@ -87,6 +87,9 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
 3. Start Docker Compose, open `http://localhost:8080`, choose Spotify as source
    and YouTube Music as target.
 4. Connect Spotify in the popup.
+   Spotify refresh tokens expire after six months. When Spotify returns
+   `invalid_grant` during refresh, the app disconnects the stale account and asks
+   you to connect Spotify again instead of retrying the expired token.
 5. For YouTube Music, open the verification URL shown by the app and enter the
    device code. If Google blocks the unverified OAuth app, or if YouTube Music
    OAuth credentials are not set, use the guided browser-session header fallback
