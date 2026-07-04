@@ -21,8 +21,9 @@ from app.core.adapter import (
     ProviderAdapter,
     ProviderCredential,
     ProviderError,
+    TrackCandidate,
 )
-from app.core.match_service import MatchService
+from app.core.match_service import MatchResult, MatchService
 from app.core.migration_state import (
     has_track_overlap,
     keys_from_metadata,
@@ -39,6 +40,7 @@ from app.db.repositories import load_fresh_credential
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
+_REVIEW_HISTORY_CONFIDENCE_BONUS = 0.10
 
 
 class Phase(StrEnum):
@@ -91,7 +93,11 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     if not playlist_ids:
         raise ValueError("migration has no selected playlists")
 
-    matcher = MatchService(graph=None, review_threshold=get_settings().review_confidence_threshold)
+    review_threshold = get_settings().review_confidence_threshold
+    matcher = MatchService(graph=None, review_threshold=review_threshold)
+    reviewed_history = await _previous_reviewed_items(
+        session, job=job, review_threshold=review_threshold
+    )
     for playlist_id in playlist_ids:
         playlist = await source.read_playlist(
             source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
@@ -129,6 +135,12 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 item.reason = str(exc)
                 await commit_job_counts(session, job)
                 continue
+            result = _apply_review_history_bonus(
+                reviewed_history,
+                track=track,
+                result=result,
+                review_threshold=review_threshold,
+            )
             item.confidence = result.confidence
             if result.candidate is None:
                 item.status = "failed"
@@ -367,6 +379,118 @@ async def _previous_target_playlist_id(
         )
         .order_by(orm.JobItem.updated_at.desc())
         .limit(1)
+    )
+
+
+def _apply_review_history_bonus(
+    prior_items: list[orm.JobItem],
+    *,
+    track: Track,
+    result: MatchResult,
+    review_threshold: float,
+) -> MatchResult:
+    prior = _prior_reviewed_item(track, prior_items, review_threshold)
+    if prior is None or not prior.target_uri:
+        return result
+    confidence = min(
+        1.0,
+        round(
+            max(result.confidence, prior.confidence or 0.0)
+            + _REVIEW_HISTORY_CONFIDENCE_BONUS,
+            4,
+        ),
+    )
+    return MatchResult(
+        candidate=_candidate_from_reviewed_item(prior),
+        confidence=confidence,
+        source="review_history",
+        needs_review=confidence < review_threshold,
+        review_reason=(
+            "Previously accepted in another migration; confirm this match again."
+            if confidence < review_threshold
+            else None
+        ),
+    )
+
+
+async def _previous_reviewed_items(
+    session: AsyncSession,
+    *,
+    job: orm.MigrationJob,
+    review_threshold: float,
+) -> list[orm.JobItem]:
+    stmt = (
+        select(orm.JobItem)
+        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
+        .where(
+            orm.MigrationJob.id != job.id,
+            orm.MigrationJob.user_id == job.user_id,
+            orm.MigrationJob.source_provider == job.source_provider,
+            provider_account_history(
+                orm.MigrationJob.source_account_id,
+                current_account_id=job.source_account_id,
+                user_id=job.user_id,
+                provider=job.source_provider,
+            ),
+            orm.MigrationJob.target_provider == job.target_provider,
+            provider_account_history(
+                orm.MigrationJob.target_account_id,
+                current_account_id=job.target_account_id,
+                user_id=job.user_id,
+                provider=job.target_provider,
+            ),
+            orm.JobItem.status.in_(["written", "skipped"]),
+            orm.JobItem.target_uri.is_not(None),
+            orm.JobItem.confidence.is_not(None),
+            orm.JobItem.confidence < review_threshold,
+        )
+        .order_by(orm.JobItem.updated_at.desc())
+    )
+    return list((await session.execute(stmt)).scalars())
+
+
+def _prior_reviewed_item(
+    track: Track, prior_items: list[orm.JobItem], review_threshold: float
+) -> orm.JobItem | None:
+    keys = track_keys(track)
+    if not keys:
+        return None
+    for item in prior_items:
+        if not item.target_uri or item.confidence is None or item.confidence >= review_threshold:
+            continue
+        if item.status not in {"written", "skipped"}:
+            continue
+        if keys & _source_item_keys(item):
+            return item
+    return None
+
+
+def _candidate_from_reviewed_item(item: orm.JobItem) -> TrackCandidate:
+    target_uri = item.target_uri or ""
+    return TrackCandidate(
+        provider_track_id=_provider_track_id(target_uri),
+        uri=target_uri,
+        title=item.title,
+        artist=item.artist,
+        album=item.album,
+        duration_s=item.duration_s,
+        isrc=item.isrc,
+    )
+
+
+def _provider_track_id(uri: str) -> str:
+    keys = [key.removeprefix("id:") for key in uri_keys(uri) if key.startswith("id:")]
+    return keys[0] if keys else uri
+
+
+def _source_item_keys(item: orm.JobItem) -> set[str]:
+    return keys_from_metadata(
+        item.source_metadata,
+        title=item.title,
+        artist=item.artist,
+        album=item.album,
+        duration_s=item.duration_s,
+        isrc=item.isrc,
     )
 
 
