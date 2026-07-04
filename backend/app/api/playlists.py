@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.migration_state import keys_from_metadata, track_keys
-from app.core.models import Playlist, PlaylistRef
+from app.core.models import Playlist, PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
@@ -48,6 +48,7 @@ async def list_playlists(
     session: Annotated[AsyncSession, Depends(get_session)],
     target_provider: str | None = None,
     target_account_id: str | None = None,
+    refresh: bool = False,
     user_id: str = "local",
 ) -> list[PlaylistRef]:
     try:
@@ -55,7 +56,15 @@ async def list_playlists(
         credential, _ = await load_fresh_credential(
             session, account_id=account_id, adapter=adapter, provider=provider
         )
-        playlists = [playlist async for playlist in adapter.iter_playlists(credential)]
+        playlists = await _playlist_refs(
+            session,
+            adapter=adapter,
+            credential=credential,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            refresh=refresh,
+        )
         if target_provider and target_account_id:
             migration_summaries = await _migration_summaries(
                 session,
@@ -95,6 +104,7 @@ async def get_playlist(
     session: Annotated[AsyncSession, Depends(get_session)],
     target_provider: str | None = None,
     target_account_id: str | None = None,
+    refresh: bool = False,
     user_id: str = "local",
 ) -> Playlist:
     try:
@@ -102,8 +112,15 @@ async def get_playlist(
         credential, _ = await load_fresh_credential(
             session, account_id=account_id, adapter=adapter, provider=provider
         )
-        playlist = await adapter.read_playlist(
-            credential, PlaylistRef(id=playlist_id, name=playlist_id)
+        playlist = await _playlist_detail(
+            session,
+            adapter=adapter,
+            credential=credential,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            playlist_id=playlist_id,
+            refresh=refresh,
         )
         if target_provider and target_account_id:
             migrated = await _migrated_track_map(
@@ -142,6 +159,253 @@ async def get_playlist(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _uses_snapshot_cache(provider: str) -> bool:
+    return provider == "spotify"
+
+
+async def _playlist_refs(
+    session: AsyncSession,
+    *,
+    adapter,
+    credential,
+    user_id: str,
+    provider: str,
+    account_id: str,
+    refresh: bool,
+) -> list[PlaylistRef]:
+    if _uses_snapshot_cache(provider) and not refresh:
+        cached = await _cached_playlist_refs(
+            session, user_id=user_id, provider=provider, account_id=account_id
+        )
+        if cached:
+            return cached
+    playlists = [playlist async for playlist in adapter.iter_playlists(credential)]
+    if _uses_snapshot_cache(provider):
+        await _persist_playlist_refs(
+            session,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            refs=playlists,
+        )
+    return playlists
+
+
+async def _playlist_detail(
+    session: AsyncSession,
+    *,
+    adapter,
+    credential,
+    user_id: str,
+    provider: str,
+    account_id: str,
+    playlist_id: str,
+    refresh: bool,
+) -> Playlist:
+    cached_ref = (
+        await _cached_playlist_ref(
+            session,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            playlist_id=playlist_id,
+        )
+        if _uses_snapshot_cache(provider)
+        else None
+    )
+    if _uses_snapshot_cache(provider) and cached_ref and not refresh:
+        cached = await _cached_playlist_tracks(
+            session,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            playlist_id=playlist_id,
+            snapshot_id=cached_ref.snapshot_id,
+        )
+        if cached is not None:
+            return cached
+
+    ref = cached_ref or PlaylistRef(id=playlist_id, name=playlist_id)
+    playlist = await adapter.read_playlist(credential, ref)
+    if _uses_snapshot_cache(provider):
+        await _persist_playlist_refs(
+            session,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            refs=[
+                PlaylistRef(
+                    id=playlist.id or playlist_id,
+                    name=playlist.name,
+                    track_count=len(playlist.tracks),
+                    owner_id=playlist.owner_id,
+                    snapshot_id=playlist.snapshot_id or ref.snapshot_id,
+                    tracks_href=ref.tracks_href,
+                )
+            ],
+        )
+        await _persist_playlist_tracks(
+            session,
+            user_id=user_id,
+            provider=provider,
+            account_id=account_id,
+            playlist_id=playlist_id,
+            playlist=playlist,
+            fallback_snapshot_id=ref.snapshot_id,
+        )
+    return playlist
+
+
+async def _cached_playlist_refs(
+    session: AsyncSession, *, user_id: str, provider: str, account_id: str
+) -> list[PlaylistRef]:
+    stmt = (
+        select(orm.CachedPlaylistRef)
+        .where(
+            orm.CachedPlaylistRef.user_id == user_id,
+            orm.CachedPlaylistRef.provider == provider,
+            orm.CachedPlaylistRef.account_id == account_id,
+        )
+        .order_by(orm.CachedPlaylistRef.name.asc())
+    )
+    return [_playlist_ref_from_cache(row) for row in (await session.execute(stmt)).scalars()]
+
+
+async def _cached_playlist_ref(
+    session: AsyncSession, *, user_id: str, provider: str, account_id: str, playlist_id: str
+) -> PlaylistRef | None:
+    stmt = select(orm.CachedPlaylistRef).where(
+        orm.CachedPlaylistRef.user_id == user_id,
+        orm.CachedPlaylistRef.provider == provider,
+        orm.CachedPlaylistRef.account_id == account_id,
+        orm.CachedPlaylistRef.playlist_id == playlist_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    return _playlist_ref_from_cache(row) if row else None
+
+
+def _playlist_ref_from_cache(row: orm.CachedPlaylistRef) -> PlaylistRef:
+    return PlaylistRef(
+        id=row.playlist_id,
+        name=row.name,
+        track_count=row.track_count,
+        owner_id=row.owner_id,
+        collaborative=row.collaborative,
+        snapshot_id=row.snapshot_id,
+        tracks_href=row.tracks_href,
+    )
+
+
+async def _persist_playlist_refs(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    provider: str,
+    account_id: str,
+    refs: list[PlaylistRef],
+) -> None:
+    for ref in refs:
+        stmt = select(orm.CachedPlaylistRef).where(
+            orm.CachedPlaylistRef.user_id == user_id,
+            orm.CachedPlaylistRef.provider == provider,
+            orm.CachedPlaylistRef.account_id == account_id,
+            orm.CachedPlaylistRef.playlist_id == ref.id,
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            session.add(
+                orm.CachedPlaylistRef(
+                    user_id=user_id,
+                    provider=provider,
+                    account_id=account_id,
+                    playlist_id=ref.id,
+                    name=ref.name,
+                    track_count=ref.track_count,
+                    owner_id=ref.owner_id,
+                    collaborative=ref.collaborative,
+                    snapshot_id=ref.snapshot_id,
+                    tracks_href=ref.tracks_href,
+                )
+            )
+            continue
+        row.name = ref.name
+        row.track_count = ref.track_count
+        row.owner_id = ref.owner_id
+        row.collaborative = ref.collaborative
+        row.snapshot_id = ref.snapshot_id
+        row.tracks_href = ref.tracks_href
+    await session.flush()
+
+
+async def _cached_playlist_tracks(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    provider: str,
+    account_id: str,
+    playlist_id: str,
+    snapshot_id: str | None,
+) -> Playlist | None:
+    stmt = select(orm.CachedPlaylistTracks).where(
+        orm.CachedPlaylistTracks.user_id == user_id,
+        orm.CachedPlaylistTracks.provider == provider,
+        orm.CachedPlaylistTracks.account_id == account_id,
+        orm.CachedPlaylistTracks.playlist_id == playlist_id,
+        orm.CachedPlaylistTracks.snapshot_id == snapshot_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        return None
+    return Playlist(
+        id=row.playlist_id,
+        name=row.name,
+        owner_id=row.owner_id,
+        snapshot_id=row.snapshot_id,
+        tracks=[Track.model_validate(track) for track in row.tracks],
+    )
+
+
+async def _persist_playlist_tracks(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    provider: str,
+    account_id: str,
+    playlist_id: str,
+    playlist: Playlist,
+    fallback_snapshot_id: str | None,
+) -> None:
+    stmt = select(orm.CachedPlaylistTracks).where(
+        orm.CachedPlaylistTracks.user_id == user_id,
+        orm.CachedPlaylistTracks.provider == provider,
+        orm.CachedPlaylistTracks.account_id == account_id,
+        orm.CachedPlaylistTracks.playlist_id == playlist_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    snapshot_id = playlist.snapshot_id or fallback_snapshot_id
+    tracks = [track.model_dump(mode="json") for track in playlist.tracks]
+    if row is None:
+        session.add(
+            orm.CachedPlaylistTracks(
+                user_id=user_id,
+                provider=provider,
+                account_id=account_id,
+                playlist_id=playlist_id,
+                snapshot_id=snapshot_id,
+                name=playlist.name,
+                owner_id=playlist.owner_id,
+                tracks=tracks,
+            )
+        )
+        await session.flush()
+        return
+    row.snapshot_id = snapshot_id
+    row.name = playlist.name
+    row.owner_id = playlist.owner_id
+    row.tracks = tracks
+    await session.flush()
 
 
 def _is_migrated_item(item: orm.JobItem) -> bool:

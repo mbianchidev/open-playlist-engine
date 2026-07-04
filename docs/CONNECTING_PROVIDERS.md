@@ -49,6 +49,16 @@ playlist** to copy it into a playlist you own, then migrate that copy. Delta
 migration is not available for the original external playlist because Spotify does
 not let the app read its tracks.
 
+### Spotify rate limits and cache
+
+Spotify can return long `Retry-After` windows. To reduce calls, the app caches
+Spotify playlist refs with their `snapshot_id` and caches each selected playlist's
+tracks for that snapshot. Normal app refreshes use the cache. Use **Refresh
+playlists** only after adding or changing playlists so the app can discover new
+snapshot IDs. Use **Refresh songs** inside a playlist only when you need to force a
+track refresh; otherwise cached songs are reused until the playlist snapshot
+changes.
+
 ## YouTube Music device-code auth
 
 YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device

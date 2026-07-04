@@ -325,6 +325,9 @@ graph as an open dataset is deferred pending legal review.
 - **[rev] Central rate limiter** (`app/core/rate_limit.py`, token bucket) paces all
   providers using the capability cost hints — not per-adapter sleeps — with jitter
   for unofficial providers to avoid account flags.
+- Spotify read calls cache `/me/playlists` results and selected playlist tracks by
+  `snapshot_id`. The UI does not automatically refresh Spotify lists on every app
+  load; users refresh playlist refs or songs explicitly when they need new data.
 - **[rev] Durable, replayable progress.** Progress is derived from persisted
   `job_item` rows and streamed over **SSE**; a reconnecting client resumes via
   `Last-Event-ID`, so no events are lost on a dropped connection.

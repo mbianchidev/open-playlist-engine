@@ -70,6 +70,55 @@ class ProviderCredential(Base):
 
 
 # --------------------------------------------------------------------------- #
+# Provider read cache (private)
+# --------------------------------------------------------------------------- #
+class CachedPlaylistRef(Base):
+    __tablename__ = "cached_playlist_ref"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", "account_id", "playlist_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    provider: Mapped[str] = mapped_column(String, index=True)
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_account.id", ondelete="CASCADE"), index=True
+    )
+    playlist_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    track_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    owner_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    collaborative: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    tracks_href: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CachedPlaylistTracks(Base):
+    __tablename__ = "cached_playlist_tracks"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", "account_id", "playlist_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    provider: Mapped[str] = mapped_column(String, index=True)
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_account.id", ondelete="CASCADE"), index=True
+    )
+    playlist_id: Mapped[str] = mapped_column(String, index=True)
+    snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String)
+    owner_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    tracks: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Jobs & operation ledger (private)
 # --------------------------------------------------------------------------- #
 class MigrationJob(Base):

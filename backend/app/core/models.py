@@ -79,6 +79,8 @@ class PlaylistRef(BaseModel):
     track_count: int | None = None
     owner_id: str | None = None
     collaborative: bool | None = None
+    snapshot_id: str | None = None
+    tracks_href: str | None = None
     migration_status: str | None = None
     migrated_track_count: int = 0
     remaining_track_count: int | None = None
@@ -92,5 +94,6 @@ class Playlist(BaseModel):
     photo: str | None = None
     tracks: list[Track] = Field(default_factory=list)
     owner_id: str | None = None
+    snapshot_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

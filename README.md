@@ -100,6 +100,10 @@ ARQ's 5-minute default timeout.
    Spotify may block tracks from playlists you do not own or collaborate on; copy
    those playlists into one you own with Spotify's **Add to other playlist** before
    migrating.
+   Spotify playlist lists and selected playlist songs are cached by `snapshot_id`
+   to avoid rate limits. Use **Refresh playlists** only when you add playlists or
+   need new snapshots, and **Refresh songs** on a playlist only when its songs
+   changed.
 7. When the job finishes, the progress panel says "Migration succeeded" and links
    to created target playlists when the target provider exposes a web URL.
 8. Review low-confidence matches in the progress panel: approve the suggested

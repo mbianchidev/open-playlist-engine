@@ -51,6 +51,8 @@ export interface PlaylistRef {
   track_count: number | null;
   owner_id: string | null;
   collaborative: boolean | null;
+  snapshot_id: string | null;
+  tracks_href: string | null;
   migration_status: string | null;
   migrated_track_count: number;
   remaining_track_count: number | null;
@@ -101,6 +103,7 @@ export interface Playlist {
   photo: string | null;
   tracks: Track[];
   owner_id: string | null;
+  snapshot_id: string | null;
   created_at: string | null;
   updated_at: string | null;
 }

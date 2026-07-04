@@ -88,7 +88,7 @@ export default function App() {
   ).length;
 
   const refreshSourcePlaylists = useCallback(
-    async (options: { resetSelection?: boolean } = {}) => {
+    async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
       if (!source || !sourceAccount || !target || !targetAccount) {
         setPlaylistLoading(false);
         return;
@@ -100,6 +100,7 @@ export default function App() {
         const rows = await getPlaylists(source, sourceAccount.id, {
           targetProvider: target,
           targetAccountId: targetAccount.id,
+          refresh: options.forceRefresh,
         });
         if (loadId !== playlistLoadId.current) return;
         setPlaylists(rows);
@@ -425,7 +426,7 @@ export default function App() {
     });
   }
 
-  async function loadTracks(playlist: PlaylistRef) {
+  async function loadTracks(playlist: PlaylistRef, options: { forceRefresh?: boolean } = {}) {
     if (!source || !sourceAccount || !target || !targetAccount) return;
     setBusy(true);
     setError(null);
@@ -433,6 +434,7 @@ export default function App() {
       const detail = await getPlaylist(source, sourceAccount.id, playlist.id, {
         targetProvider: target,
         targetAccountId: targetAccount.id,
+        refresh: options.forceRefresh,
       });
       const defaultSelected = unmigratedTrackKeys(detail.tracks);
       if (detail.tracks.length > 0 && defaultSelected.length === 0) {
@@ -560,7 +562,7 @@ export default function App() {
             onClick={() => loadTracks(playlist)}
           >
             {playlistTracks[playlist.id]
-              ? "Reload tracks"
+              ? "Show cached songs"
               : playlist.migration_status === "delta"
                 ? "Choose new tracks"
                 : "Choose tracks"}
@@ -589,6 +591,13 @@ export default function App() {
                 onClick={() => selectPlaylistSongs(playlist.id, "none")}
               >
                 Deselect playlist
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => loadTracks(playlist, { forceRefresh: true })}
+              >
+                Refresh songs
               </button>
             </div>
             {playlistTracks[playlist.id].map((track) => {
@@ -821,8 +830,20 @@ export default function App() {
               >
                 Deselect all
               </button>
+              <button
+                className="secondary compact"
+                disabled={busy || playlistLoading}
+                onClick={() => void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })}
+              >
+                {playlistLoading ? "Refreshing…" : "Refresh playlists"}
+              </button>
             </div>
           </div>
+          <p className="cache-guidance">
+            Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only
+            for new playlists or changed snapshots; songs are cached per playlist until Spotify
+            reports a new snapshot.
+          </p>
           <div className="migration-top-stack">
             <div className="migration-action-bar">
               <div>

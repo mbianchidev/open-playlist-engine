@@ -17,6 +17,34 @@ class FakePersistSession:
                 row.id = "persisted-job"
 
 
+class FakeResult:
+    def __init__(self, *, rows=None, row=None) -> None:
+        self.rows = rows or []
+        self.row = row
+
+    def scalars(self):
+        return self.rows
+
+    def scalar_one_or_none(self):
+        return self.row
+
+
+class FakeCacheSession:
+    def __init__(self, results: list[FakeResult]) -> None:
+        self.results = results
+
+    async def execute(self, _stmt):
+        return self.results.pop(0)
+
+
+class FailingAdapter:
+    async def read_playlist(self, *_args, **_kwargs):
+        raise AssertionError("adapter should not be called for cached tracks")
+
+    def iter_playlists(self, *_args, **_kwargs):
+        raise AssertionError("adapter should not be called for cached playlist refs")
+
+
 def test_full_migration_without_provider_track_count_is_migrated() -> None:
     ref = PlaylistRef(id="playlist", name="Playlist")
     summary = _PlaylistMigrationSummary(
@@ -184,3 +212,86 @@ async def test_discovered_full_migration_is_persisted(monkeypatch) -> None:
         "ytmusic:video:target-1",
         "ytmusic:video:target-2",
     }
+
+
+async def test_cached_playlist_refs_skip_provider_call() -> None:
+    session = FakeCacheSession(
+        [
+            FakeResult(
+                rows=[
+                    orm.CachedPlaylistRef(
+                        user_id="local",
+                        provider="spotify",
+                        account_id="account",
+                        playlist_id="playlist",
+                        name="Cached",
+                        track_count=1,
+                        snapshot_id="snap-1",
+                    )
+                ]
+            )
+        ]
+    )
+
+    refs = await playlists._playlist_refs(
+        session,
+        adapter=FailingAdapter(),
+        credential=object(),
+        user_id="local",
+        provider="spotify",
+        account_id="account",
+        refresh=False,
+    )
+
+    assert refs[0].id == "playlist"
+    assert refs[0].snapshot_id == "snap-1"
+
+
+async def test_cached_playlist_tracks_skip_provider_call_when_snapshot_matches() -> None:
+    session = FakeCacheSession(
+        [
+            FakeResult(
+                row=orm.CachedPlaylistRef(
+                    user_id="local",
+                    provider="spotify",
+                    account_id="account",
+                    playlist_id="playlist",
+                    name="Cached",
+                    track_count=1,
+                    snapshot_id="snap-1",
+                )
+            ),
+            FakeResult(
+                row=orm.CachedPlaylistTracks(
+                    user_id="local",
+                    provider="spotify",
+                    account_id="account",
+                    playlist_id="playlist",
+                    snapshot_id="snap-1",
+                    name="Cached",
+                    tracks=[
+                        {
+                            "id": "track",
+                            "title": "Song",
+                            "artist": "Artist",
+                            "provider_uris": {"spotify": "spotify:track:track"},
+                        }
+                    ],
+                )
+            ),
+        ]
+    )
+
+    playlist = await playlists._playlist_detail(
+        session,
+        adapter=FailingAdapter(),
+        credential=object(),
+        user_id="local",
+        provider="spotify",
+        account_id="account",
+        playlist_id="playlist",
+        refresh=False,
+    )
+
+    assert playlist.snapshot_id == "snap-1"
+    assert playlist.tracks[0].title == "Song"

@@ -319,6 +319,12 @@ button.compact {
   margin-top: 0;
 }
 
+.cache-guidance {
+  margin: 0.5rem 0 0;
+  color: #9aa3ad;
+  font-size: 0.85rem;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

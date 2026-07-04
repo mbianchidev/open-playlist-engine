@@ -78,6 +78,7 @@ export async function testAccountConnection(accountId: string): Promise<Connecti
 export interface PlaylistContext {
   targetProvider?: string | null;
   targetAccountId?: string | null;
+  refresh?: boolean;
 }
 
 function playlistParams(provider: string, accountId: string, context?: PlaylistContext): URLSearchParams {
@@ -86,6 +87,7 @@ function playlistParams(provider: string, accountId: string, context?: PlaylistC
     params.set("target_provider", context.targetProvider);
     params.set("target_account_id", context.targetAccountId);
   }
+  if (context?.refresh) params.set("refresh", "true");
   return params;
 }
 
