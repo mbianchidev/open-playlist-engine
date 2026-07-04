@@ -18,6 +18,8 @@ from app.core.models import Track
 
 _FEAT = re.compile(r"\s*[\(\[]?\s*(feat|ft|with)\.?\s.*$", re.IGNORECASE)
 _NOISE = re.compile(r"[^a-z0-9]+")
+_LIVE = re.compile(r"\blive\b")
+_LIVE_CONFIDENCE_PENALTY = 0.20
 
 
 def _norm(s: str | None) -> str:
@@ -37,6 +39,7 @@ class MatchResult:
     confidence: float
     source: str  # "isrc_exact" | "fuzzy" | "graph_cache" | "none"
     needs_review: bool
+    review_reason: str | None = None
 
 
 class EvidenceGraph(Protocol):
@@ -58,7 +61,7 @@ class EvidenceGraph(Protocol):
 def score(track: Track, cand: TrackCandidate) -> tuple[float, str]:
     """Return (confidence, source) for a candidate against the source track."""
     if track.isrc and cand.isrc and track.isrc == cand.isrc:
-        return 1.0, "isrc_exact"
+        return _apply_live_penalty(track, cand, 1.0, "isrc_exact")
 
     title = _ratio(_norm(track.title), _norm(cand.title))
     artist = _ratio(_norm(track.artist), _norm(cand.artist))
@@ -70,7 +73,33 @@ def score(track: Track, cand: TrackCandidate) -> tuple[float, str]:
         dur = 1.0 if delta <= 3 else max(0.0, 1.0 - delta / 30.0)
 
     confidence = 0.45 * title + 0.35 * artist + 0.1 * album + 0.1 * dur
-    return round(confidence, 4), "fuzzy"
+    return _apply_live_penalty(track, cand, confidence, "fuzzy")
+
+
+def _apply_live_penalty(
+    track: Track, cand: TrackCandidate, confidence: float, source: str
+) -> tuple[float, str]:
+    if not _live_version_mismatch(track, cand):
+        return round(confidence, 4), source
+    return max(0.0, round(confidence - _LIVE_CONFIDENCE_PENALTY, 4)), f"{source}_live"
+
+
+def _live_version_mismatch(track: Track, cand: TrackCandidate) -> bool:
+    return not _has_live_marker(track.title) and _has_live_marker(cand.title)
+
+
+def _has_live_marker(title: str | None) -> bool:
+    return bool(_LIVE.search(_norm(title)))
+
+
+def _live_review_reason(cand: TrackCandidate | None) -> str | None:
+    if cand is None:
+        return None
+    return f'Target title "{cand.title}" appears to be a live version; confirm before migrating.'
+
+
+def _needs_review(confidence: float, source: str, threshold: float) -> bool:
+    return confidence < threshold or source.endswith("_live")
 
 
 class MatchService:
@@ -87,7 +116,14 @@ class MatchService:
         if self._graph is not None and track.isrc:
             cached = await self._graph.lookup(isrc=track.isrc, provider=provider)
             if cached is not None:
-                return MatchResult(cached, 1.0, "graph_cache", needs_review=False)
+                confidence, source = _apply_live_penalty(track, cached, 1.0, "graph_cache")
+                return MatchResult(
+                    cached,
+                    confidence,
+                    source,
+                    needs_review=_needs_review(confidence, source, self._threshold),
+                    review_reason=_live_review_reason(cached) if source.endswith("_live") else None,
+                )
 
         # 2. Ask the adapter to search, then score locally.
         candidates = await target.search_tracks(cred, track)
@@ -100,7 +136,7 @@ class MatchService:
             if conf > best_conf:
                 best, best_conf, best_src = cand, conf, src
 
-        needs_review = best_conf < self._threshold
+        needs_review = _needs_review(best_conf, best_src, self._threshold)
         if self._graph is not None and best is not None and not needs_review:
             await self._graph.record(
                 track=track,
@@ -109,4 +145,10 @@ class MatchService:
                 confidence=best_conf,
                 source=best_src,
             )
-        return MatchResult(best, best_conf, best_src, needs_review)
+        return MatchResult(
+            best,
+            best_conf,
+            best_src,
+            needs_review,
+            review_reason=_live_review_reason(best) if best_src.endswith("_live") else None,
+        )

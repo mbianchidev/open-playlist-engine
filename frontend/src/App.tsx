@@ -240,8 +240,9 @@ export default function App() {
 
   async function start(acknowledgeWarnings = false) {
     if (!source || !target || !sourceAccount || !targetAccount) return;
+    const playlistIds = selectedMigrationPlaylistIds;
     const tracks = Object.fromEntries(
-      selectedMigrationPlaylistIds
+      playlistIds
         .filter((id) => playlistTracks[id])
         .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
     );
@@ -253,10 +254,11 @@ export default function App() {
         target_provider: target,
         source_account_id: sourceAccount.id,
         target_account_id: targetAccount.id,
-        selection: { playlist_ids: selectedMigrationPlaylistIds, tracks },
+        selection: { playlist_ids: playlistIds, tracks },
         acknowledge_warnings: acknowledgeWarnings,
       });
       setJobId(job.id);
+      deselectStartedPlaylists(playlistIds);
     } catch (e: unknown) {
       if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
         await start(true);
@@ -300,6 +302,25 @@ export default function App() {
     setSelectedPlaylists(new Set());
     setPlaylistTracks({});
     setSelectedTracks({});
+  }
+
+  function deselectStartedPlaylists(playlistIds: string[]) {
+    const started = new Set(playlistIds);
+    setSelectedPlaylists((prev) => {
+      const next = new Set(prev);
+      for (const id of started) next.delete(id);
+      return next;
+    });
+    setPlaylistTracks((prev) => {
+      const next = { ...prev };
+      for (const id of started) delete next[id];
+      return next;
+    });
+    setSelectedTracks((prev) => {
+      const next = { ...prev };
+      for (const id of started) delete next[id];
+      return next;
+    });
   }
 
   async function loadTracks(playlist: PlaylistRef) {

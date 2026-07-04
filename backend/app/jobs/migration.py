@@ -138,7 +138,9 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             item.target_uri = result.candidate.uri
             if result.needs_review:
                 item.status = "needs_review"
-                item.reason = f"match confidence {result.confidence:.2f} below review threshold"
+                item.reason = result.review_reason or (
+                    f"match confidence {result.confidence:.2f} below review threshold"
+                )
                 await commit_job_counts(session, job)
                 continue
             item.status = "matched"
