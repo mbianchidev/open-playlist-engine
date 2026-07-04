@@ -280,18 +280,30 @@ export default function App() {
       closePlaylistSongs(id);
       return;
     }
+    const loaded = playlistTracks[id];
+    if (loaded) {
+      const selectableKeys = unmigratedTrackKeys(loaded);
+      if (selectableKeys.length === 0) {
+        markPlaylistFullyMigrated(id, loaded.length);
+        closePlaylistSongs(id);
+        return;
+      }
+      setSelectedPlaylists((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      setSelectedTracks((prevTracks) => ({
+        ...prevTracks,
+        [id]: new Set(selectableKeys),
+      }));
+      return;
+    }
     setSelectedPlaylists((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
-    const loaded = playlistTracks[id];
-    if (loaded) {
-      setSelectedTracks((prevTracks) => ({
-        ...prevTracks,
-        [id]: new Set(loaded.map(trackKey)),
-      }));
-    }
   }
 
   function selectAllPlaylists() {
@@ -329,9 +341,12 @@ export default function App() {
     setError(null);
     try {
       const detail = await getPlaylist(source, sourceAccount.id, playlist.id, playlistContext);
-      const defaultSelected = detail.tracks
-        .filter((track) => track.migration_status !== "migrated")
-        .map(trackKey);
+      const defaultSelected = unmigratedTrackKeys(detail.tracks);
+      if (detail.tracks.length > 0 && defaultSelected.length === 0) {
+        markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
+        closePlaylistSongs(playlist.id);
+        return;
+      }
       setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
       setSelectedTracks((prev) => ({
         ...prev,
@@ -403,6 +418,22 @@ export default function App() {
       delete next[playlistId];
       return next;
     });
+  }
+
+  function markPlaylistFullyMigrated(playlistId: string, migratedTrackCount: number) {
+    setPlaylists((prev) =>
+      prev.map((playlist) =>
+        playlist.id === playlistId
+          ? {
+              ...playlist,
+              migration_status: "migrated",
+              migrated_track_count: playlist.track_count ?? migratedTrackCount,
+              remaining_track_count: 0,
+              migration_note: "Migrated",
+            }
+          : playlist,
+      ),
+    );
   }
 
   function renderPlaylistCard(playlist: PlaylistRef) {
@@ -737,6 +768,10 @@ function getSelectedMigrationPlaylistIds(
 
 function isAnnotatedMigratedPlaylist(playlist: PlaylistRef): boolean {
   return playlist.migration_status === "migrated" || playlist.migration_status === "partial";
+}
+
+function unmigratedTrackKeys(tracks: Track[]): string[] {
+  return tracks.filter((track) => track.migration_status !== "migrated").map(trackKey);
 }
 
 function trackKey(track: Track): string {
