@@ -201,7 +201,10 @@ def _auth_from_headers(raw: str) -> dict[str, Any]:
     if not raw:
         raise ProviderError("YouTube Music headers are required")
     if raw.startswith("{"):
-        parsed = json.loads(raw)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ProviderError("YouTube Music auth JSON is invalid") from exc
         if not isinstance(parsed, dict):
             raise ProviderError("YouTube Music auth JSON must be an object")
         return parsed

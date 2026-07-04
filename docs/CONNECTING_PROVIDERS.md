@@ -71,6 +71,10 @@ self-host mode falls back to header paste. The pasted headers act like a browser
 session, so do not share them and clear/sign out of YouTube Music after testing
 if they were exposed. Hosted mode does not allow header paste.
 
+If Google blocks device-code auth because the OAuth app is not verified, click
+**Use browser-session headers** in the YouTube Music connection panel. The same
+guided fallback appears without changing `.env`.
+
 1. Open <https://music.youtube.com> in Chrome or Edge and sign in.
 2. Open DevTools with `Cmd+Option+I` on macOS or `Ctrl+Shift+I` on Windows/Linux.
 3. Go to **Network**.
@@ -116,6 +120,9 @@ if they were exposed. Hosted mode does not allow header paste.
 
 Do not paste response headers (`alt-svc`, `server`, `date`, etc.), pseudo headers
 (`:authority`, `:method`, etc.), or the request body.
+
+The app checks the pasted block for `authorization`, `cookie`, `x-goog-authuser`,
+and `x-youtube-client-version` before enabling the connect button.
 
 ## Safe migration defaults
 

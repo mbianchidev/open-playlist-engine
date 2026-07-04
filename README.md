@@ -88,8 +88,9 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
    and YouTube Music as target.
 4. Connect Spotify in the popup.
 5. For YouTube Music, open the verification URL shown by the app and enter the
-   device code. Self-host users without YouTube Music OAuth credentials can use
-   the fallback header-paste flow.
+   device code. If Google blocks the unverified OAuth app, or if YouTube Music
+   OAuth credentials are not set, use the guided browser-session header fallback
+   shown in the connection panel.
 6. Pick one playlist, optionally choose individual tracks, and start the migration.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
