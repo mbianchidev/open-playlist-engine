@@ -205,15 +205,20 @@ button.compact {
   gap: 0.5rem;
 }
 
-.migration-action-bar {
+.migration-top-stack {
   position: sticky;
   top: 0.75rem;
   z-index: 5;
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.migration-action-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin: 0.75rem 0 1rem;
   padding: 0.75rem;
   border: 1px solid #2a3039;
   border-radius: 10px;
@@ -227,6 +232,22 @@ button.compact {
 
 .migration-action-bar .muted {
   margin-top: 0.2rem;
+}
+
+.migration-progress-slot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.progress-popover {
+  width: min(100%, 620px);
+  max-height: min(68vh, 44rem);
+  overflow: auto;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+}
+
+.progress-popover h2 {
+  margin-top: 0;
 }
 
 .account-grid {
@@ -385,6 +406,14 @@ textarea {
   }
 
   .migration-action-bar button {
+    width: 100%;
+  }
+
+  .migration-progress-slot {
+    display: block;
+  }
+
+  .progress-popover {
     width: 100%;
   }
 }

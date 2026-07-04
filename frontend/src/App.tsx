@@ -536,17 +536,28 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="migration-action-bar">
-            <div>
-              <p className="eyebrow">Ready to migrate</p>
-              <p className="muted">
-                {selectedMigrationPlaylistIds.length} playlist
-                {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
-              </p>
+          <div className="migration-top-stack">
+            <div className="migration-action-bar">
+              <div>
+                <p className="eyebrow">Ready to migrate</p>
+                <p className="muted">
+                  {selectedMigrationPlaylistIds.length} playlist
+                  {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
+                </p>
+              </div>
+              <button className="primary" disabled={startDisabled} onClick={() => start()}>
+                {busy ? "Starting…" : "Start migration"}
+              </button>
             </div>
-            <button className="primary" disabled={startDisabled} onClick={() => start()}>
-              {busy ? "Starting…" : "Start migration"}
-            </button>
+            {jobId ? (
+              <div className="migration-progress-slot">
+                <ProgressBoard
+                  className="progress-popover"
+                  jobId={jobId}
+                  onMigrationChanged={refreshSourcePlaylists}
+                />
+              </div>
+            ) : null}
           </div>
           {playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
@@ -635,7 +646,6 @@ export default function App() {
         </section>
       ) : null}
 
-      {jobId ? <ProgressBoard jobId={jobId} onMigrationChanged={refreshSourcePlaylists} /> : null}
     </div>
   );
 }

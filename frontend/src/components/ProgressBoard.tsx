@@ -9,12 +9,13 @@ import type { JobItemView, JobView, ProgressEvent } from "../api/types";
 
 interface Props {
   jobId: string;
+  className?: string;
   onMigrationChanged?: () => void | Promise<void>;
 }
 
 // Phase 5 — live progress. Reconnect/replay via Last-Event-ID is handled by the
 // browser's EventSource plus the backend's persisted job_item cursor.
-export default function ProgressBoard({ jobId, onMigrationChanged }: Props) {
+export default function ProgressBoard({ jobId, className, onMigrationChanged }: Props) {
   const [job, setJob] = useState<JobView | null>(null);
   const [items, setItems] = useState<JobItemView[]>([]);
   const [reviewInputs, setReviewInputs] = useState<Record<string, string>>({});
@@ -43,7 +44,7 @@ export default function ProgressBoard({ jobId, onMigrationChanged }: Props) {
   }, [jobId, onMigrationChanged]);
 
   return (
-    <section className="card">
+    <section className={["card", className].filter(Boolean).join(" ")}>
       <h2>Progress · {jobId}</h2>
       <p className="muted">
         {job ? `${job.status}: ${job.done}/${job.total} done, ${job.failed} failed` : "waiting…"}
