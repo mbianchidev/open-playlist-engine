@@ -240,7 +240,13 @@ async def _resolve_target_playlist(
         if ref.name.strip() == playlist_name.strip()
     ]
     for ref in same_name_refs:
-        target_playlist = await target.read_playlist(target_cred, ref)
+        try:
+            target_playlist = await target.read_playlist(target_cred, ref)
+        except NotFound:
+            logger.warning(
+                "skipping unreadable same-name target playlist playlist_id=%s", ref.id
+            )
+            continue
         if not target_playlist.tracks or has_track_overlap(source_tracks, target_playlist.tracks):
             return ref.id
 
@@ -294,9 +300,16 @@ async def _target_playlist_exists(
 async def _target_playlist_keys(
     target: ProviderAdapter, target_cred: ProviderCredential, playlist_id: str
 ) -> set[str]:
-    playlist = await target.read_playlist(
-        target_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-    )
+    try:
+        playlist = await target.read_playlist(
+            target_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+        )
+    except NotFound:
+        logger.warning(
+            "target playlist unavailable while checking duplicates playlist_id=%s",
+            playlist_id,
+        )
+        return set()
     keys: set[str] = set()
     for track in playlist.tracks:
         keys.update(track_keys(track))

@@ -323,7 +323,13 @@ async def _same_name_warnings(
     for source_playlist in selected.values():
         same_name = [ref for ref in target_refs if ref.name.strip() == source_playlist.name.strip()]
         for ref in same_name:
-            target_playlist = await target.read_playlist(target_cred, ref)
+            try:
+                target_playlist = await target.read_playlist(target_cred, ref)
+            except NotFound:
+                logger.warning(
+                    "skipping unreadable same-name target playlist playlist_id=%s", ref.id
+                )
+                continue
             if target_playlist.tracks and not has_track_overlap(
                 source_playlist.tracks, target_playlist.tracks
             ):
@@ -540,9 +546,16 @@ async def _apply_review(
 
 
 async def _target_playlist_keys(target, target_cred, playlist_id: str) -> set[str]:
-    playlist = await target.read_playlist(
-        target_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-    )
+    try:
+        playlist = await target.read_playlist(
+            target_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+        )
+    except NotFound:
+        logger.warning(
+            "target playlist unavailable while checking duplicates playlist_id=%s",
+            playlist_id,
+        )
+        return set()
     keys: set[str] = set()
     for track in playlist.tracks:
         keys.update(track_keys(track))

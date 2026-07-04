@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +18,16 @@ from app.db.base import get_session
 from app.db.repositories import AccountNotFound, CredentialNotFound, load_fresh_credential
 
 router = APIRouter(prefix="/api/playlists", tags=["playlists"])
+
+
+@dataclass
+class _PlaylistMigrationSummary:
+    migrated_keys: set[str] = field(default_factory=set)
+    completed_full_playlist: bool = False
+
+    @property
+    def migrated_count(self) -> int:
+        return len(self.migrated_keys)
 
 
 @router.get("", response_model=list[PlaylistRef])
@@ -35,7 +46,7 @@ async def list_playlists(
         )
         playlists = [playlist async for playlist in adapter.iter_playlists(credential)]
         if target_provider and target_account_id:
-            migrated_counts = await _migrated_counts(
+            migration_summaries = await _migration_summaries(
                 session,
                 user_id=user_id,
                 source_provider=provider,
@@ -44,7 +55,7 @@ async def list_playlists(
                 target_account_id=target_account_id,
             )
             playlists = [
-                _annotate_playlist_ref(ref, migrated_counts.get(ref.id, 0))
+                _annotate_playlist_ref(ref, migration_summaries.get(ref.id))
                 for ref in playlists
             ]
         await session.commit()
@@ -112,7 +123,7 @@ def _is_migrated_item(item: orm.JobItem) -> bool:
     return item.status == "written" or (item.status == "skipped" and bool(item.target_uri))
 
 
-async def _migrated_counts(
+async def _migration_summaries(
     session: AsyncSession,
     *,
     user_id: str,
@@ -120,9 +131,9 @@ async def _migrated_counts(
     source_account_id: str,
     target_provider: str,
     target_account_id: str,
-) -> dict[str, int]:
+) -> dict[str, _PlaylistMigrationSummary]:
     stmt = (
-        select(orm.JobItem)
+        select(orm.JobItem, orm.MigrationJob)
         .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
         .where(
             orm.MigrationJob.user_id == user_id,
@@ -132,22 +143,49 @@ async def _migrated_counts(
             orm.MigrationJob.target_account_id == target_account_id,
         )
     )
-    counts: dict[str, set[str]] = {}
-    for item in (await session.execute(stmt)).scalars():
+    summaries: dict[str, _PlaylistMigrationSummary] = {}
+    job_items: dict[tuple[str, str], tuple[orm.MigrationJob, list[orm.JobItem]]] = {}
+    for item, job in (await session.execute(stmt)).all():
+        summary = summaries.setdefault(item.source_playlist_id, _PlaylistMigrationSummary())
         if not _is_migrated_item(item):
+            job_items.setdefault((job.id, item.source_playlist_id), (job, []))[1].append(item)
             continue
-        keys = keys_from_metadata(
-            item.source_metadata,
-            title=item.title,
-            artist=item.artist,
-            album=item.album,
-            duration_s=item.duration_s,
-            isrc=item.isrc,
-        )
+        keys = _source_item_keys(item)
         if not keys:
+            job_items.setdefault((job.id, item.source_playlist_id), (job, []))[1].append(item)
             continue
-        counts.setdefault(item.source_playlist_id, set()).add(sorted(keys)[0])
-    return {playlist_id: len(keys) for playlist_id, keys in counts.items()}
+        summary.migrated_keys.add(sorted(keys)[0])
+        job_items.setdefault((job.id, item.source_playlist_id), (job, []))[1].append(item)
+
+    for (_, playlist_id), (job, items) in job_items.items():
+        if (
+            items
+            and job.status == "done"
+            and _job_selected_full_playlist(job, playlist_id)
+            and all(_is_migrated_item(item) for item in items)
+        ):
+            summary = summaries.setdefault(playlist_id, _PlaylistMigrationSummary())
+            summary.completed_full_playlist = True
+    return summaries
+
+
+def _source_item_keys(item: orm.JobItem) -> set[str]:
+    return keys_from_metadata(
+        item.source_metadata,
+        title=item.title,
+        artist=item.artist,
+        album=item.album,
+        duration_s=item.duration_s,
+        isrc=item.isrc,
+    )
+
+
+def _job_selected_full_playlist(job: orm.MigrationJob, playlist_id: str) -> bool:
+    selection = job.selection or {}
+    tracks = selection.get("tracks") if isinstance(selection, dict) else None
+    if not isinstance(tracks, dict):
+        return True
+    return not tracks.get(playlist_id)
 
 
 async def _migrated_track_map(
@@ -188,11 +226,15 @@ async def _migrated_track_map(
     return migrated
 
 
-def _annotate_playlist_ref(ref: PlaylistRef, migrated_count: int) -> PlaylistRef:
+def _annotate_playlist_ref(
+    ref: PlaylistRef, summary: _PlaylistMigrationSummary | None
+) -> PlaylistRef:
+    migrated_count = summary.migrated_count if summary else 0
     remaining = None if ref.track_count is None else max(ref.track_count - migrated_count, 0)
     status = None
     note = None
-    if migrated_count and remaining == 0:
+    full_migration = bool(summary and summary.completed_full_playlist)
+    if migrated_count and (remaining == 0 or (remaining is None and full_migration)):
         status = "migrated"
         note = "Migrated"
     elif migrated_count:
