@@ -24,6 +24,7 @@ export default function App() {
   const [ytHeaders, setYtHeaders] = useState("");
   const [ytHeaderFallback, setYtHeaderFallback] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<DeviceChallenge | null>(null);
+  const [activeAuthProvider, setActiveAuthProvider] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
@@ -83,7 +84,8 @@ export default function App() {
     authPollId.current += 1;
     setDeviceChallenge(null);
     setYtHeaderFallback(false);
-  }, [target]);
+    setActiveAuthProvider(null);
+  }, [source, target]);
 
   useEffect(() => {
     setPlaylists([]);
@@ -114,6 +116,7 @@ export default function App() {
     setError(null);
     setNotice(null);
     setDeviceChallenge(null);
+    setActiveAuthProvider(provider);
     if (provider === "ytmusic") setYtHeaderFallback(false);
     try {
       const challenge = await beginAuth(provider);
@@ -123,7 +126,7 @@ export default function App() {
         return;
       }
       if (challenge.shape === "form") {
-        if (provider === "ytmusic") showYtHeaderFallback();
+        if (provider === "ytmusic") showYtHeaderFallback(provider);
         setNotice(challenge.instructions ?? "Paste provider credentials below.");
         return;
       }
@@ -160,6 +163,8 @@ export default function App() {
         await completeAuth(challenge.provider, { state: challenge.state });
         if (authPollId.current !== pollId) return;
         setDeviceChallenge(null);
+        setActiveAuthProvider(null);
+        setYtHeaderFallback(false);
         setNotice("YouTube Music connected.");
         await refreshAccounts();
         return;
@@ -173,7 +178,7 @@ export default function App() {
         if (authPollId.current !== pollId) return;
         setDeviceChallenge(null);
         if (challenge.provider === "ytmusic" && isGoogleAccessDenied(message)) {
-          setYtHeaderFallback(true);
+          showYtHeaderFallback(challenge.provider);
           setError(`${message}. Use browser-session headers below instead.`);
           return;
         }
@@ -183,9 +188,10 @@ export default function App() {
     }
   }
 
-  function showYtHeaderFallback() {
+  function showYtHeaderFallback(provider = "ytmusic") {
     authPollId.current += 1;
     setDeviceChallenge(null);
+    setActiveAuthProvider(provider);
     setYtHeaderFallback(true);
     setError(null);
     setNotice("Use browser-session headers below. Keep them private.");
@@ -205,6 +211,8 @@ export default function App() {
     try {
       await completeAuth("ytmusic", { headers_raw: ytHeaders });
       setYtHeaders("");
+      setYtHeaderFallback(false);
+      setActiveAuthProvider(null);
       setNotice("YouTube Music connected.");
       await refreshAccounts();
     } catch (e: unknown) {
@@ -502,7 +510,7 @@ export default function App() {
             onTest={testConnection}
           />
         </div>
-        {deviceChallenge && deviceChallenge.provider === target && !targetAccount ? (
+        {deviceChallenge ? (
           <div className="device-block">
             <p className="muted">Open this page and enter the code:</p>
             <a href={deviceChallenge.verificationUrl} target="_blank" rel="noreferrer">
@@ -510,20 +518,24 @@ export default function App() {
             </a>
             <code>{deviceChallenge.userCode}</code>
             <p className="muted">Waiting for Google to confirm authorization…</p>
-            {target === "ytmusic" ? (
+            {deviceChallenge.provider === "ytmusic" ? (
               <div className="fallback-callout">
                 <p>
                   Google says the app is not verified? Skip OAuth and use your signed-in browser
                   session instead.
                 </p>
-                <button className="secondary compact" disabled={busy} onClick={showYtHeaderFallback}>
+                <button
+                  className="secondary compact"
+                  disabled={busy}
+                  onClick={() => showYtHeaderFallback(deviceChallenge.provider)}
+                >
                   Use browser-session headers
                 </button>
               </div>
             ) : null}
           </div>
         ) : null}
-        {target === "ytmusic" && !targetAccount && ytHeaderFallback ? (
+        {activeAuthProvider === "ytmusic" && ytHeaderFallback ? (
           <div className="form-block header-guide">
             <div className="guide-heading">
               <div>
@@ -800,6 +812,9 @@ function AccountPanel({ label, provider, account, busy, onConnect, onTest }: Acc
           </p>
           <button className="secondary compact" disabled={busy} onClick={() => onTest(account)}>
             Test connection
+          </button>
+          <button className="secondary compact" disabled={busy} onClick={() => onConnect(provider)}>
+            Reconnect
           </button>
         </>
       ) : null}
