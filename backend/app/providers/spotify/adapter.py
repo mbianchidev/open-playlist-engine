@@ -9,8 +9,10 @@ still advertises the provider's full intended surface for the UI matrix.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import logging
 import secrets
 import time
 import urllib.parse
@@ -51,6 +53,8 @@ from app.settings import get_settings
 _API_BASE = "https://api.spotify.com/v1"
 _LIST_PAGE = 50
 _ITEMS_PAGE = 100
+_RATE_LIMIT_STATUSES = {420, 429}
+_RATE_LIMIT_MAX_RETRIES = 2
 
 _SCOPES = [
     "user-read-private",
@@ -83,6 +87,7 @@ class _SavedPlaylist:
 
 
 _PENDING_STATES: dict[str, _PendingState] = {}
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
@@ -98,7 +103,7 @@ def _raise_for_status(resp: httpx.Response) -> httpx.Response:
         raise AccessDenied("spotify request forbidden")
     if resp.status_code == 404:
         raise NotFound(str(resp.request.url))
-    if resp.status_code in {420, 429}:
+    if resp.status_code in _RATE_LIMIT_STATUSES:
         retry_after_s = _retry_after_seconds(resp)
         message = "spotify rate limited"
         if retry_after_s is not None:
@@ -109,6 +114,29 @@ def _raise_for_status(resp: httpx.Response) -> httpx.Response:
             status_code=resp.status_code,
         )
     raise ProviderError(f"spotify HTTP {resp.status_code}: {_spotify_error_message(resp)}")
+
+
+async def _spotify_request(
+    client: httpx.AsyncClient, method: str, url: str, **kwargs
+) -> httpx.Response:
+    retries = 0
+    while True:
+        resp = await client.request(method, url, **kwargs)
+        if resp.status_code not in _RATE_LIMIT_STATUSES:
+            return resp
+        retry_after_s = _retry_after_seconds(resp)
+        if retry_after_s is None or retries >= _RATE_LIMIT_MAX_RETRIES:
+            return resp
+        retries += 1
+        logger.warning(
+            "spotify rate limited status=%s retry_after_s=%s retry=%s/%s path=%s",
+            resp.status_code,
+            retry_after_s,
+            retries,
+            _RATE_LIMIT_MAX_RETRIES,
+            resp.request.url.path,
+        )
+        await asyncio.sleep(retry_after_s)
 
 
 def _retry_after_seconds(resp: httpx.Response) -> float | None:
@@ -248,7 +276,7 @@ async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> Async
         next_url = page.get("next")
         if not next_url:
             break
-        page_resp = _raise_for_status(await client.get(next_url))
+        page_resp = _raise_for_status(await _spotify_request(client, "GET", next_url))
         next_page = _playlist_item_page(page_resp.json())
         if next_page is None:
             break
@@ -259,7 +287,9 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _S
     offset = 0
     while True:
         resp = _raise_for_status(
-            await client.get("/me/playlists", params={"limit": _LIST_PAGE, "offset": offset})
+            await _spotify_request(
+                client, "GET", "/me/playlists", params={"limit": _LIST_PAGE, "offset": offset}
+            )
         )
         data = resp.json()
         for pl in data.get("items", []):
@@ -430,7 +460,9 @@ class SpotifyAuth(AuthStrategy):
         pending = _consume_state(callback.get("state"), user_id)
         s = get_settings()
         async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
-            resp = await client.post(
+            resp = await _spotify_request(
+                client,
+                "POST",
                 _TOKEN_URL,
                 data={
                     "grant_type": "authorization_code",
@@ -442,13 +474,17 @@ class SpotifyAuth(AuthStrategy):
                 auth=_token_auth(s),
             )
             if not resp.is_success:
+                _raise_for_status(resp)
                 raise ProviderError(f"spotify token exchange failed with HTTP {resp.status_code}")
             token = resp.json()
             access_token = token.get("access_token")
             if not access_token:
                 raise ProviderError("spotify token response did not include an access token")
-            profile_resp = await client.get(
-                f"{_API_BASE}/me", headers={"Authorization": f"Bearer {access_token}"}
+            profile_resp = await _spotify_request(
+                client,
+                "GET",
+                f"{_API_BASE}/me",
+                headers={"Authorization": f"Bearer {access_token}"},
             )
             _raise_for_status(profile_resp)
         profile = profile_resp.json()
@@ -471,7 +507,9 @@ class SpotifyAuth(AuthStrategy):
             raise RefreshTokenExpired("spotify refresh token is missing; reconnect Spotify")
         s = get_settings()
         async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
-            resp = await client.post(
+            resp = await _spotify_request(
+                client,
+                "POST",
                 _TOKEN_URL,
                 data={
                     "grant_type": "refresh_token",
@@ -483,6 +521,7 @@ class SpotifyAuth(AuthStrategy):
         if not resp.is_success:
             if resp.status_code == 400 and _spotify_error_code(resp) == "invalid_grant":
                 raise RefreshTokenExpired("spotify refresh token expired; reconnect Spotify")
+            _raise_for_status(resp)
             raise AuthExpired("spotify authorization expired; reconnect Spotify")
         token = resp.json()
         access_token = token.get("access_token")
@@ -545,7 +584,9 @@ class SpotifyAdapter:
         async with self._client(cred) as client:
             while True:
                 resp = _raise_for_status(
-                    await client.get(
+                    await _spotify_request(
+                        client,
+                        "GET",
                         "/me/playlists", params={"limit": _LIST_PAGE, "offset": offset}
                     )
                 )
@@ -568,7 +609,9 @@ class SpotifyAdapter:
         async with self._client(cred) as client:
             resp = await self._playlist_tracks_response(client, ref.id)
             if resp.status_code in {400, 403, 404}:
-                meta_resp = _raise_for_status(await client.get(f"/playlists/{ref.id}"))
+                meta_resp = _raise_for_status(
+                    await _spotify_request(client, "GET", f"/playlists/{ref.id}")
+                )
                 page = _playlist_item_page(meta_resp.json())
                 if page is None:
                     if resp.status_code == 403:
@@ -586,7 +629,7 @@ class SpotifyAdapter:
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         async with self._client(cred) as client:
-            resp = await client.get(f"/playlists/{ref.id}")
+            resp = await _spotify_request(client, "GET", f"/playlists/{ref.id}")
             if resp.status_code in {400, 403, 404}:
                 fallback = await self._read_saved_playlist(client, resp, ref)
                 if fallback is not None:
@@ -659,8 +702,10 @@ class SpotifyAdapter:
     ) -> httpx.Response:
         url = tracks_href or f"/playlists/{playlist_id}/tracks"
         if "?" in url:
-            return await client.get(url)
-        return await client.get(
+            return await _spotify_request(client, "GET", url)
+        return await _spotify_request(
+            client,
+            "GET",
             url,
             params={
                 "limit": _ITEMS_PAGE,
@@ -671,7 +716,7 @@ class SpotifyAdapter:
 
     async def test_connection(self, cred: ProviderCredential) -> None:
         async with self._client(cred) as client:
-            _raise_for_status(await client.get("/me"))
+            _raise_for_status(await _spotify_request(client, "GET", "/me"))
 
     # SEARCH ---------------------------------------------------------------- #
     async def search_tracks(
@@ -685,7 +730,9 @@ class SpotifyAdapter:
                 query += f' artist:"{track.artist}"'
         async with self._client(cred) as client:
             resp = _raise_for_status(
-                await client.get(
+                await _spotify_request(
+                    client,
+                    "GET",
                     "/search", params={"q": query, "type": "track", "limit": limit}
                 )
             )
@@ -697,7 +744,7 @@ class SpotifyAdapter:
         if not track_id:
             return False
         async with self._client(cred) as client:
-            resp = await client.get(f"/tracks/{track_id}")
+            resp = await _spotify_request(client, "GET", f"/tracks/{track_id}")
         if resp.status_code == 404:
             return False
         _raise_for_status(resp)

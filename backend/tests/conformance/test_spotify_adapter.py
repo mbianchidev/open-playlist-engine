@@ -42,13 +42,47 @@ async def test_401_maps_to_auth_expired() -> None:
         [r async for r in adapter.iter_playlists(_cred())]
 
 
-async def test_429_maps_to_rate_limited_with_retry_after() -> None:
-    adapter = _adapter_returning(429, headers={"Retry-After": "7"})
+async def test_429_without_retry_after_maps_to_rate_limited() -> None:
+    adapter = _adapter_returning(429)
     with pytest.raises(RateLimited) as excinfo:
         await adapter.search_tracks(_cred(), Track(title="x", artist="y"))
-    assert excinfo.value.retry_after_s == 7.0
+    assert excinfo.value.retry_after_s is None
     assert excinfo.value.status_code == 429
-    assert str(excinfo.value) == "spotify rate limited; retry after 7 seconds"
+    assert str(excinfo.value) == "spotify rate limited"
+
+
+async def test_429_with_retry_after_retries_before_returning() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, json={}, headers={"Retry-After": "0"})
+        return httpx.Response(
+            200,
+            json={
+                "tracks": {
+                    "items": [
+                        {
+                            "id": "target",
+                            "name": "Target Song",
+                            "uri": "spotify:track:target",
+                            "artists": [{"name": "Target Artist"}],
+                            "duration_ms": 123000,
+                        }
+                    ]
+                }
+            },
+        )
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.search_tracks(
+        _cred(), Track(title="Target Song", artist="Target Artist")
+    )
+
+    assert calls == 2
+    assert results[0].uri == "spotify:track:target"
 
 
 async def test_420_maps_to_rate_limited_with_status_preserved() -> None:
