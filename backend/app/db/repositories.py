@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.adapter import ProviderAdapter
+from app.core.adapter import ProviderAdapter, RefreshTokenExpired
 from app.core.adapter import ProviderCredential as RuntimeCredential
 from app.core.security import decrypt, encrypt
 from app.db import models as orm
+
+logger = logging.getLogger(__name__)
 
 
 class AccountNotFound(Exception):
@@ -122,12 +125,16 @@ async def load_credential(
         raise CredentialNotFound(account.id)
 
     payload = json.loads(decrypt(row.enc_blob))
+    extra = dict(payload.get("extra") or {})
+    if account.provider_user_id:
+        extra.setdefault("provider_user_id", account.provider_user_id)
     credential = RuntimeCredential.model_validate(payload).model_copy(
         update={
             "account_id": account.id,
             "provider": account.provider,
             "scopes": list(row.scopes or []),
             "expires_at": _to_epoch(row.expires_at),
+            "extra": extra,
             "version": row.version,
         }
     )
@@ -143,7 +150,18 @@ async def load_fresh_credential(
 ) -> tuple[RuntimeCredential, orm.ProviderAccount]:
     credential, account = await load_credential(session, account_id=account_id, provider=provider)
     if credential.expires_at and credential.expires_at <= time.time() + 60:
-        refreshed = await adapter.auth.refresh(credential)
+        try:
+            refreshed = await adapter.auth.refresh(credential)
+        except RefreshTokenExpired:
+            logger.info(
+                "discarding expired refresh token provider=%s account_id=%s",
+                account.provider,
+                account.id,
+            )
+            await session.delete(account)
+            await session.flush()
+            await session.commit()
+            raise
         account = await save_credential(
             session,
             user_id=account.user_id,

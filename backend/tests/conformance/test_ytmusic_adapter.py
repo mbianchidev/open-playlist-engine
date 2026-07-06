@@ -10,13 +10,15 @@ import httpx
 import pytest
 
 from app.core.adapter import (
+    AuthExpired,
     AuthKind,
     ChallengeShape,
     CreatePlaylistSpec,
+    NotFound,
     ProviderCredential,
     ProviderError,
 )
-from app.core.models import Track
+from app.core.models import PlaylistRef, Track
 from app.providers.ytmusic.adapter import (
     _PENDING_DEVICE_CODES,
     YTMusicAdapter,
@@ -75,7 +77,10 @@ async def test_device_auth_begin_is_default_when_oauth_is_configured(
     def handler(request: httpx.Request) -> httpx.Response:
         data = _form(request)
         assert data["client_id"] == "client-id"
-        assert data["scope"] == "https://www.googleapis.com/auth/youtube"
+        assert set(data["scope"].split()) == {
+            "https://www.googleapis.com/auth/youtube",
+            "https://www.googleapis.com/auth/userinfo.email",
+        }
         return httpx.Response(
             200,
             json={
@@ -104,6 +109,11 @@ async def test_device_auth_complete_polls_until_token_success(
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal token_calls
+        if request.url.path.endswith("/userinfo"):
+            return httpx.Response(
+                200,
+                json={"id": "google-subject", "email": "USER@Example.com", "verified_email": True},
+            )
         data = _form(request)
         if request.url.path.endswith("/device/code"):
             return httpx.Response(
@@ -128,7 +138,10 @@ async def test_device_auth_complete_polls_until_token_success(
                 "access_token": "access-token",
                 "refresh_token": "refresh-token",
                 "expires_in": 3600,
-                "scope": "https://www.googleapis.com/auth/youtube",
+                "scope": (
+                    "https://www.googleapis.com/auth/youtube "
+                    "https://www.googleapis.com/auth/userinfo.email"
+                ),
                 "token_type": "Bearer",
             },
         )
@@ -142,11 +155,143 @@ async def test_device_auth_complete_polls_until_token_success(
     cred = await auth.complete(user_id="local", callback={"state": challenge.state})
 
     assert cred.auth_kind is AuthKind.OAUTH_DEVICE
+    assert cred.account_id == "user@example.com"
     assert cred.access_token == "access-token"
     assert cred.refresh_token == "refresh-token"
-    assert cred.scopes == ["https://www.googleapis.com/auth/youtube"]
+    assert cred.scopes == [
+        "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/userinfo.email",
+    ]
     assert cred.extra["auth"]["token_type"] == "Bearer"
+    assert cred.extra["display_name"] == "user@example.com"
+    assert cred.extra["email"] == "user@example.com"
     assert challenge.state not in _PENDING_DEVICE_CODES
+
+
+async def test_device_auth_complete_falls_back_when_email_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _oauth_env(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = _form(request)
+        if request.url.path.endswith("/device/code"):
+            return httpx.Response(
+                200,
+                json={
+                    "device_code": "device-code",
+                    "user_code": "ABC-123",
+                    "verification_url": "https://www.google.com/device",
+                    "expires_in": 1800,
+                    "interval": 1,
+                },
+            )
+        if request.url.path.endswith("/token"):
+            assert data["code"] == "device-code"
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "access-token",
+                    "refresh_token": "refresh-token",
+                    "expires_in": 3600,
+                    "scope": "https://www.googleapis.com/auth/youtube",
+                    "token_type": "Bearer",
+                },
+            )
+        return httpx.Response(403, json={"error": "insufficient_scope"})
+
+    auth = YTMusicAuth(transport=httpx.MockTransport(handler))
+    challenge = await auth.begin(user_id="local")
+    cred = await auth.complete(user_id="local", callback={"state": challenge.state})
+
+    assert cred.account_id == "ytmusic-oauth"
+    assert cred.extra["display_name"] == "YouTube Music"
+
+
+async def test_device_auth_complete_falls_back_when_userinfo_omits_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _oauth_env(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = _form(request)
+        if request.url.path.endswith("/device/code"):
+            return httpx.Response(
+                200,
+                json={
+                    "device_code": "device-code",
+                    "user_code": "ABC-123",
+                    "verification_url": "https://www.google.com/device",
+                    "expires_in": 1800,
+                    "interval": 1,
+                },
+            )
+        if request.url.path.endswith("/token"):
+            assert data["code"] == "device-code"
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "access-token",
+                    "refresh_token": "refresh-token",
+                    "expires_in": 3600,
+                    "scope": (
+                        "https://www.googleapis.com/auth/youtube "
+                        "https://www.googleapis.com/auth/userinfo.email"
+                    ),
+                    "token_type": "Bearer",
+                },
+            )
+        return httpx.Response(200, json={"id": "google-subject"})
+
+    auth = YTMusicAuth(transport=httpx.MockTransport(handler))
+    challenge = await auth.begin(user_id="local")
+    cred = await auth.complete(user_id="local", callback={"state": challenge.state})
+
+    assert cred.account_id == "ytmusic-oauth"
+    assert cred.extra["email"] is None
+
+
+async def test_device_auth_complete_falls_back_when_userinfo_request_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _oauth_env(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = _form(request)
+        if request.url.path.endswith("/device/code"):
+            return httpx.Response(
+                200,
+                json={
+                    "device_code": "device-code",
+                    "user_code": "ABC-123",
+                    "verification_url": "https://www.google.com/device",
+                    "expires_in": 1800,
+                    "interval": 1,
+                },
+            )
+        if request.url.path.endswith("/token"):
+            assert data["code"] == "device-code"
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "access-token",
+                    "refresh_token": "refresh-token",
+                    "expires_in": 3600,
+                    "scope": (
+                        "https://www.googleapis.com/auth/youtube "
+                        "https://www.googleapis.com/auth/userinfo.email"
+                    ),
+                    "token_type": "Bearer",
+                },
+            )
+        raise httpx.ConnectError("network down", request=request)
+
+    auth = YTMusicAuth(transport=httpx.MockTransport(handler))
+    challenge = await auth.begin(user_id="local")
+    cred = await auth.complete(user_id="local", callback={"state": challenge.state})
+
+    assert cred.account_id == "ytmusic-oauth"
+    assert cred.extra["email"] is None
 
 
 async def test_device_auth_refresh_updates_oauth_payload(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,6 +352,34 @@ async def test_create_playlist_maps_privacy() -> None:
     assert fake.playlists[pid2]["privacy"] == "PRIVATE"
 
 
+async def test_read_playlist_maps_missing_contents_parser_error_to_not_found() -> None:
+    class MissingContents:
+        def get_playlist(self, *a, **k):
+            raise KeyError(
+                "Unable to find 'contents' using path "
+                "['contents', 'twoColumnBrowseResultsRenderer']"
+            )
+
+    adapter = _adapter(MissingContents())
+
+    with pytest.raises(NotFound, match="unavailable or no longer accessible"):
+        await adapter.read_playlist(_cred(), PlaylistRef(id="VLPLZFL31xAfxGg", name="Broken"))
+
+
+async def test_read_playlist_maps_logged_out_parser_error_to_auth_expired() -> None:
+    class LoggedOut:
+        def get_playlist(self, *a, **k):
+            raise KeyError(
+                "Unable to find 'contents' using path ['contents'] on "
+                "{'serviceTrackingParams': [{'params': [{'key': 'logged_in', 'value': '0'}]}]}"
+            )
+
+    adapter = _adapter(LoggedOut())
+
+    with pytest.raises(AuthExpired, match="reconnect YouTube Music"):
+        await adapter.read_playlist(_cred(), PlaylistRef(id="VLPLI5E2GCcNSnE", name="Logged out"))
+
+
 async def test_add_tracks_persists_video_ids() -> None:
     fake = FakeYTMusic()
     adapter = _adapter(fake)
@@ -251,6 +424,20 @@ async def test_create_playlist_failure_raises() -> None:
 
     adapter = _adapter(Failing())
     with pytest.raises(ProviderError):
+        await adapter.create_playlist(_cred(), CreatePlaylistSpec(name="M"))
+
+
+async def test_create_playlist_unauthorized_raises_auth_expired() -> None:
+    class Unauthorized:
+        def create_playlist(self, *a, **k):
+            raise RuntimeError(
+                "Server returned HTTP 401: Unauthorized. "
+                "You must be signed in to perform this operation."
+            )
+
+    adapter = _adapter(Unauthorized())
+
+    with pytest.raises(AuthExpired, match="reconnect YouTube Music"):
         await adapter.create_playlist(_cred(), CreatePlaylistSpec(name="M"))
 
 

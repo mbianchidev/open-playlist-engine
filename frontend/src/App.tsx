@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   beginAuth,
@@ -8,9 +8,17 @@ import {
   getPlaylist,
   getPlaylists,
   getProviders,
+  preflightMigration,
   testAccountConnection,
 } from "./api/client";
-import type { AccountView, PlaylistRef, ProviderView, Track } from "./api/types";
+import type {
+  AccountView,
+  CreateMigrationBody,
+  MigrationWarningsView,
+  PlaylistRef,
+  ProviderView,
+  Track,
+} from "./api/types";
 import ProviderPicker from "./components/ProviderPicker";
 import ProgressBoard from "./components/ProgressBoard";
 
@@ -24,26 +32,97 @@ export default function App() {
   const [ytHeaders, setYtHeaders] = useState("");
   const [ytHeaderFallback, setYtHeaderFallback] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<DeviceChallenge | null>(null);
+  const [activeAuthProvider, setActiveAuthProvider] = useState<string | null>(null);
+  const [blockingAlert, setBlockingAlert] = useState<BlockingAlert | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
+  const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
+  const playlistLoadId = useRef(0);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
-  const playlistContext = {
-    targetProvider: target,
-    targetAccountId: targetAccount?.id ?? null,
-  };
+  const blockedSpotifyPlaylists = playlists.filter((playlist) =>
+    isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
+  );
+  const blockedSpotifyPlaylistIds = new Set(blockedSpotifyPlaylists.map((playlist) => playlist.id));
+  const availablePlaylists = playlists.filter((playlist) => !blockedSpotifyPlaylistIds.has(playlist.id));
   const selectedMigrationPlaylistIds = getSelectedMigrationPlaylistIds(
     selectedPlaylists,
     playlistTracks,
     selectedTracks,
-  );
+  ).filter((id) => !blockedSpotifyPlaylistIds.has(id));
+  const selectedMigrationPlaylists = selectedMigrationPlaylistIds
+    .map((id) => availablePlaylists.find((playlist) => playlist.id === id))
+    .filter((playlist): playlist is PlaylistRef => Boolean(playlist));
+  const startDisabled =
+    !source ||
+    !target ||
+    !sourceAccount ||
+    !targetAccount ||
+    selectedMigrationPlaylistIds.length === 0 ||
+    busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
+  const migratedPlaylists = availablePlaylists.filter(isAnnotatedMigratedPlaylist);
+  const migrationCandidatePlaylists = availablePlaylists.filter(
+    (playlist) => !isAnnotatedMigratedPlaylist(playlist),
+  );
+  const playlistErrorTitle = playlistError ? playlistErrorHeading(playlistError) : null;
+  const showBlockedPlaylistDetails =
+    showBlockedSpotifyPlaylists ||
+    (migrationCandidatePlaylists.length === 0 && blockedSpotifyPlaylists.length > 0);
+  const showMigratedPlaylistDetails =
+    showMigratedPlaylists ||
+    (migrationCandidatePlaylists.length === 0 &&
+      blockedSpotifyPlaylists.length === 0 &&
+      migratedPlaylists.length > 0);
+  const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
+    selectedPlaylists.has(playlist.id),
+  ).length;
+
+  const refreshSourcePlaylists = useCallback(
+    async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
+      if (!source || !sourceAccount || !target || !targetAccount) {
+        setPlaylistLoading(false);
+        return;
+      }
+      const loadId = playlistLoadId.current + 1;
+      playlistLoadId.current = loadId;
+      setPlaylistLoading(true);
+      try {
+        const rows = await getPlaylists(source, sourceAccount.id, {
+          targetProvider: target,
+          targetAccountId: targetAccount.id,
+          refresh: options.forceRefresh,
+        });
+        if (loadId !== playlistLoadId.current) return;
+        setPlaylists(rows);
+        setPlaylistError(null);
+        if (options.resetSelection) setSelectedPlaylists(new Set());
+      } catch (e: unknown) {
+        if (loadId !== playlistLoadId.current) return;
+        const message = errorMessage(e);
+        setPlaylistError(message);
+        const alert = spotifyRateLimitAlert(e, message);
+        if (alert) {
+          setBlockingAlert(alert);
+          setError(null);
+        } else {
+          setError(message);
+        }
+      } finally {
+        if (loadId === playlistLoadId.current) setPlaylistLoading(false);
+      }
+    },
+    [source, sourceAccount?.id, target, targetAccount?.id],
+  );
 
   useEffect(() => {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
@@ -54,21 +133,45 @@ export default function App() {
     authPollId.current += 1;
     setDeviceChallenge(null);
     setYtHeaderFallback(false);
-  }, [target]);
+    setActiveAuthProvider(null);
+  }, [source, target]);
 
   useEffect(() => {
+    playlistLoadId.current += 1;
     setPlaylists([]);
+    setPlaylistError(null);
+    setPlaylistLoading(false);
     setSelectedPlaylists(new Set());
     setPlaylistTracks({});
     setSelectedTracks({});
-    if (!source || !sourceAccount) return;
-    getPlaylists(source, sourceAccount.id, playlistContext)
-      .then((rows) => {
-        setPlaylists(rows);
-        setSelectedPlaylists(new Set());
-      })
-      .catch((e: unknown) => setError(errorMessage(e)));
-  }, [source, sourceAccount?.id, target, targetAccount?.id]);
+    void refreshSourcePlaylists({ resetSelection: true });
+  }, [refreshSourcePlaylists]);
+
+  useEffect(() => {
+    if (!blockingAlert) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setBlockingAlert(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [blockingAlert]);
+
+  function showAppError(error: unknown) {
+    const message = errorMessage(error);
+    const alert = spotifyExternalPlaylistAlert(message);
+    if (alert) {
+      setBlockingAlert(alert);
+      setError(null);
+      setNotice(null);
+      return;
+    }
+    setError(message);
+  }
+
+  function showSpotifyCopyInstructions() {
+    const alert = spotifyExternalPlaylistAlert(SPOTIFY_EXTERNAL_PLAYLIST_MESSAGE);
+    if (alert) setBlockingAlert(alert);
+  }
 
   async function refreshAccounts() {
     try {
@@ -91,6 +194,7 @@ export default function App() {
     setError(null);
     setNotice(null);
     setDeviceChallenge(null);
+    setActiveAuthProvider(provider);
     if (provider === "ytmusic") setYtHeaderFallback(false);
     try {
       const challenge = await beginAuth(provider);
@@ -100,7 +204,7 @@ export default function App() {
         return;
       }
       if (challenge.shape === "form") {
-        if (provider === "ytmusic") showYtHeaderFallback();
+        if (provider === "ytmusic") showYtHeaderFallback(provider);
         setNotice(challenge.instructions ?? "Paste provider credentials below.");
         return;
       }
@@ -137,6 +241,8 @@ export default function App() {
         await completeAuth(challenge.provider, { state: challenge.state });
         if (authPollId.current !== pollId) return;
         setDeviceChallenge(null);
+        setActiveAuthProvider(null);
+        setYtHeaderFallback(false);
         setNotice("YouTube Music connected.");
         await refreshAccounts();
         return;
@@ -150,7 +256,7 @@ export default function App() {
         if (authPollId.current !== pollId) return;
         setDeviceChallenge(null);
         if (challenge.provider === "ytmusic" && isGoogleAccessDenied(message)) {
-          setYtHeaderFallback(true);
+          showYtHeaderFallback(challenge.provider);
           setError(`${message}. Use browser-session headers below instead.`);
           return;
         }
@@ -160,9 +266,10 @@ export default function App() {
     }
   }
 
-  function showYtHeaderFallback() {
+  function showYtHeaderFallback(provider = "ytmusic") {
     authPollId.current += 1;
     setDeviceChallenge(null);
+    setActiveAuthProvider(provider);
     setYtHeaderFallback(true);
     setError(null);
     setNotice("Use browser-session headers below. Keep them private.");
@@ -182,6 +289,8 @@ export default function App() {
     try {
       await completeAuth("ytmusic", { headers_raw: ytHeaders });
       setYtHeaders("");
+      setYtHeaderFallback(false);
+      setActiveAuthProvider(null);
       setNotice("YouTube Music connected.");
       await refreshAccounts();
     } catch (e: unknown) {
@@ -207,37 +316,52 @@ export default function App() {
     }
   }
 
-  async function start(acknowledgeWarnings = false) {
+  async function start() {
     if (!source || !target || !sourceAccount || !targetAccount) return;
+    const playlistIds = selectedMigrationPlaylistIds;
     const tracks = Object.fromEntries(
-      selectedMigrationPlaylistIds
+      playlistIds
         .filter((id) => playlistTracks[id])
         .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
     );
+    const body: CreateMigrationBody = {
+      source_provider: source,
+      target_provider: target,
+      source_account_id: sourceAccount.id,
+      target_account_id: targetAccount.id,
+      selection: { playlist_ids: playlistIds, tracks },
+    };
     setBusy(true);
     setError(null);
     try {
-      const job = await createMigration({
-        source_provider: source,
-        target_provider: target,
-        source_account_id: sourceAccount.id,
-        target_account_id: targetAccount.id,
-        selection: { playlist_ids: selectedMigrationPlaylistIds, tracks },
-        acknowledge_warnings: acknowledgeWarnings,
-      });
+      const preflight = await preflightMigration(body);
+      if (preflight.warnings.length > 0 && !confirm(warningMessage(preflight))) return;
+      const job = await createMigration({ ...body, acknowledge_warnings: true });
       setJobId(job.id);
+      deselectStartedPlaylists(playlistIds);
     } catch (e: unknown) {
       if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
-        await start(true);
+        try {
+          const job = await createMigration({ ...body, acknowledge_warnings: true });
+          setJobId(job.id);
+          deselectStartedPlaylists(playlistIds);
+        } catch (retryError: unknown) {
+          showAppError(retryError);
+        }
         return;
       }
-      setError(errorMessage(e));
+      showAppError(e);
     } finally {
       setBusy(false);
     }
   }
 
   function togglePlaylist(id: string) {
+    const playlist = playlists.find((item) => item.id === id);
+    if (playlist && isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount)) {
+      showSpotifyCopyInstructions();
+      return;
+    }
     if (selectedPlaylists.has(id)) {
       setSelectedPlaylists((prev) => {
         const next = new Set(prev);
@@ -247,22 +371,34 @@ export default function App() {
       closePlaylistSongs(id);
       return;
     }
+    const loaded = playlistTracks[id];
+    if (loaded) {
+      const selectableKeys = unmigratedTrackKeys(loaded);
+      if (selectableKeys.length === 0) {
+        markPlaylistFullyMigrated(id, loaded.length);
+        closePlaylistSongs(id);
+        return;
+      }
+      setSelectedPlaylists((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      setSelectedTracks((prevTracks) => ({
+        ...prevTracks,
+        [id]: new Set(selectableKeys),
+      }));
+      return;
+    }
     setSelectedPlaylists((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
-    const loaded = playlistTracks[id];
-    if (loaded) {
-      setSelectedTracks((prevTracks) => ({
-        ...prevTracks,
-        [id]: new Set(loaded.map(trackKey)),
-      }));
-    }
   }
 
   function selectAllPlaylists() {
-    setSelectedPlaylists(new Set(playlists.map((playlist) => playlist.id)));
+    setSelectedPlaylists(new Set(migrationCandidatePlaylists.map((playlist) => playlist.id)));
   }
 
   function deselectAllPlaylists() {
@@ -271,15 +407,41 @@ export default function App() {
     setSelectedTracks({});
   }
 
-  async function loadTracks(playlist: PlaylistRef) {
-    if (!source || !sourceAccount) return;
+  function deselectStartedPlaylists(playlistIds: string[]) {
+    const started = new Set(playlistIds);
+    setSelectedPlaylists((prev) => {
+      const next = new Set(prev);
+      for (const id of started) next.delete(id);
+      return next;
+    });
+    setPlaylistTracks((prev) => {
+      const next = { ...prev };
+      for (const id of started) delete next[id];
+      return next;
+    });
+    setSelectedTracks((prev) => {
+      const next = { ...prev };
+      for (const id of started) delete next[id];
+      return next;
+    });
+  }
+
+  async function loadTracks(playlist: PlaylistRef, options: { forceRefresh?: boolean } = {}) {
+    if (!source || !sourceAccount || !target || !targetAccount) return;
     setBusy(true);
     setError(null);
     try {
-      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, playlistContext);
-      const defaultSelected = detail.tracks
-        .filter((track) => track.migration_status !== "migrated")
-        .map(trackKey);
+      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, {
+        targetProvider: target,
+        targetAccountId: targetAccount.id,
+        refresh: options.forceRefresh,
+      });
+      const defaultSelected = unmigratedTrackKeys(detail.tracks);
+      if (detail.tracks.length > 0 && defaultSelected.length === 0) {
+        markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
+        closePlaylistSongs(playlist.id);
+        return;
+      }
       setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
       setSelectedTracks((prev) => ({
         ...prev,
@@ -292,7 +454,7 @@ export default function App() {
         return next;
       });
     } catch (e: unknown) {
-      setError(errorMessage(e));
+      showAppError(e);
     } finally {
       setBusy(false);
     }
@@ -353,8 +515,149 @@ export default function App() {
     });
   }
 
+  function markPlaylistFullyMigrated(playlistId: string, migratedTrackCount: number) {
+    setSelectedPlaylists((prev) => {
+      const next = new Set(prev);
+      next.delete(playlistId);
+      return next;
+    });
+    setPlaylists((prev) =>
+      prev.map((playlist) =>
+        playlist.id === playlistId
+          ? {
+              ...playlist,
+              migration_status: "migrated",
+              migrated_track_count: playlist.track_count ?? migratedTrackCount,
+              remaining_track_count: 0,
+              migration_note: "Migrated",
+            }
+          : playlist,
+      ),
+    );
+  }
+
+  function renderPlaylistCard(playlist: PlaylistRef) {
+    return (
+      <div key={playlist.id} className="playlist-card">
+        <label className="playlist-row">
+          <input
+            type="checkbox"
+            checked={selectedPlaylists.has(playlist.id)}
+            onChange={() => togglePlaylist(playlist.id)}
+          />
+          <span>{playlist.name}</span>
+          {playlist.migration_note ? (
+            <span className={`badge migration-${playlist.migration_status ?? "none"}`}>
+              {playlist.migration_note}
+            </span>
+          ) : null}
+          <span className="muted">
+            {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
+          </span>
+        </label>
+        {selectedPlaylists.has(playlist.id) ? (
+          <button
+            className="secondary compact"
+            disabled={busy}
+            onClick={() => loadTracks(playlist)}
+          >
+            {playlistTracks[playlist.id]
+              ? "Show cached songs"
+              : playlist.migration_status === "delta"
+                ? "Choose new tracks"
+                : "Choose tracks"}
+          </button>
+        ) : null}
+        {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
+          <div className="track-list">
+            <div className="track-toolbar">
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => selectPlaylistSongs(playlist.id, "all")}
+              >
+                Select all songs
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => selectPlaylistSongs(playlist.id, "leftovers")}
+              >
+                Select leftovers
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => selectPlaylistSongs(playlist.id, "none")}
+              >
+                Deselect playlist
+              </button>
+              <button
+                className="secondary compact"
+                disabled={busy}
+                onClick={() => loadTracks(playlist, { forceRefresh: true })}
+              >
+                Refresh songs
+              </button>
+            </div>
+            {playlistTracks[playlist.id].map((track) => {
+              const key = trackKey(track);
+              return (
+                <label key={key} className="track-row">
+                  <input
+                    type="checkbox"
+                    checked={selectedTracks[playlist.id]?.has(key) ?? false}
+                    onChange={() => toggleTrack(playlist.id, key)}
+                  />
+                  <span>
+                    {track.title} — {track.artist}
+                    {track.explicit ? <span className="badge inline">explicit</span> : null}
+                    {track.migration_status === "migrated" ? (
+                      <span className="badge inline migration-migrated">migrated</span>
+                    ) : playlist.migration_status === "delta" ? (
+                      <span className="badge inline migration-delta">new</span>
+                    ) : playlist.migration_status === "partial" ? (
+                      <span className="badge inline migration-partial">leftover</span>
+                    ) : null}
+                  </span>
+                  <span className="muted">{track.album ?? ""}</span>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderBlockedPlaylistCard(playlist: PlaylistRef) {
+    return (
+      <div key={playlist.id} className="playlist-card blocked-playlist-card">
+        <div className="playlist-row blocked-playlist-row">
+          <span className="blocked-lock" aria-hidden="true">
+            !
+          </span>
+          <span>{playlist.name}</span>
+          <span className="badge migration-blocked">Copy first</span>
+          <span className="muted">
+            {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
+          </span>
+        </div>
+        <p className="blocked-playlist-note">
+          Spotify blocks track access here. Copy it into your own playlist before migrating.
+        </p>
+        <button className="secondary compact" disabled={busy} onClick={showSpotifyCopyInstructions}>
+          Show copy instructions
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
+      {blockingAlert ? (
+        <BlockingAlertBanner alert={blockingAlert} onClose={() => setBlockingAlert(null)} />
+      ) : null}
       <h1>Open Playlist Engine</h1>
       <p className="subtitle">Migrate playlists between any two music services.</p>
 
@@ -398,7 +701,7 @@ export default function App() {
             onTest={testConnection}
           />
         </div>
-        {deviceChallenge && deviceChallenge.provider === target && !targetAccount ? (
+        {deviceChallenge ? (
           <div className="device-block">
             <p className="muted">Open this page and enter the code:</p>
             <a href={deviceChallenge.verificationUrl} target="_blank" rel="noreferrer">
@@ -406,20 +709,24 @@ export default function App() {
             </a>
             <code>{deviceChallenge.userCode}</code>
             <p className="muted">Waiting for Google to confirm authorization…</p>
-            {target === "ytmusic" ? (
+            {deviceChallenge.provider === "ytmusic" ? (
               <div className="fallback-callout">
                 <p>
                   Google says the app is not verified? Skip OAuth and use your signed-in browser
                   session instead.
                 </p>
-                <button className="secondary compact" disabled={busy} onClick={showYtHeaderFallback}>
+                <button
+                  className="secondary compact"
+                  disabled={busy}
+                  onClick={() => showYtHeaderFallback(deviceChallenge.provider)}
+                >
                   Use browser-session headers
                 </button>
               </div>
             ) : null}
           </div>
         ) : null}
-        {target === "ytmusic" && !targetAccount && ytHeaderFallback ? (
+        {activeAuthProvider === "ytmusic" && ytHeaderFallback ? (
           <div className="form-block header-guide">
             <div className="guide-heading">
               <div>
@@ -501,13 +808,17 @@ export default function App() {
             <div>
               <h2>Pick playlists</h2>
               <p className="muted">
-                {selectedPlaylists.size} of {playlists.length} selected
+                {selectedMigrationPlaylistIds.length} of {availablePlaylists.length} migratable selected
               </p>
             </div>
             <div className="toolbar">
               <button
                 className="secondary compact"
-                disabled={busy || playlists.length === 0 || selectedPlaylists.size === playlists.length}
+                disabled={
+                  busy ||
+                  migrationCandidatePlaylists.length === 0 ||
+                  selectedCandidateCount === migrationCandidatePlaylists.length
+                }
                 onClick={selectAllPlaylists}
               >
                 Select all
@@ -519,111 +830,135 @@ export default function App() {
               >
                 Deselect all
               </button>
+              <button
+                className="secondary compact"
+                disabled={busy || playlistLoading}
+                onClick={() => void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })}
+              >
+                {playlistLoading ? "Refreshing…" : "Refresh playlists"}
+              </button>
             </div>
           </div>
-          {playlists.length === 0 ? (
+          <p className="cache-guidance">
+            Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only
+            for new playlists or changed snapshots; songs are cached per playlist until Spotify
+            reports a new snapshot.
+          </p>
+          <div className="migration-top-stack">
+            <div className="migration-action-bar">
+              <div>
+                <p className="eyebrow">Ready to migrate</p>
+                <p className="muted">
+                  {selectedMigrationPlaylistIds.length} playlist
+                  {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
+                </p>
+                {selectedMigrationPlaylists.length >= 2 ? (
+                  <ul className="selected-playlist-names" aria-label="Selected playlists">
+                    {selectedMigrationPlaylists.map((playlist) => (
+                      <li key={playlist.id}>{playlist.name}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <button className="primary" disabled={startDisabled} onClick={() => start()}>
+                {busy ? "Starting…" : "Start migration"}
+              </button>
+            </div>
+            {jobId ? (
+              <div className="migration-progress-slot">
+                <ProgressBoard
+                  className="progress-popover"
+                  jobId={jobId}
+                  onMigrationChanged={refreshSourcePlaylists}
+                  onReconnectProvider={connect}
+                />
+              </div>
+            ) : null}
+          </div>
+          {playlistError && playlistErrorTitle ? (
+            <div className="playlist-error-panel error-guidance" role="alert">
+              <div>
+                <strong>{playlistErrorTitle}</strong>
+                <p>{playlistErrorHelp(playlistError)}</p>
+              </div>
+              <button
+                className="secondary compact"
+                disabled={playlistLoading}
+                onClick={() => void refreshSourcePlaylists()}
+              >
+                {playlistLoading ? "Checking…" : "Retry now"}
+              </button>
+            </div>
+          ) : null}
+          {migratedPlaylists.length > 0 ? (
+            <div className="migrated-playlists-panel">
+              <button
+                className="migrated-playlists-toggle"
+                type="button"
+                aria-expanded={showMigratedPlaylistDetails}
+                onClick={() => setShowMigratedPlaylists((open) => !open)}
+              >
+                <span>Migrated playlists</span>
+                <span className="muted">
+                  {migratedPlaylists.length} migrated or partially migrated
+                </span>
+                <span aria-hidden="true">{showMigratedPlaylistDetails ? "Hide" : "Show"}</span>
+              </button>
+              {showMigratedPlaylistDetails ? (
+                <div className="playlist-list migrated-playlist-list">
+                  {migratedPlaylists.map(renderPlaylistCard)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {blockedSpotifyPlaylists.length > 0 ? (
+            <div className="blocked-playlists-panel">
+              <button
+                className="blocked-playlists-toggle"
+                type="button"
+                aria-expanded={showBlockedPlaylistDetails}
+                onClick={() => setShowBlockedSpotifyPlaylists((open) => !open)}
+              >
+                <span>Spotify playlists to copy first</span>
+                <span className="muted">
+                  {blockedSpotifyPlaylists.length} owned by someone else
+                </span>
+                <span aria-hidden="true">{showBlockedPlaylistDetails ? "Hide" : "Show"}</span>
+              </button>
+              {showBlockedPlaylistDetails ? (
+                <div className="playlist-list blocked-playlist-list">
+                  {blockedSpotifyPlaylists.map(renderBlockedPlaylistCard)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {playlistLoading && playlists.length === 0 ? (
+            <p className="empty-guidance">Loading playlists…</p>
+          ) : playlistError && playlists.length === 0 ? (
+            <p className="empty-guidance error-guidance">
+              {playlistErrorHelp(playlistError)}
+            </p>
+          ) : playlists.length === 0 ? (
             <p className="muted">No playlists found yet.</p>
+          ) : migrationCandidatePlaylists.length === 0 && blockedSpotifyPlaylists.length > 0 ? (
+            <p className="empty-guidance">
+              No Spotify playlists can be migrated directly. Copy the playlists above into ones
+              you own, then refresh.
+            </p>
+          ) : migrationCandidatePlaylists.length === 0 && migratedPlaylists.length > 0 ? (
+            <p className="empty-guidance">
+              No new playlist work right now. Migrated and partial playlists are shown above.
+            </p>
+          ) : migrationCandidatePlaylists.length === 0 ? (
+            <p className="muted">No migratable playlists left.</p>
           ) : (
             <div className="playlist-list">
-              {playlists.map((playlist) => (
-                <div key={playlist.id} className="playlist-card">
-                  <label className="playlist-row">
-                    <input
-                      type="checkbox"
-                      checked={selectedPlaylists.has(playlist.id)}
-                      onChange={() => togglePlaylist(playlist.id)}
-                    />
-                    <span>{playlist.name}</span>
-                    {playlist.migration_note ? (
-                      <span className={`badge migration-${playlist.migration_status ?? "none"}`}>
-                        {playlist.migration_note}
-                      </span>
-                    ) : null}
-                    <span className="muted">
-                      {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
-                    </span>
-                  </label>
-                  {selectedPlaylists.has(playlist.id) ? (
-                    <button
-                      className="secondary compact"
-                      disabled={busy}
-                      onClick={() => loadTracks(playlist)}
-                    >
-                      {playlistTracks[playlist.id] ? "Reload tracks" : "Choose tracks"}
-                    </button>
-                  ) : null}
-                  {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
-                    <div className="track-list">
-                      <div className="track-toolbar">
-                        <button
-                          className="secondary compact"
-                          disabled={busy}
-                          onClick={() => selectPlaylistSongs(playlist.id, "all")}
-                        >
-                          Select all songs
-                        </button>
-                        <button
-                          className="secondary compact"
-                          disabled={busy}
-                          onClick={() => selectPlaylistSongs(playlist.id, "leftovers")}
-                        >
-                          Select leftovers
-                        </button>
-                        <button
-                          className="secondary compact"
-                          disabled={busy}
-                          onClick={() => selectPlaylistSongs(playlist.id, "none")}
-                        >
-                          Deselect playlist
-                        </button>
-                      </div>
-                      {playlistTracks[playlist.id].map((track) => {
-                        const key = trackKey(track);
-                        return (
-                          <label key={key} className="track-row">
-                            <input
-                              type="checkbox"
-                              checked={selectedTracks[playlist.id]?.has(key) ?? false}
-                              onChange={() => toggleTrack(playlist.id, key)}
-                            />
-                            <span>
-                              {track.title} — {track.artist}
-                              {track.explicit ? <span className="badge inline">explicit</span> : null}
-                              {track.migration_status === "migrated" ? (
-                                <span className="badge inline migration-migrated">migrated</span>
-                              ) : playlist.migration_status === "partial" ? (
-                                <span className="badge inline migration-partial">leftover</span>
-                              ) : null}
-                            </span>
-                            <span className="muted">{track.album ?? ""}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+              {migrationCandidatePlaylists.map(renderPlaylistCard)}
             </div>
           )}
         </section>
       ) : null}
 
-      <button
-        className="primary"
-        disabled={
-          !source ||
-          !target ||
-          !sourceAccount ||
-          !targetAccount ||
-          selectedMigrationPlaylistIds.length === 0 ||
-          busy
-        }
-        onClick={() => start()}
-      >
-        {busy ? "Starting…" : "Start migration"}
-      </button>
-
-      {jobId ? <ProgressBoard jobId={jobId} /> : null}
     </div>
   );
 }
@@ -640,24 +975,26 @@ function getSelectedMigrationPlaylistIds(
   });
 }
 
+function isAnnotatedMigratedPlaylist(playlist: PlaylistRef): boolean {
+  return playlist.migration_status === "migrated" || playlist.migration_status === "partial";
+}
+
+function unmigratedTrackKeys(tracks: Track[]): string[] {
+  return tracks.filter((track) => track.migration_status !== "migrated").map(trackKey);
+}
+
 function trackKey(track: Track): string {
   return track.source_item_id ?? track.id ?? String(track.position ?? track.title);
 }
 
-interface MigrationWarningDetail {
-  code: string;
-  message: string;
-  warnings: { code: string; message: string }[];
-}
-
-function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningDetail } {
+function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningsView } {
   if (!(error instanceof ApiError) || error.status !== 409) return false;
   if (!error.detail || typeof error.detail !== "object") return false;
-  const detail = error.detail as Partial<MigrationWarningDetail>;
+  const detail = error.detail as Partial<MigrationWarningsView>;
   return detail.code === "migration_warnings" && Array.isArray(detail.warnings);
 }
 
-function warningMessage(detail: MigrationWarningDetail): string {
+function warningMessage(detail: MigrationWarningsView): string {
   return [
     detail.message,
     "",
@@ -673,6 +1010,94 @@ interface DeviceChallenge {
   verificationUrl: string;
   state: string;
   pollIntervalS: number;
+}
+
+interface BlockingAlert {
+  title: string;
+  message: string;
+  action: string;
+}
+
+const SPOTIFY_EXTERNAL_PLAYLIST_PREFIX =
+  "Spotify does not allow this app to read tracks from playlists you do not own";
+const SPOTIFY_EXTERNAL_PLAYLIST_MESSAGE =
+  "Spotify does not allow this app to read tracks from playlists you do not own or collaborate on. In Spotify, use 'Add to other playlist' to copy it into a playlist you own, then migrate that copy. Delta migration is not available for the original external playlist because Spotify blocks track access.";
+
+function spotifyExternalPlaylistAlert(message: string): BlockingAlert | null {
+  if (!message.includes(SPOTIFY_EXTERNAL_PLAYLIST_PREFIX)) return null;
+  return {
+    title: "Spotify blocks this playlist",
+    message,
+    action: "Copy it in Spotify with Add to other playlist, then migrate your copy.",
+  };
+}
+
+function spotifyRateLimitAlert(error: unknown, message: string): BlockingAlert | null {
+  if (!isRateLimitError(error, message)) return null;
+  return {
+    title: "Spotify rate limit",
+    message: playlistErrorHelp(message),
+    action: "Wait for Spotify's retry window, then refresh playlists.",
+  };
+}
+
+function playlistErrorHeading(message: string): string {
+  return isRateLimitMessage(message) ? "Spotify rate limit" : "Could not load playlists";
+}
+
+function playlistErrorHelp(message: string): string {
+  const retryAfter = retryAfterSeconds(message);
+  if (isRateLimitMessage(message)) {
+    const wait = retryAfter === null ? null : formatWait(retryAfter);
+    return wait
+      ? `Spotify asked us to retry after ${wait}. I stopped waiting so the app does not hang.`
+      : "Spotify is rate limiting playlist requests. Wait a bit, then refresh playlists.";
+  }
+  return message;
+}
+
+function isRateLimitError(error: unknown, message: string): boolean {
+  return (
+    (error instanceof ApiError && (error.status === 420 || error.status === 429)) ||
+    isRateLimitMessage(message)
+  );
+}
+
+function isRateLimitMessage(message: string): boolean {
+  return message.toLowerCase().includes("rate limited");
+}
+
+function retryAfterSeconds(message: string): number | null {
+  const match = message.match(/retry after ([0-9.]+) seconds/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatWait(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const restSeconds = rounded % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}m`);
+  if (!hours && restSeconds) parts.push(`${restSeconds}s`);
+  return parts.join(" ") || "0s";
+}
+
+function isSpotifyCopyRequiredPlaylist(
+  playlist: PlaylistRef,
+  source: string | null,
+  sourceAccount: AccountView | null,
+): boolean {
+  return (
+    source === "spotify" &&
+    playlist.collaborative !== true &&
+    Boolean(playlist.owner_id) &&
+    Boolean(sourceAccount?.provider_user_id) &&
+    playlist.owner_id !== sourceAccount?.provider_user_id
+  );
 }
 
 const YT_REQUIRED_HEADERS = ["authorization", "cookie", "x-goog-authuser", "x-youtube-client-version"];
@@ -713,6 +1138,38 @@ function isGoogleAccessDenied(message: string): boolean {
   return message.includes("access_denied") || message.toLowerCase().includes("authorization was denied");
 }
 
+interface BlockingAlertBannerProps {
+  alert: BlockingAlert;
+  onClose: () => void;
+}
+
+function BlockingAlertBanner({ alert, onClose }: BlockingAlertBannerProps) {
+  return (
+    <div className="blocking-alert-layer" role="presentation">
+      <section
+        className="blocking-alert"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="blocking-alert-title"
+        aria-describedby="blocking-alert-message"
+      >
+        <span className="blocking-alert-icon" aria-hidden="true">
+          ⚠
+        </span>
+        <div className="blocking-alert-copy">
+          <p className="eyebrow">Spotify access limit</p>
+          <h2 id="blocking-alert-title">{alert.title}</h2>
+          <p id="blocking-alert-message">{alert.message}</p>
+          <p className="blocking-alert-action">{alert.action}</p>
+        </div>
+        <button className="blocking-alert-close" type="button" onClick={onClose} autoFocus>
+          Close
+        </button>
+      </section>
+    </div>
+  );
+}
+
 interface AccountPanelProps {
   label: string;
   provider: string | null;
@@ -734,6 +1191,9 @@ function AccountPanel({ label, provider, account, busy, onConnect, onTest }: Acc
           </p>
           <button className="secondary compact" disabled={busy} onClick={() => onTest(account)}>
             Test connection
+          </button>
+          <button className="secondary compact" disabled={busy} onClick={() => onConnect(provider)}>
+            Reconnect
           </button>
         </>
       ) : null}

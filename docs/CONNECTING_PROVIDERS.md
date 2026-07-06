@@ -35,13 +35,40 @@ it contains secrets and session tokens.
 
 10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
     the requested scopes.
-11. Use **Test connection** after connecting. If Spotify refresh expires, **Refresh
-    accounts** removes the stale account so you can reconnect cleanly.
+11. Spotify **Liked Songs** is shown as an owned playlist and uses Spotify's
+    saved-tracks library endpoint. If you connected Spotify before this feature
+    existed, reconnect Spotify so the app can request the `user-library-read`
+    scope.
+12. Use **Test connection** after connecting. Spotify refresh tokens expire after
+    six months; when Spotify returns `invalid_grant`, the app discards the stale
+    account before asking you to reconnect. **Refresh accounts** also removes stale
+    accounts so you can reconnect cleanly.
+
+### Spotify playlists owned by someone else
+
+Spotify blocks the playlist-items endpoint for playlists where the signed-in user
+is neither the owner nor a collaborator. If loading tracks or starting migration
+returns a Spotify access error, open the playlist in Spotify and use **Add to other
+playlist** to copy it into a playlist you own, then migrate that copy. Delta
+migration is not available for the original external playlist because Spotify does
+not let the app read its tracks.
+
+### Spotify rate limits and cache
+
+Spotify can return long `Retry-After` windows. To reduce calls, the app caches
+Spotify playlist refs with their `snapshot_id` and caches each selected playlist's
+tracks for that snapshot. Normal app refreshes use the cache. Use **Refresh
+playlists** only after adding or changing playlists so the app can discover new
+snapshot IDs. Use **Refresh songs** inside a playlist only when you need to force a
+track refresh; otherwise cached songs are reused until the playlist snapshot
+changes.
 
 ## YouTube Music device-code auth
 
 YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device
 flow. This is the default path when YouTube Music OAuth credentials are set.
+The app requests YouTube Data API plus Google userinfo email scope so reconnects
+can reuse the same YouTube Music account row by email when Google returns it.
 
 1. Open <https://console.cloud.google.com/apis/library/youtube.googleapis.com>
    and enable the **YouTube Data API v3** for your Google Cloud project.
@@ -54,6 +81,10 @@ flow. This is the default path when YouTube Music OAuth credentials are set.
    OPE_YTMUSIC_CLIENT_ID=your_client_id
    OPE_YTMUSIC_CLIENT_SECRET=your_client_secret
    ```
+
+   The device-code prompt should include these scopes:
+   `https://www.googleapis.com/auth/youtube` and
+   `https://www.googleapis.com/auth/userinfo.email`.
 
 5. Restart the backend and worker:
 
@@ -116,7 +147,9 @@ guided fallback appears without changing `.env`.
 7. Paste that block into **YouTube Music request headers** in the app and click
    **Connect YouTube Music**.
 8. Click **Test connection** before migrating. Header-paste credentials can expire
-   with the browser session; reconnect if the test fails.
+   with the browser session; reconnect if the test fails. Header-paste sessions do
+   not expose the Google account email, so account matching falls back to local
+   YouTube Music session identity.
 
 Do not paste response headers (`alt-svc`, `server`, `date`, etc.), pseudo headers
 (`:authority`, `:method`, etc.), or the request body.
@@ -130,6 +163,10 @@ The app starts deliberately slow for Spotify → YouTube Music migrations: 1
 playlist per job, 50 tracks per job, 250 tracks per day, and at least 120 seconds
 between jobs. If you exceed those defaults, the UI shows a warning popup and only
 continues after you acknowledge it.
+
+Large playlists can take longer than five minutes because each song may require a
+YouTube Music search. The worker timeout defaults to 3600 seconds and can be
+changed with `OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`.
 
 When a target playlist with the same name already exists, the app reads its songs.
 If they overlap with the source, the job reuses that playlist and skips duplicate

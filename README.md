@@ -75,7 +75,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
-between jobs (`OPE_MIGRATION_SAFE_*`).
+between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
+by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
+ARQ's 5-minute default timeout.
 
 ## Spotify → YouTube Music
 
@@ -90,10 +92,21 @@ between jobs (`OPE_MIGRATION_SAFE_*`).
 5. For YouTube Music, open the verification URL shown by the app and enter the
    device code. If Google blocks the unverified OAuth app, or if YouTube Music
    OAuth credentials are not set, use the guided browser-session header fallback
-   shown in the connection panel.
+   shown in the connection panel. OAuth reconnects reuse the same YouTube Music
+   account by Google email when Google returns it.
 6. Pick one playlist, optionally choose individual tracks, and start the migration.
+   Spotify **Liked Songs** appears as an owned playlist backed by Spotify's saved
+   tracks library; reconnect Spotify if an older connection does not have the
+   `user-library-read` scope yet.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
+   Spotify may block tracks from playlists you do not own or collaborate on; copy
+   those playlists into one you own with Spotify's **Add to other playlist** before
+   migrating.
+   Spotify playlist lists and selected playlist songs are cached by `snapshot_id`
+   to avoid rate limits. Use **Refresh playlists** only when you add playlists or
+   need new snapshots, and **Refresh songs** on a playlist only when its songs
+   changed.
 7. When the job finishes, the progress panel says "Migration succeeded" and links
    to created target playlists when the target provider exposes a web URL.
 8. Review low-confidence matches in the progress panel: approve the suggested

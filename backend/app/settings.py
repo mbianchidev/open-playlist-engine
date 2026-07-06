@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     ytmusic_client_secret: str = ""
     ytmusic_device_code_url: str = "https://www.youtube.com/o/oauth2/device/code"
     ytmusic_token_url: str = "https://oauth2.googleapis.com/token"
+    ytmusic_userinfo_url: str = "https://www.googleapis.com/oauth2/v2/userinfo"
 
     # Match graph: per-user/local by default. Sharing globally needs legal review.
     enable_shared_graph: bool = False
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     migration_safe_max_tracks_per_job: int = 50
     migration_safe_daily_tracks: int = 250
     migration_safe_min_job_gap_s: int = 120
+    migration_worker_job_timeout_s: int = 3600
 
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""

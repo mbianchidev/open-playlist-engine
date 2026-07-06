@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import re
 import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Protocol
 
 import httpx
@@ -50,6 +53,8 @@ from app.core.capabilities import (
 from app.core.models import Playlist, PlaylistRef, Track
 from app.core.registry import register
 from app.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class YTMusicClient(Protocol):
@@ -83,7 +88,11 @@ class YTMusicClient(Protocol):
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
 
-_YTMUSIC_SCOPE = "https://www.googleapis.com/auth/youtube"
+_YTMUSIC_SCOPES = (
+    "https://www.googleapis.com/auth/youtube",
+    "https://www.googleapis.com/auth/userinfo.email",
+)
+_YTMUSIC_SCOPE = " ".join(_YTMUSIC_SCOPES)
 _OAUTH_GRANT_TYPE = "http://oauth.net/grant_type/device/1.0"
 _OAUTH_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) "
@@ -172,6 +181,60 @@ def _playlist_title(item: dict[str, Any]) -> str:
 def _playlist_id(item: dict[str, Any]) -> str | None:
     value = item.get("playlistId") or item.get("id") or item.get("playlist_id")
     return str(value) if value else None
+
+
+def _is_auth_error_message(message: str) -> bool:
+    normalized = message.lower()
+    return (
+        "401" in normalized
+        or "unauthorized" in normalized
+        or "must be signed in" in normalized
+        or re.search(
+            r"""["'](?:logged_in|yt_li)["']\s*[:,][^}\]]*["']value["']\s*:\s*["']0["']""",
+            normalized,
+        )
+        is not None
+    )
+
+
+def _auth_error(action: str, message: str) -> AuthExpired:
+    return AuthExpired(
+        f"YouTube Music {action} requires a signed-in session that can write playlists; "
+        f"reconnect YouTube Music. {message}"
+    )
+
+
+async def _run_client_call(
+    action: str, call: Callable[[], Any], *, playlist_id: str | None = None
+) -> Any:
+    try:
+        return await asyncio.to_thread(call)
+    except (KeyError, IndexError) as exc:
+        message = str(exc)
+        if _is_auth_error_message(message):
+            logger.warning("ytmusic %s response indicates signed-out session error=%s", action, exc)
+            raise _auth_error(action, message) from exc
+        if "Unable to find" in str(exc):
+            if playlist_id:
+                logger.warning(
+                    "ytmusic %s response missing expected content playlist_id=%s error=%s",
+                    action,
+                    playlist_id,
+                    exc,
+                )
+                raise NotFound(
+                    f"YouTube Music playlist '{playlist_id}' is unavailable or no longer accessible"
+                ) from exc
+            logger.warning("ytmusic %s response missing expected content error=%s", action, exc)
+            raise ProviderError(f"YouTube Music {action} returned an unexpected response") from exc
+        raise
+    except Exception as exc:
+        message = str(exc) or type(exc).__name__
+        if _is_auth_error_message(message):
+            raise _auth_error(action, message) from exc
+        if type(exc).__module__.startswith("ytmusicapi."):
+            raise ProviderError(f"YouTube Music {action} failed: {message}") from exc
+        raise
 
 
 def _track_from_video(item: dict[str, Any], position: int) -> Track | None:
@@ -325,6 +388,26 @@ class YTMusicAuth(AuthStrategy):
             raise ProviderError("YouTube Music OAuth returned an invalid response")
         return resp.status_code, payload
 
+    async def _get_userinfo(self, access_token: str) -> dict[str, Any]:
+        s = get_settings()
+        async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
+            resp = await client.get(
+                s.ytmusic_userinfo_url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "User-Agent": _OAUTH_USER_AGENT,
+                },
+            )
+        if resp.status_code >= 400:
+            raise ProviderError(f"YouTube Music userinfo lookup failed: HTTP {resp.status_code}")
+        try:
+            payload = resp.json()
+        except json.JSONDecodeError as exc:
+            raise ProviderError("YouTube Music userinfo returned invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ProviderError("YouTube Music userinfo returned an invalid response")
+        return payload
+
     async def _request_device_code(self) -> dict[str, Any]:
         s = get_settings()
         status, payload = await self._post_form(
@@ -460,16 +543,39 @@ class YTMusicAuth(AuthStrategy):
             raise
         _PENDING_DEVICE_CODES.pop(state, None)
         auth_payload = _token_payload(token)
+        identity = await self._oauth_identity(auth_payload["access_token"])
         return ProviderCredential(
-            account_id="ytmusic-oauth",
+            account_id=identity["account_id"],
             provider="ytmusic",
             auth_kind=AuthKind.OAUTH_DEVICE,
             access_token=auth_payload["access_token"],
             refresh_token=auth_payload["refresh_token"],
             expires_at=auth_payload["expires_at"],
             scopes=str(auth_payload["scope"]).split(),
-            extra={"auth": auth_payload, "display_name": "YouTube Music"},
+            extra={
+                "auth": auth_payload,
+                "display_name": identity["display_name"],
+                "email": identity.get("email"),
+            },
         )
+
+    async def _oauth_identity(self, access_token: str) -> dict[str, str | None]:
+        try:
+            userinfo = await self._get_userinfo(access_token)
+        except (ProviderError, httpx.HTTPError) as exc:
+            logger.warning("ytmusic oauth email lookup failed error=%s", exc)
+            return {"account_id": "ytmusic-oauth", "display_name": "YouTube Music", "email": None}
+
+        raw_email = userinfo.get("email")
+        email = (
+            raw_email.strip().lower()
+            if isinstance(raw_email, str) and raw_email.strip()
+            else None
+        )
+        if not email:
+            logger.warning("ytmusic oauth userinfo did not include email")
+            return {"account_id": "ytmusic-oauth", "display_name": "YouTube Music", "email": None}
+        return {"account_id": email, "display_name": email, "email": email}
 
     async def refresh(self, cred: ProviderCredential) -> ProviderCredential:
         if cred.auth_kind is not AuthKind.OAUTH_DEVICE:
@@ -532,8 +638,14 @@ class YTMusicAdapter:
 
     async def iter_playlists(self, cred: ProviderCredential) -> AsyncIterator[PlaylistRef]:
         client = self._client(cred)
-        rows = await asyncio.to_thread(lambda: client.get_library_playlists(limit=1000))
+        rows = await _run_client_call(
+            "list playlists", lambda: client.get_library_playlists(limit=1000)
+        )
+        if not isinstance(rows, list):
+            raise ProviderError("YouTube Music list playlists returned an invalid response")
         for item in rows:
+            if not isinstance(item, dict):
+                continue
             playlist_id = _playlist_id(item)
             if not playlist_id:
                 continue
@@ -548,7 +660,11 @@ class YTMusicAdapter:
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
         client = self._client(cred)
-        playlist = await asyncio.to_thread(lambda: client.get_playlist(ref.id, limit=5000))
+        playlist = await _run_client_call(
+            "read playlist", lambda: client.get_playlist(ref.id, limit=5000), playlist_id=ref.id
+        )
+        if not isinstance(playlist, dict):
+            raise ProviderError("YouTube Music playlist response was invalid")
         if playlist.get("error"):
             raise NotFound(ref.id)
         tracks = playlist.get("tracks")
@@ -563,7 +679,11 @@ class YTMusicAdapter:
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         client = self._client(cred)
-        raw = await asyncio.to_thread(lambda: client.get_playlist(ref.id, limit=5000))
+        raw = await _run_client_call(
+            "read playlist", lambda: client.get_playlist(ref.id, limit=5000), playlist_id=ref.id
+        )
+        if not isinstance(raw, dict):
+            raise ProviderError("YouTube Music playlist response was invalid")
         if raw.get("error"):
             raise NotFound(ref.id)
         raw_tracks = raw.get("tracks")
@@ -586,7 +706,11 @@ class YTMusicAdapter:
 
     async def test_connection(self, cred: ProviderCredential) -> None:
         client = self._client(cred)
-        await asyncio.to_thread(lambda: client.search("test", filter="songs", limit=1))
+        rows = await _run_client_call(
+            "test connection", lambda: client.get_library_playlists(limit=1)
+        )
+        if not isinstance(rows, list):
+            raise ProviderError("YouTube Music test connection returned an invalid response")
 
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
@@ -595,9 +719,15 @@ class YTMusicAdapter:
         if track.album:
             query = f"{query} {track.album}".strip()
         client = self._client(cred)
-        results = await asyncio.to_thread(lambda: client.search(query, filter="songs", limit=limit))
+        results = await _run_client_call(
+            "search tracks", lambda: client.search(query, filter="songs", limit=limit)
+        )
+        if not isinstance(results, list):
+            raise ProviderError("YouTube Music search returned an invalid response")
         candidates: list[TrackCandidate] = []
         for item in results:
+            if not isinstance(item, dict):
+                continue
             video_id = item.get("videoId")
             if not video_id:
                 continue
@@ -626,10 +756,14 @@ class YTMusicAdapter:
     async def create_playlist(self, cred: ProviderCredential, spec: CreatePlaylistSpec) -> str:
         client = self._client(cred)
         privacy = "PUBLIC" if spec.public else "PRIVATE"
-        result = await asyncio.to_thread(
-            client.create_playlist, spec.name, spec.description or "", privacy
+        result = await _run_client_call(
+            "create playlist",
+            lambda: client.create_playlist(spec.name, spec.description or "", privacy),
         )
         if not isinstance(result, str):
+            message = str(result)
+            if _is_auth_error_message(message):
+                raise _auth_error("create playlist", message)
             raise ProviderError(f"ytmusic create_playlist failed: {result}")
         return result
 
@@ -645,8 +779,10 @@ class YTMusicAdapter:
             chunk = uris[start : start + batch]
             video_ids = [_video_id(u) for u in chunk]
             # duplicates=True: a migration must preserve the source's repeats.
-            response = await asyncio.to_thread(
-                client.add_playlist_items, playlist_id, video_ids, None, True
+            response = await _run_client_call(
+                "add tracks",
+                partial(client.add_playlist_items, playlist_id, video_ids, None, True),
+                playlist_id=playlist_id,
             )
             ok = _succeeded(response)
             for uri in chunk:

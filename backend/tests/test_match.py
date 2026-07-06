@@ -42,3 +42,65 @@ async def test_resolve_needs_review_when_no_candidate() -> None:
     res = await svc.resolve(track, target, fake_cred("fake"))
     assert res.candidate is None
     assert res.needs_review is True
+
+
+def test_target_only_live_version_gets_flat_confidence_penalty() -> None:
+    track = Track(title="Song One", artist="Artist One", isrc="US0000000001", duration_s=180)
+    candidate = TrackCandidate(
+        provider_track_id="live",
+        uri="ytmusic:video:live",
+        title="Song One - Live",
+        artist="Artist One",
+        isrc="US0000000001",
+        duration_s=180,
+    )
+
+    confidence, source = score(track, candidate)
+
+    assert source == "isrc_exact_live"
+    assert confidence == 0.8
+
+
+def test_source_live_version_does_not_penalize_target_live_version() -> None:
+    track = Track(title="Song One - Live", artist="Artist One", duration_s=180)
+    candidate = TrackCandidate(
+        provider_track_id="live",
+        uri="ytmusic:video:live",
+        title="Song One - Live",
+        artist="Artist One",
+        duration_s=180,
+    )
+
+    confidence, source = score(track, candidate)
+
+    assert source == "fuzzy"
+    assert confidence >= 0.9
+
+
+class LiveOnlyAdapter(FakeAdapter):
+    async def search_tracks(
+        self, cred, track: Track, *, limit: int = 5
+    ) -> list[TrackCandidate]:
+        return [
+            TrackCandidate(
+                provider_track_id="live",
+                uri="ytmusic:video:live",
+                title=f"{track.title} - Live",
+                artist=track.artist,
+                duration_s=track.duration_s,
+            )
+        ]
+
+
+async def test_resolve_reviews_live_target_when_source_is_not_live() -> None:
+    svc = MatchService(graph=None, review_threshold=0.8)
+    track = Track(title="Song One", artist="Artist One", duration_s=180)
+
+    res = await svc.resolve(track, LiveOnlyAdapter(), fake_cred("fake"))
+
+    assert res.candidate is not None
+    assert res.confidence == 0.5929
+    assert res.source == "fuzzy_live"
+    assert res.needs_review is True
+    assert res.review_reason is not None
+    assert "live version" in res.review_reason
