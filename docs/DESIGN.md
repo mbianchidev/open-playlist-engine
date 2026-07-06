@@ -32,12 +32,13 @@ and lets a user migrate playlists from any source to any target through a UI.
 
 ### Current implementation status
 The self-hosted MVP currently exposes only implemented capabilities in the UI:
-Spotify is a source provider (OAuth + playlist read/search) and YouTube Music is a
-target provider (header-paste auth + playlist read/search/write through
-`ytmusicapi`). The persisted job pipeline supports import → match → write with SSE
-item progress; low-confidence matches are marked `needs_review` and can be
-approved, batch-approved, corrected, skipped, or batch-denied from the progress
-panel.
+Spotify is a source provider (OAuth + playlist read/search), Tidal is a
+source/target provider (OAuth + official JSON:API read/search/write), and YouTube
+Music is a source/target provider (device-code/header auth + playlist
+read/search/write through `ytmusicapi`). The persisted job pipeline supports import
+→ match → write with SSE item progress; low-confidence matches are marked
+`needs_review` and can be approved, batch-approved, corrected, skipped, or
+batch-denied from the progress panel.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.

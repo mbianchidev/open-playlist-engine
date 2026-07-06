@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     spotify_client_secret: str = ""
     spotify_redirect_uri: str = "http://127.0.0.1:8000/api/auth/spotify/callback"
 
+    # Tidal OAuth (set in .env)
+    tidal_client_id: str = ""
+    tidal_client_secret: str = ""
+    tidal_redirect_uri: str = "http://127.0.0.1:8000/api/auth/tidal/callback"
+
     @property
     def is_hosted(self) -> bool:
         return self.deployment_mode is DeploymentMode.HOSTED

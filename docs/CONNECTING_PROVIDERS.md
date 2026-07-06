@@ -1,7 +1,8 @@
-# Connecting Spotify and YouTube Music
+# Connecting Spotify, Tidal and YouTube Music
 
-This self-hosted MVP migrates from Spotify to YouTube Music. Keep `.env` local:
-it contains secrets and session tokens.
+This self-hosted MVP exposes provider directions from implemented capabilities,
+including Spotify ↔ Tidal and YouTube Music ↔ Tidal. Keep `.env` local: it
+contains secrets and session tokens.
 
 ## Spotify app setup
 
@@ -62,6 +63,53 @@ playlists** only after adding or changing playlists so the app can discover new
 snapshot IDs. Use **Refresh songs** inside a playlist only when you need to force a
 track refresh; otherwise cached songs are reused until the playlist snapshot
 changes.
+
+## Tidal app setup
+
+Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
+
+1. Open <https://developer.tidal.com>.
+2. Create an app for local development.
+3. Set **Redirect URI** exactly to:
+
+   ```text
+   http://127.0.0.1:8000/api/auth/tidal/callback
+   ```
+
+4. Request these third-party scopes:
+
+   ```text
+   playlists.read
+   playlists.write
+   search.read
+   user.read
+   ```
+
+   Do not request the internal-only `r_usr` or `w_usr` scopes for third-party apps.
+5. Copy the client ID and, if issued, the client secret into the repo-root `.env`:
+
+   ```env
+   OPE_TIDAL_CLIENT_ID=your_client_id
+   OPE_TIDAL_CLIENT_SECRET=your_client_secret
+   OPE_TIDAL_REDIRECT_URI=http://127.0.0.1:8000/api/auth/tidal/callback
+   ```
+
+   `OPE_TIDAL_CLIENT_SECRET` is optional for PKCE sign-in, but set it when
+   available. The adapter uses client credentials for catalog ISRC lookups; without
+   a secret it falls back to text search for target matching.
+
+6. Restart the backend and worker:
+
+   ```bash
+   docker compose up -d --force-recreate backend worker
+   ```
+
+7. In the UI, choose Tidal as **From** or **To**, click **Connect Tidal**, and
+   approve the requested scopes in the popup.
+
+Tidal playlist writes create `UNLISTED` playlists by default unless a migration
+explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
+the maximum accepted by Tidal's playlist-items relationship endpoint.
 
 ## YouTube Music device-code auth
 
@@ -159,10 +207,10 @@ and `x-youtube-client-version` before enabling the connect button.
 
 ## Safe migration defaults
 
-The app starts deliberately slow for Spotify → YouTube Music migrations: 1
-playlist per job, 50 tracks per job, 250 tracks per day, and at least 120 seconds
-between jobs. If you exceed those defaults, the UI shows a warning popup and only
-continues after you acknowledge it.
+The app starts deliberately slow for all migrations: 1 playlist per job, 50 tracks
+per job, 250 tracks per day, and at least 120 seconds between jobs. If you exceed
+those defaults, the UI shows a warning popup and only continues after you
+acknowledge it.
 
 Large playlists can take longer than five minutes because each song may require a
 YouTube Music search. The worker timeout defaults to 3600 seconds and can be

@@ -30,5 +30,5 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
    denying all doubtful items.
 
 The current UI supports checked account refresh/test-connection, partial-migration
-labels, playlist-level song group selection, and the implemented self-host Spotify
-→ YouTube Music MVP.
+labels, playlist-level song group selection, and any provider direction advertised
+by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.

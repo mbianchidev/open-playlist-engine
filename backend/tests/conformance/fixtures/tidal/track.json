@@ -1,0 +1,19 @@
+{
+  "data": {
+    "id": "t1",
+    "type": "tracks",
+    "attributes": {
+      "title": "Song One",
+      "duration": "PT3M",
+      "explicit": false,
+      "isrc": "US0000000001",
+      "key": "C",
+      "keyScale": "MAJOR",
+      "mediaTags": ["LOSSLESS"],
+      "popularity": 0.9
+    }
+  },
+  "links": {
+    "self": "/tracks/t1"
+  }
+}

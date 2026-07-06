@@ -9,11 +9,12 @@ This is the first reference implementation of the
 plugin spoke, the universal format is the hub, so adding a provider is O(1) and it
 instantly works with all the others — both as source and target.
 
-> Status: **early MVP**. The self-hosted Spotify → YouTube Music path is wired:
-> Spotify OAuth/read/search, YouTube Music header auth/read/search/write,
+> Status: **early MVP**. The self-hosted Spotify ↔ Tidal and YouTube Music ↔
+> Tidal paths are wired through adapter capabilities: Spotify OAuth/read/search,
+> Tidal OAuth/read/search/write, YouTube Music device/header auth/read/search/write,
 > persisted credentials, playlist/track selection, partial-migration detection,
-> migration jobs, review actions and SSE progress. Other provider directions
-> remain gated until their adapters advertise implemented capabilities. See
+> migration jobs, review actions and SSE progress. Provider directions remain
+> gated until their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
@@ -42,7 +43,7 @@ the generated OpenAPI client.
 ## Quickstart (Docker)
 
 ```bash
-cp .env.example .env        # then set OPE_SECRET_KEY and Spotify creds
+cp .env.example .env        # then set OPE_SECRET_KEY and provider OAuth creds
 docker compose build --no-cache
 docker compose up
 ```
@@ -72,29 +73,35 @@ npm run build
 All backend settings use the `OPE_` env prefix; see [`.env.example`](.env.example).
 Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`,
-`OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+`OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SPOTIFY_CLIENT_ID`,
+`OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
+`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
 ARQ's 5-minute default timeout.
 
-## Spotify → YouTube Music
+## Spotify, Tidal and YouTube Music
 
 1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
    redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
-2. Put `OPE_SPOTIFY_CLIENT_ID`, optional `OPE_SPOTIFY_CLIENT_SECRET`,
+2. Create a Tidal app at <https://developer.tidal.com> and set its redirect URI to
+   `http://127.0.0.1:8000/api/auth/tidal/callback`. Request the third-party scopes
+   `playlists.read`, `playlists.write`, `search.read`, and `user.read`.
+3. Put `OPE_SPOTIFY_CLIENT_ID`, optional `OPE_SPOTIFY_CLIENT_SECRET`,
+   `OPE_TIDAL_CLIENT_ID`, optional `OPE_TIDAL_CLIENT_SECRET`,
    `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`, `OPE_SECRET_KEY`, and
    `OPE_FRONTEND_URL` in `.env`.
-3. Start Docker Compose, open `http://localhost:8080`, choose Spotify as source
-   and YouTube Music as target.
-4. Connect Spotify in the popup.
-5. For YouTube Music, open the verification URL shown by the app and enter the
+4. Start Docker Compose, open `http://localhost:8080`, and choose any implemented
+   source/target direction advertised by the provider picker.
+5. Connect Spotify and Tidal in their OAuth popups.
+6. For YouTube Music, open the verification URL shown by the app and enter the
    device code. If Google blocks the unverified OAuth app, or if YouTube Music
    OAuth credentials are not set, use the guided browser-session header fallback
    shown in the connection panel. OAuth reconnects reuse the same YouTube Music
    account by Google email when Google returns it.
-6. Pick one playlist, optionally choose individual tracks, and start the migration.
+7. Pick one playlist, optionally choose individual tracks, and start the migration.
    Spotify **Liked Songs** appears as an owned playlist backed by Spotify's saved
    tracks library; reconnect Spotify if an older connection does not have the
    `user-library-read` scope yet.
@@ -107,16 +114,16 @@ ARQ's 5-minute default timeout.
    to avoid rate limits. Use **Refresh playlists** only when you add playlists or
    need new snapshots, and **Refresh songs** on a playlist only when its songs
    changed.
-7. When the job finishes, the progress panel says "Migration succeeded" and links
+8. When the job finishes, the progress panel says "Migration succeeded" and links
    to created target playlists when the target provider exposes a web URL.
-8. Review low-confidence matches in the progress panel: approve the suggested
+9. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-9. Re-running a playlist reuses an existing migrated target playlist, labels
+10. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
 
-Detailed Spotify app and YouTube Music header-copy steps are in
+Detailed Spotify, Tidal and YouTube Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
 
 ## Adding a provider
