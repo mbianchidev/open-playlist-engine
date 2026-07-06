@@ -12,8 +12,9 @@ instantly works with all the others — both as source and target.
 > Status: **early MVP**. The self-hosted Spotify → YouTube Music path is wired:
 > Spotify OAuth/read/search, YouTube Music header auth/read/search/write,
 > persisted credentials, playlist/track selection, partial-migration detection,
-> migration jobs, review actions and SSE progress. Other provider directions
-> remain gated until their adapters advertise implemented capabilities. See
+> migration jobs, review actions, SSE progress and migration statistics. Other
+> provider directions remain gated until their adapters advertise implemented
+> capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
@@ -112,7 +113,9 @@ ARQ's 5-minute default timeout.
 8. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-9. Re-running a playlist reuses an existing migrated target playlist, labels
+9. Use **Migration stats** to inspect one migration from the playlist-name dropdown
+   or view all-time aggregate stats filtered by source and target provider.
+10. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
 

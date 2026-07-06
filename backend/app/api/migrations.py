@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import Counter, defaultdict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
@@ -72,6 +73,59 @@ class JobView(BaseModel):
     done: int = 0
     failed: int = 0
     error: str | None = None
+
+
+class StatusCounts(BaseModel):
+    total: int = 0
+    pending: int = 0
+    matched: int = 0
+    needs_review: int = 0
+    written: int = 0
+    skipped: int = 0
+    failed: int = 0
+    other: dict[str, int] = Field(default_factory=dict)
+
+
+class MigrationOptionView(BaseModel):
+    id: str
+    label: str
+    playlist_names: list[str] = Field(default_factory=list)
+    status: str
+    source_provider: str
+    target_provider: str
+    created_at: datetime | None = None
+
+
+class PlaylistStatsView(BaseModel):
+    source_playlist_id: str
+    source_playlist_name: str | None = None
+    target_playlist_id: str | None = None
+    counts: StatusCounts
+
+
+class MigrationStatsView(BaseModel):
+    id: str
+    label: str
+    playlist_names: list[str] = Field(default_factory=list)
+    status: str
+    source_provider: str
+    target_provider: str
+    created_at: datetime | None = None
+    counts: StatusCounts
+    playlist_count: int = 0
+    playlists: list[PlaylistStatsView] = Field(default_factory=list)
+    empty: bool = False
+    message: str | None = None
+
+
+class AggregateMigrationStatsView(BaseModel):
+    source_provider: str | None = None
+    target_provider: str | None = None
+    total_migrations: int = 0
+    total_playlists: int = 0
+    counts: StatusCounts
+    empty: bool = False
+    message: str | None = None
 
 
 class JobItemView(BaseModel):
@@ -145,6 +199,248 @@ def _item_view(item: orm.JobItem) -> JobItemView:
     )
 
 
+_STATUS_FIELDS = ("pending", "matched", "needs_review", "written", "skipped", "failed")
+
+
+def _status_counts(statuses: Counter[str], *, total_hint: int = 0) -> StatusCounts:
+    known = {status: int(statuses.get(status, 0)) for status in _STATUS_FIELDS}
+    other = {
+        status: int(count)
+        for status, count in statuses.items()
+        if status not in known and int(count) > 0
+    }
+    observed = sum(known.values()) + sum(other.values())
+    if total_hint > observed:
+        known["pending"] += total_hint - observed
+    return StatusCounts(total=max(total_hint, observed), other=other, **known)
+
+
+def _status_counts_from_items(items: list[orm.JobItem], *, total_hint: int = 0) -> StatusCounts:
+    return _status_counts(Counter(item.status for item in items), total_hint=total_hint)
+
+
+def _sum_status_counts(counts: list[StatusCounts]) -> StatusCounts:
+    statuses: Counter[str] = Counter()
+    other: Counter[str] = Counter()
+    total = 0
+    for count in counts:
+        total += count.total
+        for status in _STATUS_FIELDS:
+            statuses[status] += getattr(count, status)
+        other.update(count.other)
+    return StatusCounts(
+        total=total,
+        pending=statuses["pending"],
+        matched=statuses["matched"],
+        needs_review=statuses["needs_review"],
+        written=statuses["written"],
+        skipped=statuses["skipped"],
+        failed=statuses["failed"],
+        other=dict(other),
+    )
+
+
+def _append_unique(values: list[str], value: str | None) -> None:
+    if value and value not in values:
+        values.append(value)
+
+
+def _selected_playlist_ids(job: orm.MigrationJob) -> list[str]:
+    selection = job.selection if isinstance(job.selection, dict) else {}
+    raw_ids = selection.get("playlist_ids")
+    if not isinstance(raw_ids, list):
+        return []
+    return [str(playlist_id) for playlist_id in raw_ids if str(playlist_id).strip()]
+
+
+def _migration_label(job: orm.MigrationJob, playlist_names: list[str]) -> str:
+    if len(playlist_names) == 1:
+        return playlist_names[0]
+    if len(playlist_names) == 2:
+        return f"{playlist_names[0]}, {playlist_names[1]}"
+    if len(playlist_names) > 2:
+        return f"{playlist_names[0]}, {playlist_names[1]} + {len(playlist_names) - 2} more"
+    selected_count = len(_selected_playlist_ids(job))
+    if selected_count == 1:
+        return "1 playlist"
+    if selected_count > 1:
+        return f"{selected_count} playlists"
+    return "Preparing migration"
+
+
+async def _playlist_names_by_job(
+    session: AsyncSession, jobs: list[orm.MigrationJob], *, user_id: str
+) -> dict[str, list[str]]:
+    names_by_job: dict[str, list[str]] = {job.id: [] for job in jobs}
+    source_ids_by_job: dict[str, list[str]] = {job.id: [] for job in jobs}
+    job_ids = [job.id for job in jobs]
+    if not job_ids:
+        return names_by_job
+
+    rows = await session.execute(
+        select(
+            orm.JobItem.job_id,
+            orm.JobItem.source_playlist_id,
+            orm.JobItem.source_playlist_name,
+        )
+        .where(orm.JobItem.job_id.in_(job_ids))
+        .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
+    )
+    for job_id, playlist_id, playlist_name in rows.all():
+        _append_unique(source_ids_by_job[job_id], playlist_id)
+        _append_unique(names_by_job[job_id], playlist_name)
+
+    missing_name_jobs = [job for job in jobs if not names_by_job[job.id]]
+    if not missing_name_jobs:
+        return names_by_job
+
+    fallback_ids: set[str] = set()
+    for job in missing_name_jobs:
+        fallback_ids.update(_selected_playlist_ids(job))
+        fallback_ids.update(source_ids_by_job[job.id])
+    if not fallback_ids:
+        return names_by_job
+
+    cache_rows = await session.execute(
+        select(
+            orm.CachedPlaylistRef.provider,
+            orm.CachedPlaylistRef.account_id,
+            orm.CachedPlaylistRef.playlist_id,
+            orm.CachedPlaylistRef.name,
+        ).where(
+            orm.CachedPlaylistRef.user_id == user_id,
+            orm.CachedPlaylistRef.playlist_id.in_(fallback_ids),
+        )
+    )
+    cached_names = {
+        (provider, account_id, playlist_id): name
+        for provider, account_id, playlist_id, name in cache_rows.all()
+    }
+    for job in missing_name_jobs:
+        ids = _selected_playlist_ids(job) or source_ids_by_job[job.id]
+        for playlist_id in ids:
+            _append_unique(
+                names_by_job[job.id],
+                cached_names.get((job.source_provider, job.source_account_id, playlist_id)),
+            )
+    return names_by_job
+
+
+def _migration_option(job: orm.MigrationJob, playlist_names: list[str]) -> MigrationOptionView:
+    return MigrationOptionView(
+        id=job.id,
+        label=_migration_label(job, playlist_names),
+        playlist_names=playlist_names,
+        status=job.status,
+        source_provider=job.source_provider,
+        target_provider=job.target_provider,
+        created_at=job.created_at,
+    )
+
+
+def _playlist_stats(items: list[orm.JobItem]) -> list[PlaylistStatsView]:
+    grouped: dict[tuple[str, str | None], list[orm.JobItem]] = defaultdict(list)
+    for item in items:
+        grouped[(item.source_playlist_id, item.target_playlist_id)].append(item)
+
+    playlists: list[PlaylistStatsView] = []
+    for (source_playlist_id, target_playlist_id), rows in sorted(
+        grouped.items(),
+        key=lambda group: (
+            _rows_name(group[1]) or group[0][0],
+            group[0][1] or "",
+        ),
+    ):
+        playlists.append(
+            PlaylistStatsView(
+                source_playlist_id=source_playlist_id,
+                source_playlist_name=_rows_name(rows),
+                target_playlist_id=target_playlist_id,
+                counts=_status_counts_from_items(rows),
+            )
+        )
+    return playlists
+
+
+def _rows_name(items: list[orm.JobItem]) -> str | None:
+    for item in items:
+        if item.source_playlist_name:
+            return item.source_playlist_name
+    return None
+
+
+def _build_migration_stats(
+    job: orm.MigrationJob, items: list[orm.JobItem], playlist_names: list[str]
+) -> MigrationStatsView:
+    playlists = _playlist_stats(items)
+    selected_count = len(_selected_playlist_ids(job))
+    empty = len(items) == 0
+    return MigrationStatsView(
+        id=job.id,
+        label=_migration_label(job, playlist_names),
+        playlist_names=playlist_names,
+        status=job.status,
+        source_provider=job.source_provider,
+        target_provider=job.target_provider,
+        created_at=job.created_at,
+        counts=_status_counts_from_items(items, total_hint=job.total),
+        playlist_count=max(len(playlists), selected_count),
+        playlists=playlists,
+        empty=empty,
+        message="No track items were recorded for this migration yet." if empty else None,
+    )
+
+
+def _build_aggregate_stats(
+    jobs: list[orm.MigrationJob],
+    items: list[orm.JobItem],
+    *,
+    source_provider: str | None,
+    target_provider: str | None,
+) -> AggregateMigrationStatsView:
+    items_by_job: dict[str, list[orm.JobItem]] = defaultdict(list)
+    playlist_keys: set[tuple[str, str]] = set()
+    for item in items:
+        items_by_job[item.job_id].append(item)
+        playlist_keys.add((item.job_id, item.source_playlist_id))
+
+    counts = [
+        _status_counts_from_items(items_by_job[job.id], total_hint=job.total)
+        for job in jobs
+    ]
+    for job in jobs:
+        for playlist_id in _selected_playlist_ids(job):
+            playlist_keys.add((job.id, playlist_id))
+
+    aggregate = _sum_status_counts(counts)
+    message = None
+    if not jobs:
+        message = "No migrations match these filters."
+    elif aggregate.total == 0:
+        message = "Migrations match these filters, but no track items were recorded yet."
+
+    return AggregateMigrationStatsView(
+        source_provider=source_provider,
+        target_provider=target_provider,
+        total_migrations=len(jobs),
+        total_playlists=len(playlist_keys),
+        counts=aggregate,
+        empty=aggregate.total == 0,
+        message=message,
+    )
+
+
+def _migration_filter_conditions(
+    *, user_id: str, source_provider: str | None = None, target_provider: str | None = None
+) -> list:
+    conditions = [orm.MigrationJob.user_id == user_id]
+    if source_provider:
+        conditions.append(orm.MigrationJob.source_provider == source_provider)
+    if target_provider:
+        conditions.append(orm.MigrationJob.target_provider == target_provider)
+    return conditions
+
+
 async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> None:
     try:
         redis = await create_pool(RedisSettings.from_dsn(get_settings().valkey_url))
@@ -157,6 +453,24 @@ async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> 
             "queue unavailable; running migration inline job_id=%s error=%s", job_id, exc
         )
         background_tasks.add_task(run_migration, {}, job_id)
+
+
+@router.get("", response_model=list[MigrationOptionView])
+async def list_migrations(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: str = "local",
+) -> list[MigrationOptionView]:
+    jobs = list(
+        (
+            await session.execute(
+                select(orm.MigrationJob)
+                .where(orm.MigrationJob.user_id == user_id)
+                .order_by(orm.MigrationJob.created_at.desc(), orm.MigrationJob.id.desc())
+            )
+        ).scalars()
+    )
+    names_by_job = await _playlist_names_by_job(session, jobs, user_id=user_id)
+    return [_migration_option(job, names_by_job[job.id]) for job in jobs]
 
 
 @router.post("", response_model=JobView)
@@ -438,6 +752,74 @@ async def _job_wait_remaining(
 
 def _warning(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
+
+
+@router.get("/stats", response_model=AggregateMigrationStatsView)
+async def get_aggregate_migration_stats(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    source_provider: str | None = None,
+    target_provider: str | None = None,
+    user_id: str = "local",
+) -> AggregateMigrationStatsView:
+    conditions = _migration_filter_conditions(
+        user_id=user_id,
+        source_provider=source_provider,
+        target_provider=target_provider,
+    )
+    jobs = list(
+        (
+            await session.execute(
+                select(orm.MigrationJob)
+                .where(*conditions)
+                .order_by(orm.MigrationJob.created_at.desc(), orm.MigrationJob.id.desc())
+            )
+        ).scalars()
+    )
+    items = []
+    if jobs:
+        items = list(
+            (
+                await session.execute(
+                    select(orm.JobItem)
+                    .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
+                    .where(*conditions)
+                    .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
+                )
+            ).scalars()
+        )
+    return _build_aggregate_stats(
+        jobs,
+        items,
+        source_provider=source_provider,
+        target_provider=target_provider,
+    )
+
+
+@router.get("/{job_id}/stats", response_model=MigrationStatsView)
+async def get_migration_stats(
+    job_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: str = "local",
+) -> MigrationStatsView:
+    job = await session.scalar(
+        select(orm.MigrationJob).where(
+            orm.MigrationJob.id == job_id,
+            orm.MigrationJob.user_id == user_id,
+        )
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="migration job not found")
+    items = list(
+        (
+            await session.execute(
+                select(orm.JobItem)
+                .where(orm.JobItem.job_id == job_id)
+                .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
+            )
+        ).scalars()
+    )
+    names_by_job = await _playlist_names_by_job(session, [job], user_id=user_id)
+    return _build_migration_stats(job, items, names_by_job[job.id])
 
 
 @router.get("/{job_id}", response_model=JobView)

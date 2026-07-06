@@ -6,6 +6,7 @@ import {
   subscribeProgress,
 } from "../api/client";
 import type { JobItemView, JobView, ProgressEvent } from "../api/types";
+import { providerLabel } from "../utils/providers";
 
 interface Props {
   jobId: string;
@@ -568,14 +569,4 @@ function targetPlaylistUrl(provider: string, playlistId: string): string | null 
     return `https://open.spotify.com/playlist/${encodeURIComponent(playlistId)}`;
   }
   return null;
-}
-
-function providerLabel(provider: string): string {
-  if (provider === "ytmusic" || provider === "youtube" || provider === "youtube_music") {
-    return "YouTube Music";
-  }
-  if (provider === "spotify") {
-    return "Spotify";
-  }
-  return "target provider";
 }

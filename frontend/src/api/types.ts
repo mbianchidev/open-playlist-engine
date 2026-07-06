@@ -128,6 +128,59 @@ export interface JobView {
   error: string | null;
 }
 
+export interface StatusCounts {
+  total: number;
+  pending: number;
+  matched: number;
+  needs_review: number;
+  written: number;
+  skipped: number;
+  failed: number;
+  other: Record<string, number>;
+}
+
+export interface MigrationOptionView {
+  id: string;
+  label: string;
+  playlist_names: string[];
+  status: string;
+  source_provider: string;
+  target_provider: string;
+  created_at: string | null;
+}
+
+export interface PlaylistStatsView {
+  source_playlist_id: string;
+  source_playlist_name: string | null;
+  target_playlist_id: string | null;
+  counts: StatusCounts;
+}
+
+export interface MigrationStatsView {
+  id: string;
+  label: string;
+  playlist_names: string[];
+  status: string;
+  source_provider: string;
+  target_provider: string;
+  created_at: string | null;
+  counts: StatusCounts;
+  playlist_count: number;
+  playlists: PlaylistStatsView[];
+  empty: boolean;
+  message: string | null;
+}
+
+export interface AggregateMigrationStatsView {
+  source_provider: string | null;
+  target_provider: string | null;
+  total_migrations: number;
+  total_playlists: number;
+  counts: StatusCounts;
+  empty: boolean;
+  message: string | null;
+}
+
 export interface MigrationWarningsView {
   code: string;
   message: string;

@@ -37,7 +37,8 @@ target provider (header-paste auth + playlist read/search/write through
 `ytmusicapi`). The persisted job pipeline supports import → match → write with SSE
 item progress; low-confidence matches are marked `needs_review` and can be
 approved, batch-approved, corrected, skipped, or batch-denied from the progress
-panel.
+panel. The UI also exposes ledger-backed single-migration and all-time aggregate
+statistics with source/target provider filters.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -78,6 +79,15 @@ so a rerun can label a source playlist as partially migrated and mark leftover
 songs. The worker reuses a previously observed target playlist, or a same-name
 target playlist whose songs overlap, and skips duplicate target songs with a
 per-item reason instead of adding them twice.
+
+### Migration statistics
+
+Single-migration and aggregate statistics read from `migration_job` and `job_item`
+instead of maintaining separate counters. The same ledger rows that power progress,
+review, rerun detection and duplicate handling also provide status buckets
+(`written`, `skipped`, `needs_review`, `failed`, `matched`, `pending`) for one
+selected migration and all-time totals. Aggregate queries can be filtered by source
+provider, target provider, or both.
 
 ---
 

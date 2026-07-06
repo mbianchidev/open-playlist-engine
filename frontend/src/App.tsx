@@ -19,6 +19,7 @@ import type {
   ProviderView,
   Track,
 } from "./api/types";
+import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
 import ProgressBoard from "./components/ProgressBoard";
 
@@ -43,6 +44,7 @@ export default function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
   const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
+  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
   const playlistLoadId = useRef(0);
@@ -123,6 +125,11 @@ export default function App() {
     },
     [source, sourceAccount?.id, target, targetAccount?.id],
   );
+
+  const handleMigrationChanged = useCallback(async () => {
+    setStatsRefreshKey((value) => value + 1);
+    await refreshSourcePlaylists();
+  }, [refreshSourcePlaylists]);
 
   useEffect(() => {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
@@ -338,12 +345,14 @@ export default function App() {
       if (preflight.warnings.length > 0 && !confirm(warningMessage(preflight))) return;
       const job = await createMigration({ ...body, acknowledge_warnings: true });
       setJobId(job.id);
+      setStatsRefreshKey((value) => value + 1);
       deselectStartedPlaylists(playlistIds);
     } catch (e: unknown) {
       if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
         try {
           const job = await createMigration({ ...body, acknowledge_warnings: true });
           setJobId(job.id);
+          setStatsRefreshKey((value) => value + 1);
           deselectStartedPlaylists(playlistIds);
         } catch (retryError: unknown) {
           showAppError(retryError);
@@ -802,6 +811,8 @@ export default function App() {
         </button>
       </section>
 
+      <MigrationStatsPanel providers={providers} refreshKey={statsRefreshKey} />
+
       {source && sourceAccount ? (
         <section className="card flow">
           <div className="section-heading">
@@ -869,7 +880,7 @@ export default function App() {
                 <ProgressBoard
                   className="progress-popover"
                   jobId={jobId}
-                  onMigrationChanged={refreshSourcePlaylists}
+                  onMigrationChanged={handleMigrationChanged}
                   onReconnectProvider={connect}
                 />
               </div>
