@@ -9,11 +9,13 @@ This is the first reference implementation of the
 plugin spoke, the universal format is the hub, so adding a provider is O(1) and it
 instantly works with all the others — both as source and target.
 
-> Status: **early MVP**. The self-hosted Spotify → YouTube Music path is wired:
-> Spotify OAuth/read/search, YouTube Music header auth/read/search/write,
-> persisted credentials, playlist/track selection, partial-migration detection,
-> migration jobs, review actions and SSE progress. Other provider directions
-> remain gated until their adapters advertise implemented capabilities. See
+> Status: **early MVP**. Spotify, YouTube Music and Apple Music adapters advertise
+> their implemented directions dynamically: Spotify OAuth/read/search, YouTube
+> Music device/header auth/read/write, and official Apple MusicKit
+> library read/search/write. Persisted credentials, playlist/track selection,
+> partial-migration detection, migration jobs, review actions and SSE progress are
+> wired. Other provider directions remain gated until their adapters advertise
+> implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
@@ -72,7 +74,9 @@ npm run build
 All backend settings use the `OPE_` env prefix; see [`.env.example`](.env.example).
 Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`,
-`OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+`OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_APPLE_MUSIC_TEAM_ID`,
+`OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
+`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds

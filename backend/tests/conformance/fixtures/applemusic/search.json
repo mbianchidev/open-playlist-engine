@@ -1,0 +1,23 @@
+{
+  "results": {
+    "songs": {
+      "href": "/v1/catalog/us/search?types=songs&term=Song",
+      "data": [
+        {
+          "id": "1001",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/1001",
+          "attributes": {
+            "name": "Song One",
+            "artistName": "Artist One",
+            "albumName": "Album One",
+            "durationInMillis": 180000,
+            "releaseDate": "2020-01-01",
+            "contentRating": "clean",
+            "isrc": "US0000000001"
+          }
+        }
+      ]
+    }
+  }
+}
