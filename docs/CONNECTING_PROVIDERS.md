@@ -95,8 +95,10 @@ Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
    ```
 
    `OPE_TIDAL_CLIENT_SECRET` is optional for PKCE sign-in, but set it when
-   available. The adapter uses client credentials for catalog ISRC lookups; without
-   a secret it falls back to text search for target matching.
+   available. The adapter uses client credentials for catalog ISRC lookups and
+   batched track metadata hydration. Without a secret it falls back to text search
+   for target matching and scoped single-track detail requests when reading
+   playlists.
 
 6. Restart the backend and worker:
 

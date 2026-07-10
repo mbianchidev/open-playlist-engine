@@ -21,6 +21,26 @@ def _not_found(path: str) -> httpx.Response:
     return httpx.Response(404, json={"errors": [{"detail": f"no fixture: {path}"}]})
 
 
+def _tracks_document(track_ids: set[str] | None = None) -> dict:
+    payload = _load("tracks.json")
+    if track_ids:
+        payload["data"] = [
+            resource for resource in payload["data"] if resource.get("id") in track_ids
+        ]
+    return payload
+
+
+def _track_document(track_id: str) -> dict | None:
+    payload = _tracks_document({track_id})
+    if not payload["data"]:
+        return None
+    return {
+        "data": payload["data"][0],
+        "included": payload.get("included", []),
+        "links": {"self": f"/tracks/{track_id}"},
+    }
+
+
 def _handler(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     if path == "/v2/users/me":
@@ -44,11 +64,10 @@ def _handler(request: httpx.Request) -> httpx.Response:
         ids = set(request.url.params.get_list("filter[id]"))
         if "missing" in ids:
             return httpx.Response(200, json={"data": [], "links": {"self": path}})
-        return httpx.Response(200, json=_load("tracks.json"))
-    if path == "/v2/tracks/missing":
-        return _not_found(path)
+        return httpx.Response(200, json=_tracks_document(ids or None))
     if path.startswith("/v2/tracks/"):
-        return httpx.Response(200, json=_load("track.json"))
+        payload = _track_document(path.rsplit("/", 1)[-1])
+        return httpx.Response(200, json=payload) if payload is not None else _not_found(path)
     if path.startswith("/v2/searchResults/") and path.endswith("/relationships/tracks"):
         query = unquote(path.split("/searchResults/", 1)[1].split("/relationships/tracks", 1)[0])
         if "Nope" in query:
@@ -59,4 +78,3 @@ def _handler(request: httpx.Request) -> httpx.Response:
 
 def tidal_transport() -> httpx.MockTransport:
     return httpx.MockTransport(_handler)
-

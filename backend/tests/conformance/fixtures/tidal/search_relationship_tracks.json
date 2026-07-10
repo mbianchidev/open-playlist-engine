@@ -43,22 +43,6 @@
           }
         }
       }
-    },
-    {
-      "id": "al1",
-      "type": "albums",
-      "attributes": {
-        "title": "Album One",
-        "releaseDate": "2020-01-01"
-      }
-    },
-    {
-      "id": "ar1",
-      "type": "artists",
-      "attributes": {
-        "name": "Artist One",
-        "popularity": 0.9
-      }
     }
   ],
   "links": {

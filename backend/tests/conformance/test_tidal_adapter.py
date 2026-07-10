@@ -73,7 +73,7 @@ async def test_429_maps_to_rate_limited_with_retry_after() -> None:
     assert str(excinfo.value) == "tidal rate limited; retry after 12 seconds"
 
 
-async def test_read_maps_isrc_relationships_and_positions() -> None:
+async def test_read_hydrates_shallow_items_and_preserves_positions() -> None:
     adapter = TidalAdapter(transport=tidal_transport())
     pl = await adapter.read_playlist(_cred(), ref=_ref())
     assert pl.name == "Tidal Roadtrip"
@@ -88,6 +88,41 @@ async def test_read_maps_isrc_relationships_and_positions() -> None:
     assert pl.tracks[0].release_year == 2020
     assert pl.tracks[0].credits[0].role == "Vocals"
     assert pl.tracks[1].artist == "Artist Two, Artist Three"
+
+
+async def test_playlist_pagination_keeps_v2_base_path() -> None:
+    requests: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cursor = request.url.params.get("page[cursor]")
+        requests.append((request.url.path, cursor))
+        if cursor == "next":
+            return httpx.Response(
+                200,
+                json={"data": [], "links": {"self": "/playlists?page[cursor]=next"}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "page-one",
+                        "type": "playlists",
+                        "attributes": {"name": "Page One", "numberOfItems": 0},
+                    }
+                ],
+                "links": {
+                    "self": "/playlists",
+                    "next": "/playlists?page[cursor]=next",
+                },
+            },
+        )
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+    refs = [ref async for ref in adapter.iter_playlists(_cred())]
+
+    assert [ref.id for ref in refs] == ["page-one"]
+    assert requests == [("/v2/playlists", None), ("/v2/playlists", "next")]
 
 
 async def test_search_prefers_isrc_filter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,6 +155,7 @@ async def test_search_falls_back_to_text_relationship() -> None:
     assert results
     assert results[0].uri == "tidal:track:t1"
     assert results[0].artist == "Artist One"
+    assert results[0].album == "Album One"
 
 
 async def test_validate_uri_true_and_false() -> None:

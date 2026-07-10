@@ -46,6 +46,7 @@ _TOKEN_URL = "https://auth.tidal.com/v1/oauth2/token"
 _JSON_API = "application/vnd.api+json"
 _STATE_TTL_S = 600
 _MAX_ADD_BATCH = 50
+_TRACK_DETAIL_CONCURRENCY = 5
 _RATE_LIMIT_MAX_RETRIES = 2
 _RATE_LIMIT_MAX_AUTO_WAIT_S = 30
 _SCOPES = [
@@ -373,7 +374,15 @@ def _next_url(payload: dict[str, Any]) -> str | None:
     if not isinstance(links, dict):
         return None
     next_url = links.get("next")
-    return next_url if isinstance(next_url, str) and next_url else None
+    return _api_url(next_url) if isinstance(next_url, str) and next_url else None
+
+
+def _api_url(value: str) -> str:
+    if value.startswith(("http://", "https://")):
+        return value
+    if value == "/v2" or value.startswith("/v2/"):
+        return f"https://openapi.tidal.com{value}"
+    return f"{_API_BASE}/{value.lstrip('/')}"
 
 
 def _track_id(uri: str) -> str | None:
@@ -499,24 +508,6 @@ def _resources_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         return []
     return [item for item in data if isinstance(item, dict)]
-
-
-def _resources_from_relationship_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = payload.get("data")
-    included = _included_index(payload)
-    if not isinstance(data, list):
-        return []
-    resources = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type")
-        item_id = item.get("id")
-        if isinstance(item_type, str) and isinstance(item_id, str):
-            resource = included.get((item_type, item_id))
-            if resource is not None:
-                resources.append(resource)
-    return resources
 
 
 class TidalAuth(AuthStrategy):
@@ -699,7 +690,14 @@ class TidalAdapter:
 
     async def iter_playlists(self, cred: ProviderCredential) -> AsyncIterator[PlaylistRef]:
         async with self._client(cred) as client:
-            params = _params(cred, [("filter[owners.id]", "me"), ("sort", "name")])
+            params = _params(
+                cred,
+                [
+                    ("filter[owners.id]", "me"),
+                    ("sort", "name"),
+                    *_include_params("owners"),
+                ],
+            )
             resp = _raise_for_status(
                 await _tidal_request(client, "GET", "/playlists", params=params)
             )
@@ -726,7 +724,7 @@ class TidalAdapter:
                     client,
                     "GET",
                     f"/playlists/{ref.id}",
-                    params=_params(cred),
+                    params=_params(cred, _include_params("owners")),
                 )
             )
             meta_payload = meta_resp.json()
@@ -766,64 +764,58 @@ class TidalAdapter:
                 params=params,
             )
         )
-        tracks: list[Track] = []
-        missing_track_ids: list[tuple[int, str, dict[str, Any]]] = []
+        items: list[dict[str, Any]] = []
+        relationship_included: dict[tuple[str, str], dict[str, Any]] = {}
         while True:
             payload = resp.json()
-            included = _included_index(payload)
+            relationship_included.update(_included_index(payload))
             data = payload.get("data")
             if not isinstance(data, list):
-                return tracks
-            for item in data:
-                if not isinstance(item, dict):
-                    continue
-                position = len(tracks)
-                item_id = item.get("id")
-                item_type = item.get("type")
-                item_meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
-                if item_type != "tracks" or not isinstance(item_id, str):
-                    tracks.append(_unsupported_item(item, position=position, included=included))
-                    continue
-                resource = included.get(("tracks", item_id))
-                if resource is None:
-                    missing_track_ids.append((position, item_id, item_meta))
-                    tracks.append(
-                        Track(
-                            id=item_id,
-                            title=item_id,
-                            artist="Unknown",
-                            provider_uris={"tidal": f"tidal:track:{item_id}"},
-                            position=position,
-                            source_item_id=item_id,
-                            added_at=item_meta.get("addedAt"),
-                        )
-                    )
-                    continue
-                tracks.append(
-                    _track_from_resource(
-                        resource,
-                        included,
-                        position=position,
-                        item_meta=item_meta,
-                    )
-                )
+                break
+            items.extend(item for item in data if isinstance(item, dict))
             next_url = _next_url(payload)
             if not next_url:
                 break
             resp = _raise_for_status(await _tidal_request(client, "GET", next_url))
-        if missing_track_ids:
-            fetched = await self._fetch_tracks(
-                client, cred, [item_id for _, item_id, _ in missing_track_ids]
-            )
-            for position, item_id, item_meta in missing_track_ids:
-                resource = fetched.get(item_id)
-                if resource is not None:
-                    tracks[position] = _track_from_resource(
-                        resource,
-                        fetched.included,
+
+        track_ids = [
+            item_id
+            for item in items
+            if item.get("type") == "tracks"
+            and isinstance((item_id := item.get("id")), str)
+        ]
+        fetched = await self._fetch_tracks(client, cred, track_ids)
+        included = {**relationship_included, **fetched.included}
+        tracks: list[Track] = []
+        for position, item in enumerate(items):
+            item_id = item.get("id")
+            item_type = item.get("type")
+            item_meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+            if item_type != "tracks" or not isinstance(item_id, str):
+                tracks.append(_unsupported_item(item, position=position, included=included))
+                continue
+            resource = fetched.get(item_id) or relationship_included.get(("tracks", item_id))
+            if resource is None:
+                tracks.append(
+                    Track(
+                        id=item_id,
+                        title=item_id,
+                        artist="Unknown",
+                        provider_uris={"tidal": f"tidal:track:{item_id}"},
                         position=position,
-                        item_meta=item_meta,
+                        source_item_id=item_id,
+                        added_at=item_meta.get("addedAt"),
                     )
+                )
+                continue
+            tracks.append(
+                _track_from_resource(
+                    resource,
+                    included,
+                    position=position,
+                    item_meta=item_meta,
+                )
+            )
         return tracks
 
     async def test_connection(self, cred: ProviderCredential) -> None:
@@ -924,20 +916,25 @@ class TidalAdapter:
         )
         resp = _raise_for_status(await _tidal_request(client, "GET", path, params=params))
         payload = resp.json()
-        resources = _resources_from_relationship_payload(payload)
-        if not resources:
-            ids = [
-                item.get("id")
-                for item in payload.get("data", [])
-                if isinstance(item, dict)
-                and item.get("type") == "tracks"
-                and isinstance(item.get("id"), str)
-            ]
-            fetched = await self._fetch_tracks(client, cred, ids[:limit])
-            resources = [fetched[item_id] for item_id in ids[:limit] if item_id in fetched]
-            included = fetched.included
-        else:
-            included = _included_index(payload)
+        ids = [
+            item_id
+            for item in payload.get("data", [])
+            if isinstance(item, dict)
+            and item.get("type") == "tracks"
+            and isinstance((item_id := item.get("id")), str)
+        ][:limit]
+        shallow_included = _included_index(payload)
+        fetched = await self._fetch_tracks(client, cred, ids)
+        included = {**shallow_included, **fetched.included}
+        resources = [
+            resource
+            for item_id in ids
+            if (
+                resource := fetched.get(item_id)
+                or shallow_included.get(("tracks", item_id))
+            )
+            is not None
+        ]
         return [_candidate(resource, included) for resource in resources[:limit]]
 
     async def validate_uri(self, cred: ProviderCredential, uri: str) -> bool:
@@ -1024,25 +1021,83 @@ class TidalAdapter:
     async def _fetch_tracks(
         self, client: httpx.AsyncClient, cred: ProviderCredential, ids: Sequence[str]
     ) -> _FetchedTracks:
+        ids = list(dict.fromkeys(item_id for item_id in ids if item_id))
+        if not ids:
+            return _FetchedTracks({}, {})
+        catalog_token = await self._catalog_access_token()
+        if catalog_token is not None:
+            return await self._fetch_tracks_with_catalog(cred, ids, catalog_token)
+        return await self._fetch_track_details(client, cred, ids)
+
+    async def _fetch_tracks_with_catalog(
+        self, cred: ProviderCredential, ids: Sequence[str], access_token: str
+    ) -> _FetchedTracks:
         resources: dict[str, dict[str, Any]] = {}
         included: dict[tuple[str, str], dict[str, Any]] = {}
-        ids = [item_id for item_id in ids if item_id]
+        async with httpx.AsyncClient(
+            base_url=_API_BASE,
+            transport=self._transport,
+            headers=_headers(access_token),
+            timeout=30.0,
+        ) as catalog_client:
+            for start in range(0, len(ids), _MAX_ADD_BATCH):
+                chunk = ids[start : start + _MAX_ADD_BATCH]
+                params = _params(
+                    cred,
+                    [
+                        *[("filter[id]", item_id) for item_id in chunk],
+                        *_include_params(*_TRACK_INCLUDES),
+                    ],
+                )
+                resp = _raise_for_status(
+                    await _tidal_request(catalog_client, "GET", "/tracks", params=params)
+                )
+                payload = resp.json()
+                included.update(_included_index(payload))
+                for resource in _resources_from_payload(payload):
+                    resource_id = _resource_id(resource)
+                    if resource_id:
+                        resources[resource_id] = resource
+        return _FetchedTracks(resources, included)
+
+    async def _fetch_track_details(
+        self, client: httpx.AsyncClient, cred: ProviderCredential, ids: Sequence[str]
+    ) -> _FetchedTracks:
+        resources: dict[str, dict[str, Any]] = {}
+        included: dict[tuple[str, str], dict[str, Any]] = {}
+        semaphore = asyncio.Semaphore(_TRACK_DETAIL_CONCURRENCY)
+
+        async def fetch(
+            item_id: str,
+        ) -> tuple[dict[str, Any], dict[tuple[str, str], dict[str, Any]]] | None:
+            async with semaphore:
+                resp = await _tidal_request(
+                    client,
+                    "GET",
+                    f"/tracks/{urllib.parse.quote(item_id, safe='')}",
+                    params=_params(cred, _include_params(*_TRACK_INCLUDES)),
+                )
+            if resp.status_code == 404:
+                return None
+            payload = _raise_for_status(resp).json()
+            resource = payload.get("data")
+            if not isinstance(resource, dict):
+                raise ProviderError(
+                    f"tidal track '{item_id}' response did not include track data"
+                )
+            return resource, _included_index(payload)
+
         for start in range(0, len(ids), _MAX_ADD_BATCH):
             chunk = ids[start : start + _MAX_ADD_BATCH]
-            params = _params(
-                cred,
-                [
-                    *[("filter[id]", item_id) for item_id in chunk],
-                    *_include_params(*_TRACK_INCLUDES),
-                ],
-            )
-            resp = _raise_for_status(await _tidal_request(client, "GET", "/tracks", params=params))
-            payload = resp.json()
-            included.update(_included_index(payload))
-            for resource in _resources_from_payload(payload):
+            results = await asyncio.gather(*(fetch(item_id) for item_id in chunk))
+            for result in results:
+                if result is None:
+                    continue
+                resource, resource_included = result
                 resource_id = _resource_id(resource)
                 if resource_id:
                     resources[resource_id] = resource
+                included.update(resource_included)
         return _FetchedTracks(resources, included)
 
 

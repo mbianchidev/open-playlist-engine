@@ -14,6 +14,17 @@
         "popularity": 0.9
       },
       "relationships": {
+        "albums": {
+          "data": [
+            {
+              "id": "al1",
+              "type": "albums"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t1/relationships/albums"
+          }
+        },
         "artists": {
           "data": [
             {
@@ -23,6 +34,17 @@
           ],
           "links": {
             "self": "/tracks/t1/relationships/artists"
+          }
+        },
+        "credits": {
+          "data": [
+            {
+              "id": "cr1",
+              "type": "credits"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t1/relationships/credits"
           }
         }
       }
@@ -41,10 +63,25 @@
         "popularity": 0.7
       },
       "relationships": {
+        "albums": {
+          "data": [
+            {
+              "id": "al2",
+              "type": "albums"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t2/relationships/albums"
+          }
+        },
         "artists": {
           "data": [
             {
               "id": "ar2",
+              "type": "artists"
+            },
+            {
+              "id": "ar3",
               "type": "artists"
             }
           ],
@@ -56,6 +93,38 @@
     }
   ],
   "included": [
+    {
+      "id": "al1",
+      "type": "albums",
+      "attributes": {
+        "title": "Album One",
+        "releaseDate": "2020-01-01",
+        "albumType": "ALBUM",
+        "barcodeId": "123",
+        "duration": "PT30M",
+        "explicit": false,
+        "mediaTags": [],
+        "numberOfItems": 10,
+        "numberOfVolumes": 1,
+        "popularity": 0.8
+      }
+    },
+    {
+      "id": "al2",
+      "type": "albums",
+      "attributes": {
+        "title": "Album Two",
+        "releaseDate": "2020-05-01",
+        "albumType": "ALBUM",
+        "barcodeId": "456",
+        "duration": "PT35M",
+        "explicit": false,
+        "mediaTags": [],
+        "numberOfItems": 11,
+        "numberOfVolumes": 1,
+        "popularity": 0.7
+      }
+    },
     {
       "id": "ar1",
       "type": "artists",
@@ -70,6 +139,22 @@
       "attributes": {
         "name": "Artist Two",
         "popularity": 0.8
+      }
+    },
+    {
+      "id": "ar3",
+      "type": "artists",
+      "attributes": {
+        "name": "Artist Three",
+        "popularity": 0.7
+      }
+    },
+    {
+      "id": "cr1",
+      "type": "credits",
+      "attributes": {
+        "name": "Artist One",
+        "role": "Vocals"
       }
     }
   ],
