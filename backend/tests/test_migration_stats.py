@@ -1,9 +1,17 @@
+from collections import Counter, defaultdict
+
+import pytest
+from fastapi import HTTPException
+from fastapi.routing import APIRoute
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api import migrations
+from app.api.dependencies import get_current_user_id
 from app.db import models as orm
 from app.db.base import Base
+from app.main import app
+from app.settings import DeploymentMode, Settings
 
 
 def _job(
@@ -14,10 +22,11 @@ def _job(
     status: str = "done",
     total: int = 0,
     selection: dict | None = None,
+    user_id: str = "local",
 ) -> orm.MigrationJob:
     return orm.MigrationJob(
         id=job_id,
-        user_id="local",
+        user_id=user_id,
         source_provider=source_provider,
         target_provider=target_provider,
         source_account_id=f"{source_provider}-account",
@@ -75,6 +84,53 @@ def test_pending_migration_without_names_uses_non_id_empty_state() -> None:
     assert stats.message == "No track items were recorded for this migration yet."
 
 
+def test_migration_routes_do_not_expose_user_id_query_parameter() -> None:
+    schema = app.openapi()
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/migrations"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            parameter_names = {parameter["name"] for parameter in operation.get("parameters", [])}
+            assert "user_id" not in parameter_names
+
+
+def test_all_migration_routes_require_current_user_dependency() -> None:
+    migration_routes = [
+        route
+        for route in migrations.router.routes
+        if isinstance(route, APIRoute) and route.path.startswith("/api/migrations")
+    ]
+
+    assert migration_routes
+    for route in migration_routes:
+        dependencies = {dependency.call for dependency in route.dependant.dependencies}
+        assert get_current_user_id in dependencies, f"{route.methods} {route.path}"
+
+
+def test_current_user_dependency_fails_closed_in_hosted_mode() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user_id(Settings(deployment_mode=DeploymentMode.HOSTED))
+
+    assert exc_info.value.status_code == 501
+    assert exc_info.value.detail == "Hosted user authentication is not configured"
+
+
+def test_owned_job_statement_scopes_job_by_user() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(_job("alice-job", user_id="alice"))
+        session.commit()
+
+        owned = session.scalar(migrations._owned_job_stmt("alice-job", "alice"))
+        hidden = session.scalar(migrations._owned_job_stmt("alice-job", "bob"))
+
+    assert owned is not None
+    assert hidden is None
+
+
 def test_single_migration_stats_count_statuses_and_playlists() -> None:
     job = _job("job", total=4)
     items = [
@@ -94,6 +150,24 @@ def test_single_migration_stats_count_statuses_and_playlists() -> None:
     assert stats.counts.failed == 1
     assert stats.playlist_count == 2
     assert {playlist.source_playlist_name for playlist in stats.playlists} == {"Chill", "Focus"}
+
+
+def test_single_migration_groups_partial_items_by_source_playlist() -> None:
+    job = _job(
+        "job",
+        total=2,
+        selection={"playlist_ids": ["playlist-a"], "tracks": {}},
+    )
+    processed = _item("job", "playlist-a", name="Chill", status="written", position=0)
+    pending = _item("job", "playlist-a", name="Chill", status="pending", position=1)
+    pending.target_playlist_id = None
+
+    stats = migrations._build_migration_stats(job, [processed, pending], ["Chill"])
+
+    assert stats.playlist_count == 1
+    assert len(stats.playlists) == 1
+    assert stats.playlists[0].target_playlist_id == "target-playlist-a"
+    assert stats.playlists[0].counts.total == 2
 
 
 def test_aggregate_stats_respect_source_and_target_filters() -> None:
@@ -129,21 +203,24 @@ def test_aggregate_stats_respect_source_and_target_filters() -> None:
             target_provider="ytmusic",
         )
         jobs = list(session.scalars(select(orm.MigrationJob).where(*conditions)))
-        items = list(
-            session.scalars(
-                select(orm.JobItem)
-                .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
-                .where(*conditions)
-            )
-        )
+        job_ids = [job.id for job in jobs]
+        rows = session.execute(migrations._aggregate_item_counts_stmt(job_ids)).all()
+
+    status_counts_by_job: dict[str, Counter[str]] = defaultdict(Counter)
+    playlist_keys: set[tuple[str, str]] = set()
+    for job_id, playlist_id, status, count in rows:
+        status_counts_by_job[job_id][status] += int(count)
+        playlist_keys.add((job_id, playlist_id))
 
     stats = migrations._build_aggregate_stats(
         jobs,
-        items,
+        status_counts_by_job,
+        playlist_keys,
         source_provider="spotify",
         target_provider="ytmusic",
     )
 
+    assert {job_id for job_id, *_ in rows} == {"spotify-to-yt"}
     assert stats.total_migrations == 1
     assert stats.total_playlists == 1
     assert stats.counts.total == 2

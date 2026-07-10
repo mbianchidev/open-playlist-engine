@@ -119,6 +119,9 @@ the same codebase can run **hosted**. A single `OPE_DEPLOYMENT_MODE`
 through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
 - header/cookie-paste auth is allowed **only** in self-host (`allow_header_paste`).
 - the shared match graph stays local unless explicitly enabled.
+- migration ownership is resolved by a server-side dependency. Self-host returns
+  the local user; hosted mode rejects migration requests until real authentication
+  is wired, rather than trusting a query-string user ID.
 
 ---
 

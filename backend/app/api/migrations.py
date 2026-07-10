@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
@@ -23,6 +23,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
 from app.core.migration_state import (
@@ -281,10 +282,11 @@ async def _playlist_names_by_job(
         select(
             orm.JobItem.job_id,
             orm.JobItem.source_playlist_id,
-            orm.JobItem.source_playlist_name,
+            func.max(orm.JobItem.source_playlist_name),
         )
         .where(orm.JobItem.job_id.in_(job_ids))
-        .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
+        .group_by(orm.JobItem.job_id, orm.JobItem.source_playlist_id)
+        .order_by(orm.JobItem.job_id, orm.JobItem.source_playlist_id)
     )
     for job_id, playlist_id, playlist_name in rows.all():
         _append_unique(source_ids_by_job[job_id], playlist_id)
@@ -339,23 +341,23 @@ def _migration_option(job: orm.MigrationJob, playlist_names: list[str]) -> Migra
 
 
 def _playlist_stats(items: list[orm.JobItem]) -> list[PlaylistStatsView]:
-    grouped: dict[tuple[str, str | None], list[orm.JobItem]] = defaultdict(list)
+    grouped: dict[str, list[orm.JobItem]] = defaultdict(list)
     for item in items:
-        grouped[(item.source_playlist_id, item.target_playlist_id)].append(item)
+        grouped[item.source_playlist_id].append(item)
 
     playlists: list[PlaylistStatsView] = []
-    for (source_playlist_id, target_playlist_id), rows in sorted(
+    for source_playlist_id, rows in sorted(
         grouped.items(),
-        key=lambda group: (
-            _rows_name(group[1]) or group[0][0],
-            group[0][1] or "",
-        ),
+        key=lambda group: _rows_name(group[1]) or group[0],
     ):
         playlists.append(
             PlaylistStatsView(
                 source_playlist_id=source_playlist_id,
                 source_playlist_name=_rows_name(rows),
-                target_playlist_id=target_playlist_id,
+                target_playlist_id=next(
+                    (item.target_playlist_id for item in rows if item.target_playlist_id),
+                    None,
+                ),
                 counts=_status_counts_from_items(rows),
             )
         )
@@ -393,24 +395,20 @@ def _build_migration_stats(
 
 def _build_aggregate_stats(
     jobs: list[orm.MigrationJob],
-    items: list[orm.JobItem],
+    status_counts_by_job: Mapping[str, Counter[str]],
+    playlist_keys: set[tuple[str, str]],
     *,
     source_provider: str | None,
     target_provider: str | None,
 ) -> AggregateMigrationStatsView:
-    items_by_job: dict[str, list[orm.JobItem]] = defaultdict(list)
-    playlist_keys: set[tuple[str, str]] = set()
-    for item in items:
-        items_by_job[item.job_id].append(item)
-        playlist_keys.add((item.job_id, item.source_playlist_id))
-
     counts = [
-        _status_counts_from_items(items_by_job[job.id], total_hint=job.total)
+        _status_counts(status_counts_by_job.get(job.id, Counter()), total_hint=job.total)
         for job in jobs
     ]
+    all_playlist_keys = set(playlist_keys)
     for job in jobs:
         for playlist_id in _selected_playlist_ids(job):
-            playlist_keys.add((job.id, playlist_id))
+            all_playlist_keys.add((job.id, playlist_id))
 
     aggregate = _sum_status_counts(counts)
     message = None
@@ -423,7 +421,7 @@ def _build_aggregate_stats(
         source_provider=source_provider,
         target_provider=target_provider,
         total_migrations=len(jobs),
-        total_playlists=len(playlist_keys),
+        total_playlists=len(all_playlist_keys),
         counts=aggregate,
         empty=aggregate.total == 0,
         message=message,
@@ -439,6 +437,39 @@ def _migration_filter_conditions(
     if target_provider:
         conditions.append(orm.MigrationJob.target_provider == target_provider)
     return conditions
+
+
+def _owned_job_stmt(job_id: str, user_id: str):
+    return select(orm.MigrationJob).where(
+        orm.MigrationJob.id == job_id,
+        orm.MigrationJob.user_id == user_id,
+    )
+
+
+async def _owned_job(
+    session: AsyncSession,
+    *,
+    job_id: str,
+    user_id: str,
+) -> orm.MigrationJob | None:
+    return await session.scalar(_owned_job_stmt(job_id, user_id))
+
+
+def _aggregate_item_counts_stmt(job_ids: list[str]):
+    return (
+        select(
+            orm.JobItem.job_id,
+            orm.JobItem.source_playlist_id,
+            orm.JobItem.status,
+            func.count(),
+        )
+        .where(orm.JobItem.job_id.in_(job_ids))
+        .group_by(
+            orm.JobItem.job_id,
+            orm.JobItem.source_playlist_id,
+            orm.JobItem.status,
+        )
+    )
 
 
 async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> None:
@@ -458,7 +489,7 @@ async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> 
 @router.get("", response_model=list[MigrationOptionView])
 async def list_migrations(
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
 ) -> list[MigrationOptionView]:
     jobs = list(
         (
@@ -478,7 +509,7 @@ async def create_migration(
     body: CreateMigration,
     background_tasks: BackgroundTasks,
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
 ) -> JobView:
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
@@ -525,7 +556,7 @@ async def create_migration(
 async def preflight_migration(
     body: CreateMigration,
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
 ) -> MigrationWarningsView:
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
@@ -757,9 +788,9 @@ def _warning(code: str, message: str) -> dict[str, str]:
 @router.get("/stats", response_model=AggregateMigrationStatsView)
 async def get_aggregate_migration_stats(
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
     source_provider: str | None = None,
     target_provider: str | None = None,
-    user_id: str = "local",
 ) -> AggregateMigrationStatsView:
     conditions = _migration_filter_conditions(
         user_id=user_id,
@@ -775,21 +806,18 @@ async def get_aggregate_migration_stats(
             )
         ).scalars()
     )
-    items = []
+    status_counts_by_job: dict[str, Counter[str]] = defaultdict(Counter)
+    playlist_keys: set[tuple[str, str]] = set()
     if jobs:
-        items = list(
-            (
-                await session.execute(
-                    select(orm.JobItem)
-                    .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
-                    .where(*conditions)
-                    .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
-                )
-            ).scalars()
-        )
+        job_ids = [job.id for job in jobs]
+        rows = await session.execute(_aggregate_item_counts_stmt(job_ids))
+        for job_id, playlist_id, status, count in rows.all():
+            status_counts_by_job[job_id][status] += int(count)
+            playlist_keys.add((job_id, playlist_id))
     return _build_aggregate_stats(
         jobs,
-        items,
+        status_counts_by_job,
+        playlist_keys,
         source_provider=source_provider,
         target_provider=target_provider,
     )
@@ -799,14 +827,9 @@ async def get_aggregate_migration_stats(
 async def get_migration_stats(
     job_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
 ) -> MigrationStatsView:
-    job = await session.scalar(
-        select(orm.MigrationJob).where(
-            orm.MigrationJob.id == job_id,
-            orm.MigrationJob.user_id == user_id,
-        )
-    )
+    job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
     items = list(
@@ -823,26 +846,32 @@ async def get_migration_stats(
 
 
 @router.get("/{job_id}", response_model=JobView)
-async def get_migration(job_id: str) -> JobView:
-    async with get_sessionmaker()() as session:
-        job = await session.get(orm.MigrationJob, job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="migration job not found")
-        return _job_view(job)
+async def get_migration(
+    job_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
+) -> JobView:
+    job = await _owned_job(session, job_id=job_id, user_id=user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="migration job not found")
+    return _job_view(job)
 
 
 @router.get("/{job_id}/items", response_model=list[JobItemView])
-async def get_migration_items(job_id: str) -> list[JobItemView]:
-    async with get_sessionmaker()() as session:
-        job = await session.get(orm.MigrationJob, job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="migration job not found")
-        stmt = (
-            select(orm.JobItem)
-            .where(orm.JobItem.job_id == job_id)
-            .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
-        )
-        return [_item_view(item) for item in (await session.execute(stmt)).scalars()]
+async def get_migration_items(
+    job_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
+) -> list[JobItemView]:
+    job = await _owned_job(session, job_id=job_id, user_id=user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="migration job not found")
+    stmt = (
+        select(orm.JobItem)
+        .where(orm.JobItem.job_id == job_id)
+        .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
+    )
+    return [_item_view(item) for item in (await session.execute(stmt)).scalars()]
 
 
 @router.post("/{job_id}/items/{item_id}/review", response_model=JobItemView)
@@ -851,8 +880,9 @@ async def review_migration_item(
     item_id: str,
     body: ReviewItem,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
 ) -> JobItemView:
-    job = await session.get(orm.MigrationJob, job_id)
+    job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
     item = await session.get(orm.JobItem, item_id)
@@ -866,8 +896,9 @@ async def review_migration_items(
     job_id: str,
     body: BatchReview,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
 ) -> list[JobItemView]:
-    job = await session.get(orm.MigrationJob, job_id)
+    job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
     if not body.item_ids:
@@ -1004,9 +1035,9 @@ def _item_target_keys(item: orm.JobItem, target_uri: str | None) -> set[str]:
     return keys
 
 
-async def _progress_payload(job_id: str) -> dict:
+async def _progress_payload(job_id: str, *, user_id: str) -> dict:
     async with get_sessionmaker()() as session:
-        job = await session.get(orm.MigrationJob, job_id)
+        job = await _owned_job(session, job_id=job_id, user_id=user_id)
         if job is None:
             return {"job_id": job_id, "missing": True}
         stmt = (
@@ -1018,13 +1049,15 @@ async def _progress_payload(job_id: str) -> dict:
         return {"job": _job_view(job).model_dump(), "items": items}
 
 
-async def _event_stream(job_id: str, request: Request) -> AsyncIterator[bytes]:
+async def _event_stream(job_id: str, request: Request, *, user_id: str) -> AsyncIterator[bytes]:
     event_id = 0
     while True:
         if await request.is_disconnected():
             break
-        payload = await _progress_payload(job_id)
+        payload = await _progress_payload(job_id, user_id=user_id)
         yield f"id: {event_id}\nevent: progress\ndata: {json.dumps(payload)}\n\n".encode()
+        if payload.get("missing"):
+            break
         job = payload.get("job")
         if isinstance(job, dict) and job.get("status") in {"done", "failed"}:
             break
@@ -1033,5 +1066,16 @@ async def _event_stream(job_id: str, request: Request) -> AsyncIterator[bytes]:
 
 
 @router.get("/{job_id}/events")
-async def migration_events(job_id: str, request: Request) -> StreamingResponse:
-    return StreamingResponse(_event_stream(job_id, request), media_type="text/event-stream")
+async def migration_events(
+    job_id: str,
+    request: Request,
+    user_id: CurrentUserId,
+) -> StreamingResponse:
+    async with get_sessionmaker()() as session:
+        job = await _owned_job(session, job_id=job_id, user_id=user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="migration job not found")
+    return StreamingResponse(
+        _event_stream(job_id, request, user_id=user_id),
+        media_type="text/event-stream",
+    )

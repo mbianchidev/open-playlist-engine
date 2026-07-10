@@ -29,8 +29,11 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
   const [sourceFilter, setSourceFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [listLoading, setListLoading] = useState(false);
+  const [aggregateLoading, setAggregateLoading] = useState(false);
   const [selectedLoading, setSelectedLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [aggregateError, setAggregateError] = useState<string | null>(null);
+  const [selectedError, setSelectedError] = useState<string | null>(null);
   const [manualRefresh, setManualRefresh] = useState(0);
   const sourceProviders = useMemo(
     () => providerChoices(providers, options, "source_provider"),
@@ -43,30 +46,47 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
 
   useEffect(() => {
     let cancelled = false;
-    async function loadStats() {
+    async function loadMigrations() {
       setListLoading(true);
-      setError(null);
+      setListError(null);
       try {
-        const [nextOptions, nextAggregateStats] = await Promise.all([
-          listMigrations(),
-          getAggregateMigrationStats({
-            sourceProvider: sourceFilter || null,
-            targetProvider: targetFilter || null,
-          }),
-        ]);
+        const nextOptions = await listMigrations();
         if (cancelled) return;
         setOptions(nextOptions);
-        setAggregateStats(nextAggregateStats);
         setSelectedMigrationId((current) =>
           nextOptions.some((option) => option.id === current) ? current : nextOptions[0]?.id ?? "",
         );
       } catch (e: unknown) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!cancelled) setListError(errorMessage(e));
       } finally {
         if (!cancelled) setListLoading(false);
       }
     }
-    void loadStats();
+    void loadMigrations();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, manualRefresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAggregateStats() {
+      setAggregateLoading(true);
+      setAggregateError(null);
+      setAggregateStats(null);
+      try {
+        const nextStats = await getAggregateMigrationStats({
+          sourceProvider: sourceFilter || null,
+          targetProvider: targetFilter || null,
+        });
+        if (!cancelled) setAggregateStats(nextStats);
+      } catch (e: unknown) {
+        if (!cancelled) setAggregateError(errorMessage(e));
+      } finally {
+        if (!cancelled) setAggregateLoading(false);
+      }
+    }
+    void loadAggregateStats();
     return () => {
       cancelled = true;
     };
@@ -78,16 +98,17 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
       if (!selectedMigrationId) {
         setSelectedStats(null);
         setSelectedLoading(false);
+        setSelectedError(null);
         return;
       }
       setSelectedLoading(true);
-      setError(null);
+      setSelectedError(null);
       setSelectedStats(null);
       try {
         const nextStats = await getMigrationStats(selectedMigrationId);
         if (!cancelled) setSelectedStats(nextStats);
       } catch (e: unknown) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!cancelled) setSelectedError(errorMessage(e));
       } finally {
         if (!cancelled) setSelectedLoading(false);
       }
@@ -107,14 +128,12 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
         </div>
         <button
           className="secondary compact"
-          disabled={listLoading || selectedLoading}
+          disabled={listLoading || aggregateLoading || selectedLoading}
           onClick={() => setManualRefresh((value) => value + 1)}
         >
-          {listLoading || selectedLoading ? "Refreshing..." : "Refresh stats"}
+          {listLoading || aggregateLoading || selectedLoading ? "Refreshing..." : "Refresh stats"}
         </button>
       </div>
-
-      {error ? <p className="warn">{error}</p> : null}
 
       <div className="stats-section">
         <div className="stats-subheading">
@@ -123,7 +142,10 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
             <span className={`badge status-${selectedStats.status}`}>{statusLabel(selectedStats.status)}</span>
           ) : null}
         </div>
-        {options.length === 0 && !listLoading ? (
+        {listError ? <p className="warn">{listError}</p> : null}
+        {listLoading && options.length === 0 ? (
+          <p className="muted">Loading migrations...</p>
+        ) : options.length === 0 && !listError ? (
           <p className="empty-guidance">No migrations yet. Start a migration to collect stats.</p>
         ) : (
           <>
@@ -143,6 +165,7 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
               </select>
             </label>
             {selectedLoading ? <p className="muted">Loading migration stats...</p> : null}
+            {selectedError ? <p className="warn">{selectedError}</p> : null}
             {selectedStats ? <SingleMigrationStats stats={selectedStats} /> : null}
           </>
         )}
@@ -185,7 +208,8 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
             </select>
           </label>
         </div>
-        {listLoading && !aggregateStats ? <p className="muted">Loading aggregate stats...</p> : null}
+        {aggregateLoading ? <p className="muted">Loading aggregate stats...</p> : null}
+        {aggregateError ? <p className="warn">{aggregateError}</p> : null}
         {aggregateStats ? <AggregateStats stats={aggregateStats} /> : null}
       </div>
     </section>

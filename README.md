@@ -74,6 +74,9 @@ All backend settings use the `OPE_` env prefix; see [`.env.example`](.env.exampl
 Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`,
 `OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+Self-host mode resolves the migration owner server-side as the local user. Hosted
+mode fails closed until a real user-authentication dependency is configured; it
+does not accept a caller-provided user ID.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
