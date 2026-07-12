@@ -5,7 +5,7 @@ A case advertises the capabilities it exercises (``reads`` / ``searches`` /
 ``writes``) plus the data the suite needs, so the fake covers the whole contract
 while real adapters are driven only over the surface this PR implements:
 
-* Spotify — READ + SEARCH (against recorded HTTP fixtures).
+* Spotify — READ + SEARCH + WRITE (against recorded HTTP fixtures).
 * Tidal — READ + SEARCH + WRITE (against recorded HTTP fixtures).
 * YouTube Music — READ + WRITE (against an injected in-memory client).
 """
@@ -78,6 +78,9 @@ def _spotify_case() -> Case:
         expect_isrc=True,
         missing_ref=PlaylistRef(id="missing", name="missing"),
         search_uri_prefix="spotify:track:",
+        writes=True,
+        create_spec=CreatePlaylistSpec(name="Mirror"),
+        add_uris=["spotify:track:t1", "https://open.spotify.com/track/t2"],
     )
 
 

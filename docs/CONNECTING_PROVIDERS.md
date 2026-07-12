@@ -1,8 +1,7 @@
 # Connecting Spotify, Tidal and YouTube Music
 
-This self-hosted MVP exposes provider directions from implemented capabilities,
-including Spotify ↔ Tidal and YouTube Music ↔ Tidal. Keep `.env` local: it
-contains secrets and session tokens.
+This self-hosted MVP supports bidirectional migration across Spotify, Tidal and
+YouTube Music. Keep `.env` local: it contains secrets and session tokens.
 
 ## Spotify app setup
 
@@ -34,12 +33,11 @@ contains secrets and session tokens.
    docker compose up -d --force-recreate backend worker
    ```
 
-10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
+10. In the UI, choose Spotify as **From** or **To**, click **Connect Spotify**, and approve
     the requested scopes.
 11. Spotify **Liked Songs** is shown as an owned playlist and uses Spotify's
-    saved-tracks library endpoint. If you connected Spotify before this feature
-    existed, reconnect Spotify so the app can request the `user-library-read`
-    scope.
+    saved library. Reconnect accounts created before library writes so the app can
+    request both `user-library-read` and `user-library-modify`.
 12. Use **Test connection** after connecting. Spotify refresh tokens expire after
     six months; when Spotify returns `invalid_grant`, the app discards the stale
     account before asking you to reconnect. **Refresh accounts** also removes stale
@@ -79,6 +77,8 @@ Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
 4. Request these third-party scopes:
 
    ```text
+   collection.read
+   collection.write
    playlists.read
    playlists.write
    search.read
@@ -111,7 +111,8 @@ Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
 
 Tidal playlist writes create `UNLISTED` playlists by default unless a migration
 explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
-the maximum accepted by Tidal's playlist-items relationship endpoint.
+the maximum accepted by Tidal's playlist-items and My Collection endpoints. Tidal
+**My Collection** is exposed as a liked-tracks collection.
 
 ## YouTube Music device-code auth
 
@@ -142,8 +143,25 @@ can reuse the same YouTube Music account row by email when Google returns it.
    docker compose up -d --force-recreate backend worker
    ```
 
-6. In the UI, choose YouTube Music as **To**, click **Connect YouTube Music**,
+6. In the UI, choose YouTube Music as **From** or **To**, click **Connect YouTube Music**,
    open the verification URL, and enter the displayed code.
+
+YouTube Music **Liked Songs** is backed by the native `LM` playlist. Writing into
+it uses YouTube Music's like action rather than creating a normal playlist.
+
+## Liked-track collection mapping
+
+These sources always map to the target provider's native library:
+
+| Source | Target equivalent |
+|---|---|
+| Tidal **My Collection** | Spotify **Liked Songs** or YouTube Music **Liked Songs** |
+| Spotify **Liked Songs** | Tidal **My Collection** or YouTube Music **Liked Songs** |
+| YouTube Music **Liked Songs** | Tidal **My Collection** or Spotify **Liked Songs** |
+
+The migration never creates a normal playlist as a fallback for these collections.
+If an older OAuth connection lacks a required library scope, preflight asks you to
+reconnect before creating the job.
 
 ## YouTube Music header-paste fallback
 

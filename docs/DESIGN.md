@@ -32,10 +32,10 @@ and lets a user migrate playlists from any source to any target through a UI.
 
 ### Current implementation status
 The self-hosted MVP currently exposes only implemented capabilities in the UI:
-Spotify is a source provider (OAuth + playlist read/search), Tidal is a
-source/target provider (OAuth + official JSON:API read/search/write), and YouTube
-Music is a source/target provider (device-code/header auth + playlist
-read/search/write through `ytmusicapi`). The persisted job pipeline supports import
+Spotify, Tidal, and YouTube Music are source/target providers. Their native saved
+track libraries share the universal `PlaylistKind.LIKED_TRACKS` kind, so Spotify
+Liked Songs, Tidal My Collection, and YouTube Music Liked Songs map directly
+without creating ordinary playlists. The persisted job pipeline supports import
 → match → write with SSE item progress; low-confidence matches are marked
 `needs_review` and can be approved, batch-approved, corrected, skipped, or
 batch-denied from the progress panel.

@@ -19,6 +19,7 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert "tidal" in rows
     # Spotify can be a source (reads tracks) and has ISRC.
     assert rows["spotify"]["can_source"] is True
+    assert rows["spotify"]["can_target"] is True
     assert rows["spotify"]["has_isrc"] is True
     assert rows["tidal"]["can_source"] is True
     assert rows["tidal"]["can_target"] is True

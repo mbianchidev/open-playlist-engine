@@ -9,9 +9,9 @@ This is the first reference implementation of the
 plugin spoke, the universal format is the hub, so adding a provider is O(1) and it
 instantly works with all the others — both as source and target.
 
-> Status: **early MVP**. The self-hosted Spotify ↔ Tidal and YouTube Music ↔
-> Tidal paths are wired through adapter capabilities: Spotify OAuth/read/search,
-> Tidal OAuth/read/search/write, YouTube Music device/header auth/read/search/write,
+> Status: **early MVP**. Spotify, Tidal and YouTube Music are bidirectional through
+> adapter capabilities: Spotify OAuth/read/search/write, Tidal OAuth/read/search/write,
+> YouTube Music device/header auth/read/search/write,
 > persisted credentials, playlist/track selection, partial-migration detection,
 > migration jobs, review actions and SSE progress. Provider directions remain
 > gated until their adapters advertise implemented capabilities. See
@@ -88,7 +88,8 @@ ARQ's 5-minute default timeout.
    redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
 2. Create a Tidal app at <https://developer.tidal.com> and set its redirect URI to
    `http://127.0.0.1:8000/api/auth/tidal/callback`. Request the third-party scopes
-   `playlists.read`, `playlists.write`, `search.read`, and `user.read`.
+   `collection.read`, `collection.write`, `playlists.read`, `playlists.write`,
+   `search.read`, and `user.read`.
 3. Put `OPE_SPOTIFY_CLIENT_ID`, optional `OPE_SPOTIFY_CLIENT_SECRET`,
    `OPE_TIDAL_CLIENT_ID`, optional `OPE_TIDAL_CLIENT_SECRET`,
    `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`, `OPE_SECRET_KEY`, and
@@ -102,9 +103,12 @@ ARQ's 5-minute default timeout.
    shown in the connection panel. OAuth reconnects reuse the same YouTube Music
    account by Google email when Google returns it.
 7. Pick one playlist, optionally choose individual tracks, and start the migration.
-   Spotify **Liked Songs** appears as an owned playlist backed by Spotify's saved
-   tracks library; reconnect Spotify if an older connection does not have the
-   `user-library-read` scope yet.
+   Tidal **My Collection**, YouTube Music **Liked Songs**, and Spotify **Liked
+   Songs** appear as the same `liked_tracks` collection type. Migrating one writes
+   directly into the target provider's native liked/saved library instead of
+   creating a normal playlist.
+   Reconnect older Spotify accounts for `user-library-modify`, and older Tidal
+   accounts for `collection.read` and `collection.write`.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
    Spotify may block tracks from playlists you do not own or collaborate on; copy

@@ -45,6 +45,14 @@ def _handler(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     if path == "/v2/users/me":
         return httpx.Response(200, json=_load("user.json"))
+    if path == "/v2/userCollectionTracks/me":
+        return httpx.Response(200, json=_load("collection.json"))
+    if path == "/v2/userCollectionTracks/me/relationships/items":
+        if request.method == "POST":
+            return httpx.Response(200, json={"data": [], "links": {"self": path}})
+        if request.url.params.get("page[cursor]") == "next":
+            return httpx.Response(200, json=_load("collection_items_page2.json"))
+        return httpx.Response(200, json=_load("collection_items.json"))
     if path == "/v2/playlists" and request.method == "GET":
         return httpx.Response(200, json=_load("playlists.json"))
     if path == "/v2/playlists" and request.method == "POST":

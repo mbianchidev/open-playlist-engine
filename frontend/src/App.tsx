@@ -200,7 +200,9 @@ export default function App() {
       const challenge = await beginAuth(provider);
       if (challenge.shape === "redirect" && challenge.redirect_url) {
         window.open(challenge.redirect_url, "_blank", "noopener,noreferrer");
-        setNotice("Finish Spotify auth in the new tab, then refresh accounts.");
+        const providerName =
+          providers.find((candidate) => candidate.name === provider)?.display_name ?? provider;
+        setNotice(`Finish ${providerName} auth in the new tab, then refresh accounts.`);
         return;
       }
       if (challenge.shape === "form") {

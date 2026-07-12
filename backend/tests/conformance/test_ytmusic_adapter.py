@@ -18,9 +18,10 @@ from app.core.adapter import (
     ProviderCredential,
     ProviderError,
 )
-from app.core.models import PlaylistRef, Track
+from app.core.models import PlaylistKind, PlaylistRef, Track
 from app.providers.ytmusic.adapter import (
     _PENDING_DEVICE_CODES,
+    YTMUSIC_LIKED_SONGS_PLAYLIST_ID,
     YTMusicAdapter,
     YTMusicAuth,
     _video_id,
@@ -352,6 +353,21 @@ async def test_create_playlist_maps_privacy() -> None:
     assert fake.playlists[pid2]["privacy"] == "PRIVATE"
 
 
+async def test_iter_and_read_liked_songs() -> None:
+    fake = FakeYTMusic()
+    adapter = _adapter(fake)
+    refs = [ref async for ref in adapter.iter_playlists(_cred())]
+    liked = next(ref for ref in refs if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID)
+
+    assert liked.name == "Liked Songs"
+    assert liked.track_count == 1
+    assert liked.kind is PlaylistKind.LIKED_TRACKS
+
+    playlist = await adapter.read_playlist(_cred(), liked)
+    assert playlist.kind is PlaylistKind.LIKED_TRACKS
+    assert [track.id for track in playlist.tracks] == ["yt_song_one"]
+
+
 async def test_read_playlist_maps_missing_contents_parser_error_to_not_found() -> None:
     class MissingContents:
         def get_playlist(self, *a, **k):
@@ -388,6 +404,34 @@ async def test_add_tracks_persists_video_ids() -> None:
         _cred(), pid, ["https://music.youtube.com/watch?v=aaa", "ytmusic:video:bbb"]
     )
     assert fake.playlists[pid]["tracks"] == ["aaa", "bbb"]
+
+
+async def test_add_tracks_to_liked_songs_rates_each_song() -> None:
+    fake = FakeYTMusic()
+    adapter = _adapter(fake)
+    results = await adapter.add_tracks(
+        _cred(),
+        YTMUSIC_LIKED_SONGS_PLAYLIST_ID,
+        ["ytmusic:video:aaa111", "https://music.youtube.com/watch?v=bbb222"],
+    )
+
+    assert fake.liked_tracks == ["yt_song_one", "aaa111", "bbb222"]
+    assert all(result.ok for result in results)
+
+
+async def test_add_tracks_to_liked_songs_reports_provider_failure() -> None:
+    class FailingLike(FakeYTMusic):
+        def rate_song(self, videoId: str, rating: str = "INDIFFERENT"):
+            return {"status": "STATUS_FAILED", "error": "not allowed"}
+
+    results = await _adapter(FailingLike()).add_tracks(
+        _cred(),
+        YTMUSIC_LIKED_SONGS_PLAYLIST_ID,
+        ["ytmusic:video:aaa111"],
+    )
+
+    assert results[0].ok is False
+    assert "not allowed" in (results[0].error or "")
 
 
 async def test_add_tracks_batches_and_keeps_positions(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -31,7 +31,7 @@ from app.core.migration_state import (
     track_selected,
     uri_keys,
 )
-from app.core.models import Playlist, PlaylistRef
+from app.core.models import Playlist, PlaylistKind, PlaylistRef
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
@@ -242,19 +242,11 @@ async def _validated_preflight_warnings(
     user_id: str,
 ) -> list[dict[str, str]]:
     source = get(body.source_provider)
-    target = get(body.target_provider)
+    get(body.target_provider)
 
     source_caps = source.info.capabilities
-    target_caps = target.info.capabilities
     if not source_caps.can(Capability.READ_TRACKS):
         raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
-    if not (
-        target_caps.can(Capability.CREATE_PLAYLIST) and target_caps.can(Capability.ADD_TRACKS)
-    ):
-        raise HTTPException(
-            status_code=400, detail=f"{body.target_provider} cannot write playlists"
-        )
-
     await load_credential(
         session, account_id=body.source_account_id, provider=body.source_provider
     )
@@ -287,6 +279,7 @@ async def _preflight_warnings(
     )
 
     selected = await _selected_playlists(source, source_cred, body.selection)
+    _validate_target_capabilities(target, target_cred, selected)
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     warnings: list[dict[str, str]] = []
     if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
@@ -363,7 +356,14 @@ async def _same_name_warnings(
     target_refs = [ref async for ref in target.iter_playlists(target_cred)]
     warnings: list[dict[str, str]] = []
     for source_playlist in selected.values():
-        same_name = [ref for ref in target_refs if ref.name.strip() == source_playlist.name.strip()]
+        if source_playlist.kind is PlaylistKind.LIKED_TRACKS:
+            continue
+        same_name = [
+            ref
+            for ref in target_refs
+            if ref.kind is PlaylistKind.STANDARD
+            and ref.name.strip() == source_playlist.name.strip()
+        ]
         for ref in same_name:
             try:
                 target_playlist = await target.read_playlist(target_cred, ref)
@@ -384,6 +384,23 @@ async def _same_name_warnings(
                 )
                 break
     return warnings
+
+
+def _validate_target_capabilities(
+    target, target_cred, selected: dict[str, Playlist]
+) -> None:
+    kinds = {playlist.kind for playlist in selected.values()}
+    if PlaylistKind.STANDARD in kinds:
+        caps = target.info.capabilities
+        if not (
+            caps.can(Capability.CREATE_PLAYLIST) and caps.can(Capability.ADD_TRACKS)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{target.info.display_name} cannot write playlists",
+            )
+    if PlaylistKind.LIKED_TRACKS in kinds:
+        target.info.require_liked_tracks_target(target_cred)
 
 
 async def _tracks_migrated_today(

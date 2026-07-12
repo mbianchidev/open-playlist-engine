@@ -35,9 +35,9 @@ read/search/write; `MatchService` owns matching.
 ## Provider status
 | Provider | Read / Search | Write | Test seam |
 |---|---|---|---|
-| Spotify | ✅ OAuth + live read/search (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
-| Tidal | ✅ OAuth + live read/search (official JSON:API over `httpx`) | ✅ playlist create/add tracks | recorded JSON:API fixtures via injected `httpx.MockTransport` |
-| YouTube Music | ✅ device-code/header auth + library read/search (`ytmusicapi`); OAuth account matching uses Google email when available | ✅ live write (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+| Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
+| YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
@@ -46,10 +46,10 @@ never makes live calls. See [ADR 0002](../docs/adr/0002-adapter-fixture-testing.
 
 ## Implemented MVP directions
 
-The implemented self-host paths are capability-driven: Spotify and YouTube Music
-can read/search, Tidal can read/search/write, and YouTube Music can write through
-`ytmusicapi`. This enables Spotify ↔ Tidal and YouTube Music ↔ Tidal where both
-chosen providers advertise the required source/target capabilities. Docker Compose
+The implemented self-host paths are capability-driven across Spotify, Tidal and
+YouTube Music. Normal playlists migrate bidirectionally, while Spotify Liked Songs,
+Tidal My Collection, and YouTube Music Liked Songs map to each provider's native
+liked/saved library. Docker Compose
 applies Alembic migrations before starting the backend and worker. For local
 development, run `alembic upgrade head` before `uvicorn` and `arq`. Playlist
 detail and migration item review endpoints support track-level selection,

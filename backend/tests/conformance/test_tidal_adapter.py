@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from app.core.adapter import (
+    AccessDenied,
     AuthExpired,
     AuthKind,
     ChallengeShape,
@@ -17,9 +18,10 @@ from app.core.adapter import (
     RateLimited,
     RefreshTokenExpired,
 )
-from app.core.models import Track
+from app.core.models import PlaylistKind, Track
 from app.providers.tidal.adapter import (
     _PENDING_STATES,
+    TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
     TidalAdapter,
     TidalAuth,
     _track_id,
@@ -44,6 +46,21 @@ def _cred() -> ProviderCredential:
         auth_kind=AuthKind.OAUTH_PKCE,
         access_token="token",
         extra={"country": "US"},
+    )
+
+
+def _collection_cred() -> ProviderCredential:
+    return _cred().model_copy(
+        update={
+            "scopes": [
+                "collection.read",
+                "collection.write",
+                "playlists.read",
+                "playlists.write",
+                "search.read",
+                "user.read",
+            ]
+        }
     )
 
 
@@ -90,6 +107,30 @@ async def test_read_hydrates_shallow_items_and_preserves_positions() -> None:
     assert pl.tracks[1].artist == "Artist Two, Artist Three"
 
 
+async def test_iter_and_read_my_collection() -> None:
+    adapter = TidalAdapter(transport=tidal_transport())
+    refs = [ref async for ref in adapter.iter_playlists(_collection_cred())]
+    collection = next(ref for ref in refs if ref.id == TIDAL_COLLECTION_TRACKS_PLAYLIST_ID)
+
+    assert collection.name == "My Collection"
+    assert collection.track_count == 2
+    assert collection.kind is PlaylistKind.LIKED_TRACKS
+
+    playlist = await adapter.read_playlist(_collection_cred(), collection)
+    assert playlist.kind is PlaylistKind.LIKED_TRACKS
+    assert [track.id for track in playlist.tracks] == ["t1", "t2"]
+    assert playlist.tracks[0].artist == "Artist One"
+
+
+async def test_my_collection_requires_read_scope() -> None:
+    adapter = TidalAdapter(transport=tidal_transport())
+    with pytest.raises(AccessDenied, match="collection.read"):
+        await adapter.read_playlist(
+            _cred(),
+            _ref(TIDAL_COLLECTION_TRACKS_PLAYLIST_ID, "My Collection"),
+        )
+
+
 async def test_playlist_pagination_keeps_v2_base_path() -> None:
     requests: list[tuple[str, str | None]] = []
 
@@ -121,7 +162,7 @@ async def test_playlist_pagination_keeps_v2_base_path() -> None:
     adapter = TidalAdapter(transport=httpx.MockTransport(handler))
     refs = [ref async for ref in adapter.iter_playlists(_cred())]
 
-    assert [ref.id for ref in refs] == ["page-one"]
+    assert [ref.id for ref in refs] == ["page-one", TIDAL_COLLECTION_TRACKS_PLAYLIST_ID]
     assert requests == [("/v2/playlists", None), ("/v2/playlists", "next")]
 
 
@@ -230,7 +271,14 @@ async def test_auth_begin_uses_third_party_scopes(monkeypatch: pytest.MonkeyPatc
     assert params["client_id"] == ["client-id"]
     assert params["redirect_uri"] == ["http://127.0.0.1:8000/api/auth/tidal/callback"]
     scopes = set(params["scope"][0].split())
-    assert scopes == {"playlists.read", "playlists.write", "search.read", "user.read"}
+    assert scopes == {
+        "collection.read",
+        "collection.write",
+        "playlists.read",
+        "playlists.write",
+        "search.read",
+        "user.read",
+    }
     assert "r_usr" not in scopes
     assert "w_usr" not in scopes
     assert challenge.state in _PENDING_STATES
@@ -307,7 +355,39 @@ async def test_refresh_invalid_grant_requires_reauthorization(
         await TidalAuth(transport=httpx.MockTransport(handler)).refresh(cred)
 
 
-def _ref():
+async def test_add_tracks_to_my_collection_batches_at_limit() -> None:
+    calls: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.read())
+        assert request.url.path == "/v2/userCollectionTracks/me/relationships/items"
+        assert "countryCode" not in request.url.params
+        return httpx.Response(200, json={"data": [], "links": {"self": request.url.path}})
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.add_tracks(
+        _collection_cred(),
+        TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+        [f"tidal:track:t{i}" for i in range(51)],
+    )
+
+    assert len(calls) == 2
+    assert calls[0].count(b'"type":"tracks"') == 50
+    assert calls[1].count(b'"type":"tracks"') == 1
+    assert all(result.ok for result in results)
+
+
+async def test_add_tracks_to_my_collection_requires_write_scope() -> None:
+    adapter = TidalAdapter(transport=tidal_transport())
+    with pytest.raises(AccessDenied, match="collection.write"):
+        await adapter.add_tracks(
+            _cred().model_copy(update={"scopes": ["collection.read"]}),
+            TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+            ["tidal:track:t1"],
+        )
+
+
+def _ref(playlist_id: str = "pl_tidal_1", name: str = "Tidal Roadtrip"):
     from app.core.models import PlaylistRef
 
-    return PlaylistRef(id="pl_tidal_1", name="Tidal Roadtrip")
+    return PlaylistRef(id=playlist_id, name=name)

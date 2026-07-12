@@ -16,6 +16,7 @@ class Capability(StrEnum):
     READ_PLAYLISTS = "read_playlists"
     READ_TRACKS = "read_tracks"
     READ_LIBRARY = "read_library"
+    WRITE_LIBRARY = "write_library"
     CREATE_PLAYLIST = "create_playlist"
     ADD_TRACKS = "add_tracks"
     REMOVE_TRACKS = "remove_tracks"

@@ -32,3 +32,5 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised
 by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.
+Native liked-track collections map across Spotify Liked Songs, Tidal My Collection,
+and YouTube Music Liked Songs.

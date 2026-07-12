@@ -2,7 +2,7 @@
 
 Any adapter (real or fake) must satisfy these behaviours. The fake exercises the
 whole contract; real adapters are parametrized against recorded fixtures (Spotify
-read/search) or an injected in-memory client (YouTube Music write) — never live
+and Tidal) or an injected in-memory client (YouTube Music) — never live
 APIs in CI. See ``cases.py`` for what each adapter puts in scope.
 """
 

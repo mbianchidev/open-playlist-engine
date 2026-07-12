@@ -50,7 +50,7 @@ from app.core.capabilities import (
     SearchMode,
     Stability,
 )
-from app.core.models import Playlist, PlaylistRef, Track
+from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
 from app.core.registry import register
 from app.settings import get_settings
 
@@ -63,6 +63,8 @@ class YTMusicClient(Protocol):
     def get_library_playlists(self, limit: int = 100) -> list[dict[str, Any]]: ...
 
     def get_playlist(self, playlistId: str, limit: int | None = 100) -> dict[str, Any]: ...
+
+    def get_liked_songs(self, limit: int | None = 100) -> dict[str, Any]: ...
 
     def create_playlist(
         self,
@@ -85,6 +87,8 @@ class YTMusicClient(Protocol):
         self, query: str, filter: str | None = None, limit: int = 20
     ) -> list[dict[str, Any]]: ...
 
+    def rate_song(self, videoId: str, rating: str = "INDIFFERENT") -> dict[str, Any] | None: ...
+
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
 
@@ -99,6 +103,8 @@ _OAUTH_USER_AGENT = (
     "Gecko/20100101 Firefox/88.0 Cobalt/Version"
 )
 _DEFAULT_POLL_INTERVAL_S = 5
+YTMUSIC_LIKED_SONGS_PLAYLIST_ID = "ytmusic:liked-songs"
+_LIKED_SONGS_NAME = "Liked Songs"
 
 
 @dataclass
@@ -287,6 +293,15 @@ def _auth_from_headers(raw: str) -> dict[str, Any]:
 
 def _succeeded(response: str | dict[str, Any]) -> bool:
     return isinstance(response, dict) and "SUCCEEDED" in str(response.get("status", ""))
+
+
+def _like_error(response: dict[str, Any] | None) -> str | None:
+    if not isinstance(response, dict):
+        return None
+    if response.get("error"):
+        return str(response["error"])
+    status = str(response.get("status") or "")
+    return status if "FAILED" in status else None
 
 
 def _has_oauth_settings(settings) -> bool:
@@ -614,6 +629,8 @@ class YTMusicAdapter:
             capabilities={
                 Capability.READ_PLAYLISTS,
                 Capability.READ_TRACKS,
+                Capability.READ_LIBRARY,
+                Capability.WRITE_LIBRARY,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
                 Capability.SET_DESCRIPTION,
@@ -626,6 +643,7 @@ class YTMusicAdapter:
             ordering=OrderingGuarantee.BEST_EFFORT,
             warning="Unofficial API — no quota but may break and carries account-flag risk.",
         ),
+        liked_tracks_playlist_id=YTMUSIC_LIKED_SONGS_PLAYLIST_ID,
     )
     auth = YTMusicAuth()
 
@@ -655,14 +673,24 @@ class YTMusicAdapter:
                 name=_playlist_title(item),
                 track_count=count if isinstance(count, int) else None,
             )
+        liked = await _run_client_call(
+            "list liked songs", lambda: client.get_liked_songs(limit=1)
+        )
+        if not isinstance(liked, dict):
+            raise ProviderError("YouTube Music liked songs returned an invalid response")
+        count = liked.get("trackCount")
+        yield PlaylistRef(
+            id=YTMUSIC_LIKED_SONGS_PLAYLIST_ID,
+            name=_LIKED_SONGS_NAME,
+            track_count=count if isinstance(count, int) else None,
+            kind=PlaylistKind.LIKED_TRACKS,
+        )
 
     async def iter_playlist_items(
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> AsyncIterator[Track]:
         client = self._client(cred)
-        playlist = await _run_client_call(
-            "read playlist", lambda: client.get_playlist(ref.id, limit=5000), playlist_id=ref.id
-        )
+        playlist = await self._load_playlist(client, ref)
         if not isinstance(playlist, dict):
             raise ProviderError("YouTube Music playlist response was invalid")
         if playlist.get("error"):
@@ -679,9 +707,7 @@ class YTMusicAdapter:
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         client = self._client(cred)
-        raw = await _run_client_call(
-            "read playlist", lambda: client.get_playlist(ref.id, limit=5000), playlist_id=ref.id
-        )
+        raw = await self._load_playlist(client, ref)
         if not isinstance(raw, dict):
             raise ProviderError("YouTube Music playlist response was invalid")
         if raw.get("error"):
@@ -699,10 +725,32 @@ class YTMusicAdapter:
         name = str(raw.get("title") or raw.get("name") or ref.name)
         return Playlist(
             id=ref.id,
-            name=name,
+            name=_LIKED_SONGS_NAME
+            if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
+            else name,
             description=raw.get("description") if isinstance(raw.get("description"), str) else None,
             tracks=tracks,
+            kind=PlaylistKind.LIKED_TRACKS
+            if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
+            else PlaylistKind.STANDARD,
         )
+
+    async def _load_playlist(
+        self, client: YTMusicClient, ref: PlaylistRef
+    ) -> dict[str, Any]:
+        if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID:
+            raw = await _run_client_call(
+                "read liked songs", lambda: client.get_liked_songs(limit=None)
+            )
+        else:
+            raw = await _run_client_call(
+                "read playlist",
+                lambda: client.get_playlist(ref.id, limit=5000),
+                playlist_id=ref.id,
+            )
+        if not isinstance(raw, dict):
+            raise ProviderError("YouTube Music playlist response was invalid")
+        return raw
 
     async def test_connection(self, cred: ProviderCredential) -> None:
         client = self._client(cred)
@@ -770,6 +818,8 @@ class YTMusicAdapter:
     async def add_tracks(
         self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
     ) -> list[AddItemResult]:
+        if playlist_id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID:
+            return await self._like_tracks(cred, uris)
         client = self._client(cred)
         batch = max(1, self.info.capabilities.max_add_batch)
         uris = list(uris)
@@ -793,6 +843,36 @@ class YTMusicAdapter:
                     results.append(
                         AddItemResult(uri=uri, ok=False, error=f"ytmusic add failed: {response}")
                     )
+        return results
+
+    async def _like_tracks(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        client = self._client(cred)
+        results: list[AddItemResult] = []
+        position = 0
+        for uri in uris:
+            video_id = _video_id(uri)
+            if not video_id:
+                results.append(
+                    AddItemResult(uri=uri, ok=False, error="invalid YouTube Music video URI")
+                )
+                continue
+            try:
+                response = await _run_client_call(
+                    "like song", partial(client.rate_song, video_id, "LIKE")
+                )
+            except ProviderError as exc:
+                results.append(AddItemResult(uri=uri, ok=False, error=str(exc)))
+                continue
+            error = _like_error(response if isinstance(response, dict) else None)
+            if error:
+                results.append(
+                    AddItemResult(uri=uri, ok=False, error=f"ytmusic like failed: {error}")
+                )
+                continue
+            results.append(AddItemResult(uri=uri, ok=True, position=position))
+            position += 1
         return results
 
 

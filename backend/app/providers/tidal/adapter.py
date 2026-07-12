@@ -36,7 +36,7 @@ from app.core.adapter import (
     TrackCandidate,
 )
 from app.core.capabilities import Capability, CapabilityDescriptor, SearchMode, Stability
-from app.core.models import MediaType, Playlist, PlaylistRef, Track
+from app.core.models import MediaType, Playlist, PlaylistKind, PlaylistRef, Track
 from app.core.registry import register
 from app.settings import get_settings
 
@@ -50,12 +50,18 @@ _TRACK_DETAIL_CONCURRENCY = 5
 _RATE_LIMIT_MAX_RETRIES = 2
 _RATE_LIMIT_MAX_AUTO_WAIT_S = 30
 _SCOPES = [
+    "collection.read",
+    "collection.write",
     "playlists.read",
     "playlists.write",
     "search.read",
     "user.read",
 ]
 _TRACK_INCLUDES = ("albums", "artists", "credits")
+TIDAL_COLLECTION_TRACKS_PLAYLIST_ID = "tidal:collection:tracks"
+_COLLECTION_NAME = "My Collection"
+_COLLECTION_READ_SCOPE = "collection.read"
+_COLLECTION_WRITE_SCOPE = "collection.write"
 _DURATION = re.compile(
     r"^P(?:(?P<days>\d+)D)?T?"
     r"(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?$"
@@ -180,6 +186,11 @@ def _tidal_error_code(resp: httpx.Response) -> str | None:
             code = errors[0].get("code")
             return code if isinstance(code, str) and code else None
     return None
+
+
+def _require_scope(cred: ProviderCredential, scope: str, action: str) -> None:
+    if scope not in cred.scopes:
+        raise AccessDenied(f"Reconnect Tidal to grant {scope} before {action}")
 
 
 def _token_auth(settings) -> tuple[str, str] | None:
@@ -656,6 +667,8 @@ class TidalAdapter:
             capabilities={
                 Capability.READ_PLAYLISTS,
                 Capability.READ_TRACKS,
+                Capability.READ_LIBRARY,
+                Capability.WRITE_LIBRARY,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
                 Capability.SET_DESCRIPTION,
@@ -667,10 +680,13 @@ class TidalAdapter:
             max_add_batch=_MAX_ADD_BATCH,
             supports_duplicates=True,
             warning=(
-                "Requires a TIDAL developer app with the playlists.read, playlists.write, "
-                "search.read, and user.read scopes."
+                "Requires a TIDAL developer app with collection.read, collection.write, "
+                "playlists.read, playlists.write, search.read, and user.read scopes."
             ),
         ),
+        liked_tracks_playlist_id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+        library_read_scope=_COLLECTION_READ_SCOPE,
+        library_write_scope=_COLLECTION_WRITE_SCOPE,
     )
     auth = TidalAuth()
 
@@ -709,6 +725,7 @@ class TidalAdapter:
                 if not next_url:
                     break
                 resp = _raise_for_status(await _tidal_request(client, "GET", next_url))
+            yield await self._collection_ref(client, cred)
 
     async def iter_playlist_items(
         self, cred: ProviderCredential, ref: PlaylistRef
@@ -719,6 +736,26 @@ class TidalAdapter:
 
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         async with self._client(cred) as client:
+            if ref.id == TIDAL_COLLECTION_TRACKS_PLAYLIST_ID:
+                _require_scope(cred, _COLLECTION_READ_SCOPE, "reading My Collection")
+                collection = await self._collection_ref(client, cred, strict=True)
+                tracks = await self._read_track_relationship(
+                    client,
+                    cred,
+                    "/userCollectionTracks/me/relationships/items",
+                    [
+                        ("sort", "addedAt"),
+                        *_include_params("items"),
+                    ],
+                )
+                return Playlist(
+                    id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+                    name=_COLLECTION_NAME,
+                    owner_id=collection.owner_id,
+                    snapshot_id=collection.snapshot_id,
+                    tracks=tracks,
+                    kind=PlaylistKind.LIKED_TRACKS,
+                )
             meta_resp = _raise_for_status(
                 await _tidal_request(
                     client,
@@ -749,18 +786,84 @@ class TidalAdapter:
     async def _read_playlist_tracks(
         self, client: httpx.AsyncClient, cred: ProviderCredential, playlist_id: str
     ) -> list[Track]:
-        params = _params(
+        return await self._read_track_relationship(
+            client,
             cred,
-            [
-                ("sort", "itemIndex"),
-                *_include_params("items"),
-            ],
+            f"/playlists/{playlist_id}/relationships/items",
+            _params(
+                cred,
+                [
+                    ("sort", "itemIndex"),
+                    *_include_params("items"),
+                ],
+            ),
         )
+
+    async def _collection_ref(
+        self,
+        client: httpx.AsyncClient,
+        cred: ProviderCredential,
+        *,
+        strict: bool = False,
+    ) -> PlaylistRef:
+        if _COLLECTION_READ_SCOPE not in cred.scopes:
+            if strict:
+                _require_scope(cred, _COLLECTION_READ_SCOPE, "reading My Collection")
+            return PlaylistRef(
+                id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+                name=_COLLECTION_NAME,
+                owner_id=cred.account_id,
+                migration_note="Reconnect Tidal to migrate My Collection",
+                kind=PlaylistKind.LIKED_TRACKS,
+            )
+        resp = await _tidal_request(
+            client,
+            "GET",
+            "/userCollectionTracks/me",
+            params=_include_params("owners"),
+        )
+        if resp.status_code == 403:
+            if strict:
+                raise AccessDenied(
+                    "Reconnect Tidal to grant collection.read before reading My Collection"
+                )
+            return PlaylistRef(
+                id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+                name=_COLLECTION_NAME,
+                owner_id=cred.account_id,
+                migration_note="Reconnect Tidal to migrate My Collection",
+                kind=PlaylistKind.LIKED_TRACKS,
+            )
+        payload = _raise_for_status(resp).json()
+        resource = payload.get("data")
+        if not isinstance(resource, dict):
+            raise ProviderError("tidal My Collection response did not include collection data")
+        attrs = _attributes(resource)
+        return PlaylistRef(
+            id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
+            name=_COLLECTION_NAME,
+            track_count=attrs.get("numberOfItems")
+            if isinstance(attrs.get("numberOfItems"), int)
+            else None,
+            owner_id=cred.account_id,
+            snapshot_id=attrs.get("lastModifiedAt")
+            if isinstance(attrs.get("lastModifiedAt"), str)
+            else None,
+            kind=PlaylistKind.LIKED_TRACKS,
+        )
+
+    async def _read_track_relationship(
+        self,
+        client: httpx.AsyncClient,
+        cred: ProviderCredential,
+        url: str,
+        params: Sequence[tuple[str, str]],
+    ) -> list[Track]:
         resp = _raise_for_status(
             await _tidal_request(
                 client,
                 "GET",
-                f"/playlists/{playlist_id}/relationships/items",
+                url,
                 params=params,
             )
         )
@@ -975,6 +1078,33 @@ class TidalAdapter:
     async def add_tracks(
         self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
     ) -> list[AddItemResult]:
+        if playlist_id == TIDAL_COLLECTION_TRACKS_PLAYLIST_ID:
+            _require_scope(cred, _COLLECTION_WRITE_SCOPE, "writing My Collection")
+            return await self._add_tracks_to_relationship(
+                cred,
+                uris,
+                "/userCollectionTracks/me/relationships/items",
+                include_country=False,
+                scope_error=(
+                    "Reconnect Tidal to grant collection.write before writing My Collection"
+                ),
+            )
+        return await self._add_tracks_to_relationship(
+            cred,
+            uris,
+            f"/playlists/{playlist_id}/relationships/items",
+            include_country=True,
+        )
+
+    async def _add_tracks_to_relationship(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        url: str,
+        *,
+        include_country: bool,
+        scope_error: str | None = None,
+    ) -> list[AddItemResult]:
         out: list[AddItemResult] = []
         position = 0
         async with self._client(cred) as client:
@@ -1003,16 +1133,17 @@ class TidalAdapter:
                                 )
                             )
                     continue
-                _raise_for_status(
-                    await _tidal_request(
-                        client,
-                        "POST",
-                        f"/playlists/{playlist_id}/relationships/items",
-                        json={"data": payload_items},
-                        params=_params(cred),
-                        headers={"Idempotency-Key": uuid.uuid4().hex},
-                    )
+                resp = await _tidal_request(
+                    client,
+                    "POST",
+                    url,
+                    json={"data": payload_items},
+                    params=_params(cred) if include_country else None,
+                    headers={"Idempotency-Key": uuid.uuid4().hex},
                 )
+                if resp.status_code == 403 and scope_error:
+                    raise AccessDenied(scope_error)
+                _raise_for_status(resp)
                 for uri in chunk:
                     out.append(AddItemResult(uri=uri, ok=True, position=position))
                     position += 1
