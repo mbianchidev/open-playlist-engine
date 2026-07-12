@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "id": "a.1002",
+      "type": "library-songs",
+      "href": "/v1/me/library/songs/a.1002",
+      "attributes": {
+        "name": "Song Two",
+        "artistName": "Artist Two",
+        "albumName": "Album Two",
+        "durationInMillis": 200000,
+        "releaseDate": "2021-05-01",
+        "genreNames": ["Pop"],
+        "trackNumber": 2,
+        "discNumber": 1,
+        "playParams": {
+          "id": "a.1002",
+          "kind": "song",
+          "isLibrary": true,
+          "catalogId": "1002"
+        }
+      }
+    }
+  ]
+}

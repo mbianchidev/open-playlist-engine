@@ -34,3 +34,5 @@ labels, playlist-level song group selection, and any provider direction advertis
 by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.
 Native liked-track collections map across Spotify Liked Songs, Tidal My Collection,
 and YouTube Music Liked Songs.
+Apple Music uses the same auth challenge interface with the
+official MusicKit JS v3 browser authorization flow.

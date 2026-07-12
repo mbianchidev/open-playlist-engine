@@ -9,12 +9,13 @@ This is the first reference implementation of the
 plugin spoke, the universal format is the hub, so adding a provider is O(1) and it
 instantly works with all the others — both as source and target.
 
-> Status: **early MVP**. Spotify, Tidal and YouTube Music are bidirectional through
-> adapter capabilities: Spotify OAuth/read/search/write, Tidal OAuth/read/search/write,
-> YouTube Music device/header auth/read/search/write,
-> persisted credentials, playlist/track selection, partial-migration detection,
-> migration jobs, review actions and SSE progress. Provider directions remain
-> gated until their adapters advertise implemented capabilities. See
+> Status: **early MVP**. Spotify, Tidal, YouTube Music and Apple Music advertise
+> implemented directions dynamically: Spotify OAuth/read/search/write, Tidal
+> OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
+> official Apple MusicKit library read/search/write. Persisted credentials,
+> playlist/track selection, partial-migration detection, migration jobs, review
+> actions and SSE progress are wired. Other provider directions remain gated until
+> their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
@@ -75,6 +76,8 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_YTMUSIC_CLIENT_ID`, `OPE_YTMUSIC_CLIENT_SECRET`,
 `OPE_YOUTUBE_OFFICIAL_ENABLED`, `OPE_SPOTIFY_CLIENT_ID`,
 `OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
+`OPE_APPLE_MUSIC_TEAM_ID`,
+`OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
 `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
@@ -82,7 +85,7 @@ between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 second
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
 ARQ's 5-minute default timeout.
 
-## Spotify, Tidal and YouTube Music
+## Spotify, Tidal, YouTube Music and Apple Music
 
 1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
    redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
@@ -127,7 +130,7 @@ ARQ's 5-minute default timeout.
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
 
-Detailed Spotify, Tidal and YouTube Music setup steps are in
+Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
 
 ## Adding a provider

@@ -7,6 +7,7 @@ while real adapters are driven only over the surface this PR implements:
 
 * Spotify — READ + SEARCH + WRITE (against recorded HTTP fixtures).
 * Tidal — READ + SEARCH + WRITE (against recorded HTTP fixtures).
+* Apple Music — READ + SEARCH + WRITE (against recorded HTTP fixtures).
 * YouTube Music — READ + WRITE (against an injected in-memory client).
 """
 
@@ -16,9 +17,14 @@ from dataclasses import dataclass, field
 
 from app.core.adapter import AuthKind, CreatePlaylistSpec, ProviderAdapter, ProviderCredential
 from app.core.models import PlaylistRef
+from app.providers.applemusic.adapter import AppleMusicAdapter
 from app.providers.spotify.adapter import SpotifyAdapter
 from app.providers.tidal.adapter import TidalAdapter
 from app.providers.ytmusic.adapter import YTMusicAdapter
+from tests.conformance.applemusic_fixtures import (
+    APPLE_MUSIC_PLAYLIST_ID,
+    applemusic_transport,
+)
 from tests.conformance.fake_provider import FakeAdapter, fake_cred
 from tests.conformance.spotify_fixtures import SPOTIFY_PLAYLIST_ID, spotify_transport
 from tests.conformance.tidal_fixtures import TIDAL_PLAYLIST_ID, tidal_transport
@@ -129,10 +135,50 @@ def _tidal_case() -> Case:
     )
 
 
+def _applemusic_case() -> Case:
+    return Case(
+        id="applemusic",
+        adapter=AppleMusicAdapter(
+            transport=applemusic_transport(),
+            developer_token="fixture-developer-token",
+        ),
+        cred=ProviderCredential(
+            account_id="acc-applemusic",
+            provider="applemusic",
+            auth_kind=AuthKind.DEVELOPER_USER_TOKEN,
+            access_token="fixture-user-token",
+            extra={"storefront": "us"},
+        ),
+        reads=True,
+        searches=True,
+        expect_isrc=True,
+        missing_ref=PlaylistRef(id="missing", name="missing"),
+        search_uri_prefix="applemusic:catalog:us:song:",
+        writes=True,
+        create_spec=CreatePlaylistSpec(name="Mirror", description="Migrated by OPE"),
+        add_uris=[
+            "applemusic:catalog:us:song:1001",
+            "https://music.apple.com/us/album/song/999?i=1002",
+        ],
+    )
+
+
 def build_cases() -> list[Case]:
-    return [_fake_case(), _spotify_case(), _ytmusic_case(), _tidal_case()]
+    return [
+        _fake_case(),
+        _spotify_case(),
+        _ytmusic_case(),
+        _tidal_case(),
+        _applemusic_case(),
+    ]
 
 
 # Used by the suite to keep the original FakeAdapter-only test (provider fixture
 # constants are re-exported for provider-specific assertions).
-__all__ = ["Case", "build_cases", "SPOTIFY_PLAYLIST_ID", "TIDAL_PLAYLIST_ID"]
+__all__ = [
+    "APPLE_MUSIC_PLAYLIST_ID",
+    "Case",
+    "SPOTIFY_PLAYLIST_ID",
+    "TIDAL_PLAYLIST_ID",
+    "build_cases",
+]

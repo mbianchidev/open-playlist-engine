@@ -5,7 +5,8 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 ## Layout
 - `app/core/` — provider-agnostic hub: Open Playlist models, capabilities, plugin
   contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
-- `app/providers/<name>/` — provider adapters (spotify, tidal, ytmusic). Self-register.
+- `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
+  Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
 - `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
@@ -38,6 +39,7 @@ read/search/write; `MatchService` owns matching.
 | Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
 | Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
 | YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+| Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
@@ -46,10 +48,10 @@ never makes live calls. See [ADR 0002](../docs/adr/0002-adapter-fixture-testing.
 
 ## Implemented MVP directions
 
-The implemented self-host paths are capability-driven across Spotify, Tidal and
-YouTube Music. Normal playlists migrate bidirectionally, while Spotify Liked Songs,
-Tidal My Collection, and YouTube Music Liked Songs map to each provider's native
-liked/saved library. Docker Compose
+The implemented self-host paths are capability-driven across Spotify, Tidal,
+YouTube Music and Apple Music. Normal playlists migrate according to advertised
+capabilities, while Spotify Liked Songs, Tidal My Collection, and YouTube Music
+Liked Songs map to each provider's native liked/saved library. Docker Compose
 applies Alembic migrations before starting the backend and worker. For local
 development, run `alembic upgrade head` before `uvicorn` and `arq`. Playlist
 detail and migration item review endpoints support track-level selection,

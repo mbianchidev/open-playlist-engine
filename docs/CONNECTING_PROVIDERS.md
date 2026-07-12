@@ -1,7 +1,8 @@
-# Connecting Spotify, Tidal and YouTube Music
+# Connecting Spotify, Tidal, Apple Music and YouTube Music
 
-This self-hosted MVP supports bidirectional migration across Spotify, Tidal and
-YouTube Music. Keep `.env` local: it contains secrets and session tokens.
+This self-hosted MVP supports capability-driven migration across Spotify, Tidal,
+Apple Music and YouTube Music. Keep `.env` local: it contains provider secrets and
+session tokens.
 
 ## Spotify app setup
 
@@ -113,6 +114,56 @@ Tidal playlist writes create `UNLISTED` playlists by default unless a migration
 explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
 the maximum accepted by Tidal's playlist-items and My Collection endpoints. Tidal
 **My Collection** is exposed as a liked-tracks collection.
+
+## Apple MusicKit setup
+
+Apple Music does not provide an OAuth client ID/client secret flow. The official
+integration uses two tokens:
+
+- a developer JWT signed by the backend with your Apple Developer Team ID, MusicKit
+  Key ID and `.p8` private key;
+- a Music User Token issued interactively by MusicKit JS after the user signs in.
+
+An active Apple Developer Program membership and Apple Music subscription are
+required.
+
+1. Create a MusicKit identifier and private key by following Apple's
+   [Media identifier and private key guide](https://developer.apple.com/help/account/capabilities/create-a-media-identifier-and-private-key/).
+2. Download the `.p8` key once and record its 10-character Key ID.
+3. Find your 10-character Team ID in the Apple Developer membership page.
+4. Configure the repo-root `.env`:
+
+   ```env
+   OPE_APPLE_MUSIC_TEAM_ID=YOURTEAMID
+   OPE_APPLE_MUSIC_KEY_ID=YOURKEYID
+   OPE_APPLE_MUSIC_PRIVATE_KEY_PATH=/absolute/path/to/AuthKey_YOURKEYID.p8
+   OPE_APPLE_MUSIC_TOKEN_TTL_S=86400
+   ```
+
+   The key path must be readable by both the backend and worker. For Docker,
+   either mount the key at the same container path or store an escaped PEM value:
+
+   ```env
+   OPE_APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+   ```
+
+5. Restart the backend and worker.
+6. Choose Apple Music as **From** or **To**, click **Connect Apple Music**, then
+   click **Authorize with Apple Music** in the connection panel.
+7. Sign in to Apple and approve library access. The browser receives a Music User
+   Token and sends it to the backend, where it is stored encrypted.
+8. Use **Test connection** before migrating.
+
+Apple library tracks use user-specific IDs, while migration writes require catalog
+song IDs. The adapter maps `playParams.catalogId`, enriches tracks through the
+user's storefront for ISRC matching, and writes catalog songs directly. Uploaded
+or matched tracks without a catalog ID remain usable as source metadata but cannot
+be written back by library ID.
+
+Apple documents propagation delays after playlist creation and track additions.
+The adapter retries a not-yet-visible playlist only immediately after creating it;
+later writes fail normally instead of masking a bad playlist ID. New playlists or
+tracks may still take time to appear in the Apple Music app.
 
 ## YouTube Music device-code auth
 
