@@ -1,0 +1,41 @@
+{
+  "data": [
+    {
+      "id": "1001",
+      "type": "songs",
+      "href": "/v1/catalog/us/songs/1001",
+      "attributes": {
+        "name": "Song One",
+        "artistName": "Artist One",
+        "albumName": "Album One",
+        "durationInMillis": 180000,
+        "releaseDate": "2020-01-01",
+        "genreNames": ["Alternative", "Music"],
+        "trackNumber": 1,
+        "discNumber": 1,
+        "contentRating": "clean",
+        "composerName": "Composer One",
+        "isrc": "US0000000001",
+        "url": "https://music.apple.com/us/album/song-one/999?i=1001"
+      }
+    },
+    {
+      "id": "1002",
+      "type": "songs",
+      "href": "/v1/catalog/us/songs/1002",
+      "attributes": {
+        "name": "Song Two",
+        "artistName": "Artist Two",
+        "albumName": "Album Two",
+        "durationInMillis": 200000,
+        "releaseDate": "2021-05-01",
+        "genreNames": ["Pop", "Music"],
+        "trackNumber": 2,
+        "discNumber": 1,
+        "contentRating": "explicit",
+        "isrc": "US0000000002",
+        "url": "https://music.apple.com/us/album/song-two/999?i=1002"
+      }
+    }
+  ]
+}

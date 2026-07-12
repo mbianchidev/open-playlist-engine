@@ -5,7 +5,8 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 ## Layout
 - `app/core/` — provider-agnostic hub: Open Playlist models, capabilities, plugin
   contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
-- `app/providers/<name>/` — provider adapters (spotify, ytmusic). Self-register.
+- `app/providers/<name>/` — provider adapters (applemusic, spotify, ytmusic).
+  Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
 - `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
@@ -37,6 +38,7 @@ read/search/write; `MatchService` owns matching.
 |---|---|---|---|
 | Spotify | ✅ OAuth + live read/search (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
 | YouTube Music | ✅ device-code/header auth + library read/search (`ytmusicapi`); OAuth account matching uses Google email when available | ✅ live write (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+| Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;

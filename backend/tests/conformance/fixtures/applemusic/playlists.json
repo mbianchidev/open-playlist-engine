@@ -1,0 +1,16 @@
+{
+  "next": "/v1/me/library/playlists?offset=1",
+  "data": [
+    {
+      "id": "p.ope-roadtrip",
+      "type": "library-playlists",
+      "href": "/v1/me/library/playlists/p.ope-roadtrip",
+      "attributes": {
+        "name": "Apple Roadtrip",
+        "canEdit": true,
+        "isPublic": false,
+        "dateAdded": "2026-01-01T00:00:00Z"
+      }
+    }
+  ]
+}
