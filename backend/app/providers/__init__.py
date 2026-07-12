@@ -6,4 +6,9 @@ register via ``importlib.metadata`` entry points (group ``ope.providers``).
 
 from __future__ import annotations
 
-from app.providers import applemusic, spotify, ytmusic  # noqa: F401  (import for side effects)
+from app.providers import (  # noqa: F401  (import for side effects)
+    applemusic,
+    spotify,
+    tidal,
+    ytmusic,
+)

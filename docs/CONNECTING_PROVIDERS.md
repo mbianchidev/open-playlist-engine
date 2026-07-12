@@ -1,6 +1,8 @@
-# Connecting Spotify, Apple Music and YouTube Music
+# Connecting Spotify, Tidal, Apple Music and YouTube Music
 
-Keep `.env` local: it contains provider secrets and session tokens.
+This self-hosted MVP supports capability-driven migration across Spotify, Tidal,
+Apple Music and YouTube Music. Keep `.env` local: it contains provider secrets and
+session tokens.
 
 ## Spotify app setup
 
@@ -32,12 +34,11 @@ Keep `.env` local: it contains provider secrets and session tokens.
    docker compose up -d --force-recreate backend worker
    ```
 
-10. In the UI, choose Spotify as **From**, click **Connect Spotify**, and approve
+10. In the UI, choose Spotify as **From** or **To**, click **Connect Spotify**, and approve
     the requested scopes.
 11. Spotify **Liked Songs** is shown as an owned playlist and uses Spotify's
-    saved-tracks library endpoint. If you connected Spotify before this feature
-    existed, reconnect Spotify so the app can request the `user-library-read`
-    scope.
+    saved library. Reconnect accounts created before library writes so the app can
+    request both `user-library-read` and `user-library-modify`.
 12. Use **Test connection** after connecting. Spotify refresh tokens expire after
     six months; when Spotify returns `invalid_grant`, the app discards the stale
     account before asking you to reconnect. **Refresh accounts** also removes stale
@@ -61,6 +62,58 @@ playlists** only after adding or changing playlists so the app can discover new
 snapshot IDs. Use **Refresh songs** inside a playlist only when you need to force a
 track refresh; otherwise cached songs are reused until the playlist snapshot
 changes.
+
+## Tidal app setup
+
+Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
+
+1. Open <https://developer.tidal.com>.
+2. Create an app for local development.
+3. Set **Redirect URI** exactly to:
+
+   ```text
+   http://127.0.0.1:8000/api/auth/tidal/callback
+   ```
+
+4. Request these third-party scopes:
+
+   ```text
+   collection.read
+   collection.write
+   playlists.read
+   playlists.write
+   search.read
+   user.read
+   ```
+
+   Do not request the internal-only `r_usr` or `w_usr` scopes for third-party apps.
+5. Copy the client ID and, if issued, the client secret into the repo-root `.env`:
+
+   ```env
+   OPE_TIDAL_CLIENT_ID=your_client_id
+   OPE_TIDAL_CLIENT_SECRET=your_client_secret
+   OPE_TIDAL_REDIRECT_URI=http://127.0.0.1:8000/api/auth/tidal/callback
+   ```
+
+   `OPE_TIDAL_CLIENT_SECRET` is optional for PKCE sign-in, but set it when
+   available. The adapter uses client credentials for catalog ISRC lookups and
+   batched track metadata hydration. Without a secret it falls back to text search
+   for target matching and scoped single-track detail requests when reading
+   playlists.
+
+6. Restart the backend and worker:
+
+   ```bash
+   docker compose up -d --force-recreate backend worker
+   ```
+
+7. In the UI, choose Tidal as **From** or **To**, click **Connect Tidal**, and
+   approve the requested scopes in the popup.
+
+Tidal playlist writes create `UNLISTED` playlists by default unless a migration
+explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
+the maximum accepted by Tidal's playlist-items and My Collection endpoints. Tidal
+**My Collection** is exposed as a liked-tracks collection.
 
 ## Apple MusicKit setup
 
@@ -141,8 +194,25 @@ can reuse the same YouTube Music account row by email when Google returns it.
    docker compose up -d --force-recreate backend worker
    ```
 
-6. In the UI, choose YouTube Music as **To**, click **Connect YouTube Music**,
+6. In the UI, choose YouTube Music as **From** or **To**, click **Connect YouTube Music**,
    open the verification URL, and enter the displayed code.
+
+YouTube Music **Liked Songs** is backed by the native `LM` playlist. Writing into
+it uses YouTube Music's like action rather than creating a normal playlist.
+
+## Liked-track collection mapping
+
+These sources always map to the target provider's native library:
+
+| Source | Target equivalent |
+|---|---|
+| Tidal **My Collection** | Spotify **Liked Songs** or YouTube Music **Liked Songs** |
+| Spotify **Liked Songs** | Tidal **My Collection** or YouTube Music **Liked Songs** |
+| YouTube Music **Liked Songs** | Tidal **My Collection** or Spotify **Liked Songs** |
+
+The migration never creates a normal playlist as a fallback for these collections.
+If an older OAuth connection lacks a required library scope, preflight asks you to
+reconnect before creating the job.
 
 ## YouTube Music header-paste fallback
 
@@ -208,10 +278,10 @@ and `x-youtube-client-version` before enabling the connect button.
 
 ## Safe migration defaults
 
-The app starts deliberately slow for Spotify → YouTube Music migrations: 1
-playlist per job, 50 tracks per job, 250 tracks per day, and at least 120 seconds
-between jobs. If you exceed those defaults, the UI shows a warning popup and only
-continues after you acknowledge it.
+The app starts deliberately slow for all migrations: 1 playlist per job, 50 tracks
+per job, 250 tracks per day, and at least 120 seconds between jobs. If you exceed
+those defaults, the UI shows a warning popup and only continues after you
+acknowledge it.
 
 Large playlists can take longer than five minutes because each song may require a
 YouTube Music search. The worker timeout defaults to 3600 seconds and can be

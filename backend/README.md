@@ -5,7 +5,7 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 ## Layout
 - `app/core/` — provider-agnostic hub: Open Playlist models, capabilities, plugin
   contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
-- `app/providers/<name>/` — provider adapters (applemusic, spotify, ytmusic).
+- `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
@@ -36,8 +36,9 @@ read/search/write; `MatchService` owns matching.
 ## Provider status
 | Provider | Read / Search | Write | Test seam |
 |---|---|---|---|
-| Spotify | ✅ OAuth + live read/search (Web API over `httpx`) | stub | recorded JSON fixtures via injected `httpx.MockTransport` |
-| YouTube Music | ✅ device-code/header auth + library read/search (`ytmusicapi`); OAuth account matching uses Google email when available | ✅ live write (`ytmusicapi`) | injected in-memory client (`client_factory`) |
+| Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
+| YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 | Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
@@ -45,16 +46,19 @@ an injected client object instead of a transport. Real singletons use the networ
 the conformance suite instantiates the adapter classes directly with a seam, so CI
 never makes live calls. See [ADR 0002](../docs/adr/0002-adapter-fixture-testing.md).
 
-## Spotify → YouTube Music MVP
+## Implemented MVP directions
 
-The implemented self-host path uses Spotify as the source and YouTube Music as the
-target. Docker Compose applies Alembic migrations before starting the backend and
-worker. For local development, run `alembic upgrade head` before `uvicorn` and
-`arq`. Playlist detail and migration item review endpoints support track-level
-selection, partial-migration labels, duplicate skips, batch review actions, and
-low-confidence match correction in the UI. Migration creation performs a preflight
-that warns before exceeding the conservative defaults: 1 playlist/job, 50
-tracks/job, 250 tracks/day, and 120 seconds between jobs.
+The implemented self-host paths are capability-driven across Spotify, Tidal,
+YouTube Music and Apple Music. Normal playlists migrate according to advertised
+capabilities, while Spotify Liked Songs, Tidal My Collection, and YouTube Music
+Liked Songs map to each provider's native liked/saved library. Docker Compose
+applies Alembic migrations before starting the backend and worker. For local
+development, run `alembic upgrade head` before `uvicorn` and `arq`. Playlist
+detail and migration item review endpoints support track-level selection,
+partial-migration labels, duplicate skips, batch review actions, and low-confidence
+match correction in the UI. Migration creation performs a preflight that warns
+before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
+tracks/day, and 120 seconds between jobs.
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

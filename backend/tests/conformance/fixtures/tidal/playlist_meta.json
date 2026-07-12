@@ -1,0 +1,34 @@
+{
+  "data": {
+    "id": "pl_tidal_1",
+    "type": "playlists",
+    "attributes": {
+      "name": "Tidal Roadtrip",
+      "description": "Fixture playlist",
+      "accessType": "UNLISTED",
+      "bounded": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "lastModifiedAt": "2026-01-02T00:00:00Z",
+      "numberOfFollowers": 0,
+      "numberOfItems": 2,
+      "playlistType": "USER",
+      "externalLinks": []
+    },
+    "relationships": {
+      "owners": {
+        "data": [
+          {
+            "id": "tidal-user-1",
+            "type": "users"
+          }
+        ],
+        "links": {
+          "self": "/playlists/pl_tidal_1/relationships/owners"
+        }
+      }
+    }
+  },
+  "links": {
+    "self": "/playlists/pl_tidal_1"
+  }
+}

@@ -1,7 +1,8 @@
 from app.api import playlists
 from app.api.playlists import _annotate_playlist_ref, _PlaylistMigrationSummary
-from app.core.models import Playlist, PlaylistRef, Track
+from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
 from app.db import models as orm
+from app.providers.spotify.adapter import SPOTIFY_SAVED_TRACKS_PLAYLIST_ID
 
 
 class FakePersistSession:
@@ -257,6 +258,37 @@ async def test_cached_playlist_refs_skip_provider_call() -> None:
 
     assert refs[0].id == "playlist"
     assert refs[0].snapshot_id == "snap-1"
+
+
+async def test_cached_spotify_liked_songs_preserves_collection_kind() -> None:
+    session = FakeCacheSession(
+        [
+            FakeResult(
+                rows=[
+                    orm.CachedPlaylistRef(
+                        user_id="local",
+                        provider="spotify",
+                        account_id="account",
+                        playlist_id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+                        name="Liked Songs",
+                        track_count=1,
+                    )
+                ]
+            )
+        ]
+    )
+
+    refs = await playlists._playlist_refs(
+        session,
+        adapter=FailingAdapter(),
+        credential=object(),
+        user_id="local",
+        provider="spotify",
+        account_id="account",
+        refresh=False,
+    )
+
+    assert refs[0].kind is PlaylistKind.LIKED_TRACKS
 
 
 async def test_cached_playlist_tracks_skip_provider_call_when_snapshot_matches() -> None:

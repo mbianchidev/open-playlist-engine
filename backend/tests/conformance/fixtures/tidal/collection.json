@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": "tidal-user-1",
+    "type": "userCollectionTracks",
+    "attributes": {
+      "lastModifiedAt": "2026-07-12T12:00:00Z",
+      "numberOfItems": 2
+    }
+  },
+  "links": {
+    "self": "/userCollectionTracks/me"
+  }
+}

@@ -11,15 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.migration_state import keys_from_metadata, track_keys
-from app.core.models import Playlist, PlaylistRef, Track
+from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_session
 from app.db.repositories import AccountNotFound, CredentialNotFound, load_fresh_credential
+from app.providers.spotify.adapter import SPOTIFY_SAVED_TRACKS_PLAYLIST_ID
 
 router = APIRouter(prefix="/api/playlists", tags=["playlists"])
-_SPOTIFY_SAVED_TRACKS_PLAYLIST_ID = "spotify:saved-tracks"
 _SPOTIFY_SAVED_TRACKS_NAME = "Liked Songs"
 
 
@@ -273,14 +273,17 @@ async def _cached_playlist_refs(
         .order_by(orm.CachedPlaylistRef.name.asc())
     )
     refs = [_playlist_ref_from_cache(row) for row in (await session.execute(stmt)).scalars()]
-    if provider == "spotify" and all(ref.id != _SPOTIFY_SAVED_TRACKS_PLAYLIST_ID for ref in refs):
+    if provider == "spotify" and all(
+        ref.id != SPOTIFY_SAVED_TRACKS_PLAYLIST_ID for ref in refs
+    ):
         refs.append(
             PlaylistRef(
-                id=_SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+                id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
                 name=_SPOTIFY_SAVED_TRACKS_NAME,
                 collaborative=False,
                 tracks_href="/me/tracks",
                 migration_note="Load songs to cache your Spotify Liked Songs",
+                kind=PlaylistKind.LIKED_TRACKS,
             )
         )
     return refs
@@ -308,6 +311,7 @@ def _playlist_ref_from_cache(row: orm.CachedPlaylistRef) -> PlaylistRef:
         collaborative=row.collaborative,
         snapshot_id=row.snapshot_id,
         tracks_href=row.tracks_href,
+        kind=_cached_playlist_kind(row.provider, row.playlist_id),
     )
 
 
@@ -377,7 +381,14 @@ async def _cached_playlist_tracks(
         owner_id=row.owner_id,
         snapshot_id=row.snapshot_id,
         tracks=[Track.model_validate(track) for track in row.tracks],
+        kind=_cached_playlist_kind(row.provider, row.playlist_id),
     )
+
+
+def _cached_playlist_kind(provider: str, playlist_id: str) -> PlaylistKind:
+    if provider == "spotify" and playlist_id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
+        return PlaylistKind.LIKED_TRACKS
+    return PlaylistKind.STANDARD
 
 
 async def _persist_playlist_tracks(

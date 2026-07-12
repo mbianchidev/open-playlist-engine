@@ -13,7 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-from app.core.capabilities import CapabilityDescriptor
+from app.core.capabilities import Capability, CapabilityDescriptor
 from app.core.models import Playlist, PlaylistRef, Track
 
 
@@ -150,6 +150,26 @@ class ProviderInfo(BaseModel):
     display_name: str
     capabilities: CapabilityDescriptor
     auth_kind: AuthKind
+    liked_tracks_playlist_id: str | None = None
+    library_read_scope: str | None = None
+    library_write_scope: str | None = None
+
+    def require_liked_tracks_target(self, cred: ProviderCredential) -> str:
+        if not self.capabilities.can(Capability.WRITE_LIBRARY):
+            raise Unsupported(f"{self.display_name} cannot write liked tracks")
+        if not self.liked_tracks_playlist_id:
+            raise Unsupported(f"{self.display_name} does not expose a liked-tracks collection")
+        missing_scopes = [
+            scope
+            for scope in (self.library_read_scope, self.library_write_scope)
+            if scope and scope not in cred.scopes
+        ]
+        if missing_scopes:
+            scopes = ", ".join(missing_scopes)
+            raise AccessDenied(
+                f"Reconnect {self.display_name} to grant the required library scopes: {scopes}"
+            )
+        return self.liked_tracks_playlist_id
 
 
 @runtime_checkable

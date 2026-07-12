@@ -28,7 +28,11 @@ def _handler(request: httpx.Request) -> httpx.Response:
     parts = path.strip("/").split("/")  # e.g. ["v1", "playlists", "<id>", "tracks"]
 
     if path.endswith("/me/playlists"):
+        if request.method == "POST":
+            return httpx.Response(201, json={"id": "PL_SPOTIFY_CREATED", "name": "Mirror"})
         return httpx.Response(200, json=_load("me_playlists.json"))
+    if path.endswith("/me/library") and request.method == "PUT":
+        return httpx.Response(204)
     if path.endswith("/me"):
         return httpx.Response(200, json={"id": "user1"})
     if path.endswith("/search"):
@@ -36,9 +40,11 @@ def _handler(request: httpx.Request) -> httpx.Response:
 
     if len(parts) >= 3 and parts[1] == "playlists":
         playlist_id = parts[2]
+        if playlist_id == "PL_SPOTIFY_CREATED" and path.endswith("/items"):
+            return httpx.Response(201, json={"snapshot_id": "snapshot-created"})
         if playlist_id != SPOTIFY_PLAYLIST_ID:
             return _not_found(path)
-        if path.endswith("/tracks"):
+        if path.endswith("/items"):
             return httpx.Response(200, json=_load("playlist_items.json"))
         return httpx.Response(200, json=_load("playlist_meta.json"))
 

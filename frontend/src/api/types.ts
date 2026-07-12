@@ -57,6 +57,7 @@ export interface PlaylistRef {
   migrated_track_count: number;
   remaining_track_count: number | null;
   migration_note: string | null;
+  kind: "standard" | "liked_tracks";
 }
 
 export interface Credit {
@@ -106,6 +107,7 @@ export interface Playlist {
   snapshot_id: string | null;
   created_at: string | null;
   updated_at: string | null;
+  kind: "standard" | "liked_tracks";
 }
 
 export interface CreateMigrationBody {

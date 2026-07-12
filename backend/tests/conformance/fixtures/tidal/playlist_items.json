@@ -1,0 +1,118 @@
+{
+  "data": [
+    {
+      "id": "t1",
+      "type": "tracks",
+      "meta": {
+        "addedAt": "2026-01-01T00:00:00Z",
+        "itemCursor": "cursor-1",
+        "itemId": "item-1"
+      }
+    },
+    {
+      "id": "t2",
+      "type": "tracks",
+      "meta": {
+        "addedAt": "2026-01-01T00:01:00Z",
+        "itemCursor": "cursor-2",
+        "itemId": "item-2"
+      }
+    }
+  ],
+  "included": [
+    {
+      "id": "t1",
+      "type": "tracks",
+      "attributes": {
+        "title": "Song One",
+        "duration": "PT3M",
+        "explicit": false,
+        "isrc": "US0000000001",
+        "key": "C",
+        "keyScale": "MAJOR",
+        "mediaTags": ["LOSSLESS"],
+        "popularity": 0.9
+      },
+      "relationships": {
+        "albums": {
+          "data": [
+            {
+              "id": "al1",
+              "type": "albums"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t1/relationships/albums"
+          }
+        },
+        "artists": {
+          "data": [
+            {
+              "id": "ar1",
+              "type": "artists"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t1/relationships/artists"
+          }
+        },
+        "credits": {
+          "data": [
+            {
+              "id": "cr1",
+              "type": "credits"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t1/relationships/credits"
+          }
+        }
+      }
+    },
+    {
+      "id": "t2",
+      "type": "tracks",
+      "attributes": {
+        "title": "Song Two",
+        "duration": "PT3M20S",
+        "explicit": false,
+        "isrc": "US0000000002",
+        "key": "G",
+        "keyScale": "MAJOR",
+        "mediaTags": ["LOSSLESS"],
+        "popularity": 0.7
+      },
+      "relationships": {
+        "albums": {
+          "data": [
+            {
+              "id": "al2",
+              "type": "albums"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t2/relationships/albums"
+          }
+        },
+        "artists": {
+          "data": [
+            {
+              "id": "ar2",
+              "type": "artists"
+            },
+            {
+              "id": "ar3",
+              "type": "artists"
+            }
+          ],
+          "links": {
+            "self": "/tracks/t2/relationships/artists"
+          }
+        }
+      }
+    }
+  ],
+  "links": {
+    "self": "/playlists/pl_tidal_1/relationships/items"
+  }
+}

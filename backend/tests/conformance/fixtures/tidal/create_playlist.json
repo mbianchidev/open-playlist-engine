@@ -1,0 +1,20 @@
+{
+  "data": {
+    "id": "pl_tidal_created",
+    "type": "playlists",
+    "attributes": {
+      "name": "Mirror",
+      "accessType": "UNLISTED",
+      "bounded": false,
+      "createdAt": "2026-01-03T00:00:00Z",
+      "lastModifiedAt": "2026-01-03T00:00:00Z",
+      "numberOfFollowers": 0,
+      "numberOfItems": 0,
+      "playlistType": "USER",
+      "externalLinks": []
+    }
+  },
+  "links": {
+    "self": "/playlists/pl_tidal_created"
+  }
+}

@@ -32,13 +32,16 @@ and lets a user migrate playlists from any source to any target through a UI.
 
 ### Current implementation status
 The self-hosted MVP currently exposes only implemented capabilities in the UI:
-Spotify is a source provider (OAuth + playlist read/search) and YouTube Music is a
-target provider (header-paste auth + playlist read/search/write through
-`ytmusicapi`). The persisted job pipeline supports import → match → write with SSE
-item progress; low-confidence matches are marked `needs_review` and can be
-approved, batch-approved, corrected, skipped, or batch-denied from the progress
-panel. The UI also exposes ledger-backed single-migration and all-time aggregate
-statistics with source/target provider filters.
+Spotify, Tidal, and YouTube Music are source/target providers. Their native saved
+track libraries share the universal `PlaylistKind.LIKED_TRACKS` kind, so Spotify
+Liked Songs, Tidal My Collection, and YouTube Music Liked Songs map directly
+without creating ordinary playlists. Apple Music exposes its implemented official
+MusicKit library read/search/write capabilities. The persisted job pipeline
+supports import → match → write with SSE item progress; low-confidence matches are
+marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
+batch-denied from the progress panel. The UI also exposes ledger-backed
+single-migration and all-time aggregate statistics with source/target provider
+filters.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.

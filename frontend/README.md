@@ -30,6 +30,9 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
    denying all doubtful items.
 
 The current UI supports checked account refresh/test-connection, partial-migration
-labels, playlist-level song group selection, and the implemented self-host Spotify
-→ YouTube Music flow. Apple Music uses the same auth challenge interface with the
+labels, playlist-level song group selection, and any provider direction advertised
+by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.
+Native liked-track collections map across Spotify Liked Songs, Tidal My Collection,
+and YouTube Music Liked Songs.
+Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.

@@ -22,6 +22,11 @@ class MediaType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class PlaylistKind(StrEnum):
+    STANDARD = "standard"
+    LIKED_TRACKS = "liked_tracks"
+
+
 class Credit(BaseModel):
     role: str
     name: str
@@ -85,6 +90,7 @@ class PlaylistRef(BaseModel):
     migrated_track_count: int = 0
     remaining_track_count: int | None = None
     migration_note: str | None = None
+    kind: PlaylistKind = PlaylistKind.STANDARD
 
 
 class Playlist(BaseModel):
@@ -97,3 +103,4 @@ class Playlist(BaseModel):
     snapshot_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    kind: PlaylistKind = PlaylistKind.STANDARD

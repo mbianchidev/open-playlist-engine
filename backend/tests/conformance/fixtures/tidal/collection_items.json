@@ -1,0 +1,45 @@
+{
+  "data": [
+    {
+      "id": "t1",
+      "type": "tracks",
+      "meta": {
+        "addedAt": "2026-01-01T00:00:00Z"
+      }
+    }
+  ],
+  "included": [
+    {
+      "id": "t1",
+      "type": "tracks",
+      "attributes": {
+        "title": "Song One",
+        "duration": "PT3M",
+        "explicit": false,
+        "isrc": "US0000000001",
+        "key": "C",
+        "keyScale": "MAJOR",
+        "mediaTags": ["LOSSLESS"],
+        "popularity": 0.9
+      },
+      "relationships": {
+        "albums": {
+          "data": [{"id": "al1", "type": "albums"}],
+          "links": {"self": "/tracks/t1/relationships/albums"}
+        },
+        "artists": {
+          "data": [{"id": "ar1", "type": "artists"}],
+          "links": {"self": "/tracks/t1/relationships/artists"}
+        },
+        "credits": {
+          "data": [{"id": "cr1", "type": "credits"}],
+          "links": {"self": "/tracks/t1/relationships/credits"}
+        }
+      }
+    }
+  ],
+  "links": {
+    "self": "/userCollectionTracks/me/relationships/items",
+    "next": "/userCollectionTracks/me/relationships/items?page[cursor]=next"
+  }
+}

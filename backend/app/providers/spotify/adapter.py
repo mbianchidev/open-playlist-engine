@@ -1,10 +1,9 @@
-"""Spotify adapter — read + search (live), write (stubbed), ISRC-rich, OAuth PKCE.
+"""Spotify adapter — official read/search/write, ISRC-rich, OAuth PKCE.
 
 Read/search talk to the Spotify Web API over ``httpx``. The HTTP transport is
 injectable (``SpotifyAdapter(transport=...)``) so the conformance suite can drive
 the adapter against recorded fixtures instead of the live API — never live calls
-in CI. Write primitives remain stubbed for a later PR; the capability descriptor
-still advertises the provider's full intended surface for the UI matrix.
+in CI. Writes use Spotify's current playlist-items and unified library endpoints.
 """
 
 from __future__ import annotations
@@ -46,13 +45,15 @@ from app.core.capabilities import (
     SearchMode,
     Stability,
 )
-from app.core.models import MediaType, Playlist, PlaylistRef, Track
+from app.core.models import MediaType, Playlist, PlaylistKind, PlaylistRef, Track
 from app.core.registry import register
 from app.settings import get_settings
 
 _API_BASE = "https://api.spotify.com/v1"
 _LIST_PAGE = 50
 _ITEMS_PAGE = 100
+_SAVED_ITEMS_PAGE = 50
+_LIBRARY_WRITE_BATCH = 40
 _RATE_LIMIT_STATUSES = {420, 429}
 _RATE_LIMIT_MAX_RETRIES = 2
 _RATE_LIMIT_MAX_AUTO_WAIT_S = 30
@@ -60,14 +61,20 @@ SPOTIFY_SAVED_TRACKS_PLAYLIST_ID = "spotify:saved-tracks"
 _SAVED_TRACKS_NAME = "Liked Songs"
 _SAVED_TRACKS_HREF = "/me/tracks"
 _SAVED_TRACKS_SCOPE = "user-library-read"
+_SAVED_TRACKS_WRITE_SCOPE = "user-library-modify"
 _SAVED_TRACKS_SCOPE_MESSAGE = (
     "Spotify saved songs need the user-library-read scope; reconnect Spotify to migrate "
     "saved songs."
+)
+_SAVED_TRACKS_WRITE_SCOPE_MESSAGE = (
+    "Spotify saved songs need the user-library-modify scope; reconnect Spotify to "
+    "write liked songs."
 )
 
 _SCOPES = [
     "user-read-private",
     _SAVED_TRACKS_SCOPE,
+    _SAVED_TRACKS_WRITE_SCOPE,
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",
@@ -207,6 +214,10 @@ def _raise_saved_tracks_forbidden() -> None:
     raise AccessDenied(_SAVED_TRACKS_SCOPE_MESSAGE)
 
 
+def _raise_saved_tracks_write_forbidden() -> None:
+    raise AccessDenied(_SAVED_TRACKS_WRITE_SCOPE_MESSAGE)
+
+
 def _spotify_user_id(cred: ProviderCredential) -> str | None:
     provider_user_id = cred.extra.get("provider_user_id")
     return provider_user_id if isinstance(provider_user_id, str) and provider_user_id else None
@@ -228,6 +239,7 @@ def _saved_tracks_ref(
         snapshot_id=_saved_tracks_snapshot(track_count),
         tracks_href=_SAVED_TRACKS_HREF,
         migration_note=migration_note,
+        kind=PlaylistKind.LIKED_TRACKS,
     )
 
 
@@ -294,10 +306,20 @@ def _playlist_item_page(payload: dict) -> dict | None:
 
 
 def _playlist_tracks_href(payload: dict) -> str | None:
-    tracks = payload.get("tracks")
-    if not isinstance(tracks, dict):
+    items = payload.get("items")
+    if not isinstance(items, dict):
+        items = payload.get("tracks")
+    if not isinstance(items, dict):
         return None
-    return _href_from_page(tracks)
+    return _href_from_page(items)
+
+
+def _playlist_items_summary(payload: dict) -> dict:
+    items = payload.get("items")
+    if isinstance(items, dict):
+        return items
+    tracks = payload.get("tracks")
+    return tracks if isinstance(tracks, dict) else {}
 
 
 def _href_from_page(page: dict) -> str | None:
@@ -346,7 +368,7 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _S
         data = resp.json()
         for pl in data.get("items", []):
             if pl.get("id") == playlist_id:
-                tracks = pl.get("tracks") if isinstance(pl.get("tracks"), dict) else {}
+                tracks = _playlist_items_summary(pl)
                 return _SavedPlaylist(
                     ref=PlaylistRef(
                         id=pl["id"],
@@ -629,6 +651,10 @@ class SpotifyAdapter:
                 Capability.READ_PLAYLISTS,
                 Capability.READ_TRACKS,
                 Capability.READ_LIBRARY,
+                Capability.WRITE_LIBRARY,
+                Capability.CREATE_PLAYLIST,
+                Capability.ADD_TRACKS,
+                Capability.SET_DESCRIPTION,
             },
             has_isrc=True,
             search_modes=[SearchMode.ISRC, SearchMode.TEXT],
@@ -637,6 +663,9 @@ class SpotifyAdapter:
             max_add_batch=100,
             max_playlist_size=10_000,
         ),
+        liked_tracks_playlist_id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+        library_read_scope=_SAVED_TRACKS_SCOPE,
+        library_write_scope=_SAVED_TRACKS_WRITE_SCOPE,
     )
     auth = SpotifyAuth()
 
@@ -668,14 +697,15 @@ class SpotifyAdapter:
                 )
                 data = resp.json()
                 for pl in data.get("items", []):
+                    items = _playlist_items_summary(pl)
                     yield PlaylistRef(
                         id=pl["id"],
                         name=pl.get("name") or "",
-                        track_count=(pl.get("tracks") or {}).get("total"),
+                        track_count=items.get("total"),
                         owner_id=(pl.get("owner") or {}).get("id"),
                         collaborative=pl.get("collaborative"),
                         snapshot_id=pl.get("snapshot_id"),
-                        tracks_href=_href_from_page(pl.get("tracks") or {}),
+                        tracks_href=_href_from_page(items),
                     )
                 if not data.get("next"):
                     break
@@ -720,6 +750,7 @@ class SpotifyAdapter:
                     owner_id=_spotify_user_id(cred),
                     snapshot_id=_saved_tracks_snapshot(total),
                     tracks=tracks,
+                    kind=PlaylistKind.LIKED_TRACKS,
                 )
             resp = await _spotify_request(client, "GET", f"/playlists/{ref.id}")
             if resp.status_code in {400, 403, 404}:
@@ -815,7 +846,7 @@ class SpotifyAdapter:
             client,
             "GET",
             _SAVED_TRACKS_HREF,
-            params={"limit": _ITEMS_PAGE, "offset": 0},
+            params={"limit": _SAVED_ITEMS_PAGE, "offset": 0},
         )
 
     async def _playlist_tracks_response(
@@ -825,7 +856,7 @@ class SpotifyAdapter:
         *,
         tracks_href: str | None = None,
     ) -> httpx.Response:
-        url = tracks_href or f"/playlists/{playlist_id}/tracks"
+        url = tracks_href or f"/playlists/{playlist_id}/items"
         if "?" in url:
             return await _spotify_request(client, "GET", url)
         return await _spotify_request(
@@ -875,14 +906,112 @@ class SpotifyAdapter:
         _raise_for_status(resp)
         return True
 
-    # WRITE (TODO — out of scope for this PR) ------------------------------- #
+    # WRITE ----------------------------------------------------------------- #
     async def create_playlist(self, cred: ProviderCredential, spec: CreatePlaylistSpec) -> str:
-        raise NotImplementedError("TODO: POST /users/{id}/playlists")
+        async with self._client(cred) as client:
+            resp = _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "POST",
+                    "/me/playlists",
+                    json={
+                        "name": spec.name,
+                        "description": spec.description or "",
+                        "public": spec.public,
+                    },
+                )
+            )
+        playlist_id = resp.json().get("id")
+        if not isinstance(playlist_id, str) or not playlist_id:
+            raise ProviderError("spotify create playlist response did not include playlist id")
+        return playlist_id
 
     async def add_tracks(
         self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
     ) -> list[AddItemResult]:
-        raise NotImplementedError("TODO: POST /playlists/{id}/tracks (batch <=100)")
+        if playlist_id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
+            return await self._save_library_tracks(cred, uris)
+        return await self._add_playlist_tracks(cred, playlist_id, uris)
+
+    async def _save_library_tracks(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        if _SAVED_TRACKS_WRITE_SCOPE not in cred.scopes:
+            _raise_saved_tracks_write_forbidden()
+        return await self._write_track_uris(
+            cred,
+            uris,
+            batch_size=_LIBRARY_WRITE_BATCH,
+            method="PUT",
+            url="/me/library",
+            query_param=True,
+            scope_error=_raise_saved_tracks_write_forbidden,
+        )
+
+    async def _add_playlist_tracks(
+        self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        return await self._write_track_uris(
+            cred,
+            uris,
+            batch_size=self.info.capabilities.max_add_batch,
+            method="POST",
+            url=f"/playlists/{playlist_id}/items",
+        )
+
+    async def _write_track_uris(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        *,
+        batch_size: int,
+        method: str,
+        url: str,
+        query_param: bool = False,
+        scope_error=None,
+    ) -> list[AddItemResult]:
+        originals = list(uris)
+        normalized = [
+            f"spotify:track:{track_id}" if (track_id := _track_id(uri)) else None
+            for uri in originals
+        ]
+        results: list[AddItemResult | None] = [None] * len(originals)
+        valid = [(index, uri) for index, uri in enumerate(normalized) if uri]
+        for index, uri in enumerate(normalized):
+            if uri is None:
+                results[index] = AddItemResult(
+                    uri=originals[index],
+                    ok=False,
+                    error="invalid Spotify track URI",
+                )
+
+        position = 0
+        async with self._client(cred) as client:
+            for start in range(0, len(valid), batch_size):
+                chunk = valid[start : start + batch_size]
+                chunk_uris = [uri for _, uri in chunk]
+                kwargs = (
+                    {"params": {"uris": ",".join(chunk_uris)}}
+                    if query_param
+                    else {"json": {"uris": chunk_uris}}
+                )
+                resp = await _spotify_request(client, method, url, **kwargs)
+                if resp.status_code == 403 and scope_error is not None:
+                    scope_error()
+                _raise_for_status(resp)
+                for index, _ in chunk:
+                    results[index] = AddItemResult(
+                        uri=originals[index],
+                        ok=True,
+                        position=position,
+                    )
+                    position += 1
+        return [
+            result
+            if result is not None
+            else AddItemResult(uri=originals[index], ok=False, error="spotify write failed")
+            for index, result in enumerate(results)
+        ]
 
 
 adapter = register(SpotifyAdapter())
