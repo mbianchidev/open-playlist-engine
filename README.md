@@ -130,8 +130,10 @@ ARQ's 5-minute default timeout.
 9. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-10. Use **Migration stats** to inspect one migration from the playlist-name dropdown
-   or view all-time aggregate stats filtered by source and target provider.
+10. Open the **Stats** tab to inspect one migration from the playlist-name dropdown
+    or view all-time aggregate stats filtered by source and target provider. The
+    **Migration** tab keeps provider setup, playlist selection, review, and progress
+    in a separate workspace.
 11. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
