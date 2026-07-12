@@ -14,6 +14,7 @@ from typing import Any
 class FakeYTMusic:
     def __init__(self) -> None:
         self.playlists: dict[str, dict[str, Any]] = {}
+        self.liked_tracks: list[str] = ["yt_song_one"]
         self._counter = 0
 
     def get_library_playlists(self, limit: int = 100) -> list[dict[str, Any]]:
@@ -32,7 +33,26 @@ class FakeYTMusic:
         if playlist is None:
             return {"error": "playlist not found"}
         track_limit = limit if limit is not None else len(playlist["tracks"])
-        tracks = [
+        return {
+            "id": playlistId,
+            "title": playlist["title"],
+            "description": playlist["description"],
+            "trackCount": len(playlist["tracks"]),
+            "tracks": self._tracks(playlist["tracks"][:track_limit]),
+        }
+
+    def get_liked_songs(self, limit: int | None = 100) -> dict[str, Any]:
+        track_limit = limit if limit is not None else len(self.liked_tracks)
+        return {
+            "id": "LM",
+            "title": "Liked Songs",
+            "description": None,
+            "trackCount": len(self.liked_tracks),
+            "tracks": self._tracks(self.liked_tracks[:track_limit]),
+        }
+
+    def _tracks(self, video_ids: list[str]) -> list[dict[str, Any]]:
+        return [
             {
                 "videoId": video_id,
                 "title": title,
@@ -43,15 +63,9 @@ class FakeYTMusic:
             }
             for video_id, title, artist, album, duration in (
                 _VIDEO_FIXTURES.get(video_id, (video_id, video_id, "", None, None))
-                for video_id in playlist["tracks"][:track_limit]
+                for video_id in video_ids
             )
         ]
-        return {
-            "id": playlistId,
-            "title": playlist["title"],
-            "description": playlist["description"],
-            "tracks": tracks,
-        }
 
     def create_playlist(
         self,
@@ -99,6 +113,13 @@ class FakeYTMusic:
                 "isExplicit": False,
             }
         ][:limit]
+
+    def rate_song(self, videoId: str, rating: str = "INDIFFERENT") -> dict[str, Any]:
+        if rating == "LIKE" and videoId not in self.liked_tracks:
+            self.liked_tracks.append(videoId)
+        elif rating == "INDIFFERENT" and videoId in self.liked_tracks:
+            self.liked_tracks.remove(videoId)
+        return {"status": "STATUS_SUCCEEDED"}
 
 
 _VIDEO_FIXTURES: dict[str, tuple[str, str, str, str | None, int | None]] = {

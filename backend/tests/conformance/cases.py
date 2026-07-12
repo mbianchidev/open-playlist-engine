@@ -5,7 +5,8 @@ A case advertises the capabilities it exercises (``reads`` / ``searches`` /
 ``writes``) plus the data the suite needs, so the fake covers the whole contract
 while real adapters are driven only over the surface this PR implements:
 
-* Spotify — READ + SEARCH (against recorded HTTP fixtures).
+* Spotify — READ + SEARCH + WRITE (against recorded HTTP fixtures).
+* Tidal — READ + SEARCH + WRITE (against recorded HTTP fixtures).
 * Apple Music — READ + SEARCH + WRITE (against recorded HTTP fixtures).
 * YouTube Music — READ + WRITE (against an injected in-memory client).
 """
@@ -18,6 +19,7 @@ from app.core.adapter import AuthKind, CreatePlaylistSpec, ProviderAdapter, Prov
 from app.core.models import PlaylistRef
 from app.providers.applemusic.adapter import AppleMusicAdapter
 from app.providers.spotify.adapter import SpotifyAdapter
+from app.providers.tidal.adapter import TidalAdapter
 from app.providers.ytmusic.adapter import YTMusicAdapter
 from tests.conformance.applemusic_fixtures import (
     APPLE_MUSIC_PLAYLIST_ID,
@@ -25,6 +27,7 @@ from tests.conformance.applemusic_fixtures import (
 )
 from tests.conformance.fake_provider import FakeAdapter, fake_cred
 from tests.conformance.spotify_fixtures import SPOTIFY_PLAYLIST_ID, spotify_transport
+from tests.conformance.tidal_fixtures import TIDAL_PLAYLIST_ID, tidal_transport
 from tests.conformance.ytmusic_fakes import FakeYTMusic
 
 
@@ -81,6 +84,9 @@ def _spotify_case() -> Case:
         expect_isrc=True,
         missing_ref=PlaylistRef(id="missing", name="missing"),
         search_uri_prefix="spotify:track:",
+        writes=True,
+        create_spec=CreatePlaylistSpec(name="Mirror"),
+        add_uris=["spotify:track:t1", "https://open.spotify.com/track/t2"],
     )
 
 
@@ -104,6 +110,28 @@ def _ytmusic_case() -> Case:
             "https://music.youtube.com/watch?v=aaa111",
             "https://music.youtube.com/watch?v=bbb222",
         ],
+    )
+
+
+def _tidal_case() -> Case:
+    return Case(
+        id="tidal",
+        adapter=TidalAdapter(transport=tidal_transport()),
+        cred=ProviderCredential(
+            account_id="acc-tidal",
+            provider="tidal",
+            auth_kind=AuthKind.OAUTH_PKCE,
+            access_token="fixture-token",
+            extra={"country": "US"},
+        ),
+        reads=True,
+        searches=True,
+        expect_isrc=True,
+        writes=True,
+        missing_ref=PlaylistRef(id="missing", name="missing"),
+        search_uri_prefix="tidal:track:",
+        create_spec=CreatePlaylistSpec(name="Mirror"),
+        add_uris=["tidal:track:t1", "https://tidal.com/browse/track/t2"],
     )
 
 
@@ -136,14 +164,21 @@ def _applemusic_case() -> Case:
 
 
 def build_cases() -> list[Case]:
-    return [_fake_case(), _spotify_case(), _ytmusic_case(), _applemusic_case()]
+    return [
+        _fake_case(),
+        _spotify_case(),
+        _ytmusic_case(),
+        _tidal_case(),
+        _applemusic_case(),
+    ]
 
 
-# Used by the suite to keep the original FakeAdapter-only test (`SPOTIFY_PLAYLIST_ID`
-# is re-exported for any provider-specific assertions).
+# Used by the suite to keep the original FakeAdapter-only test (provider fixture
+# constants are re-exported for provider-specific assertions).
 __all__ = [
     "APPLE_MUSIC_PLAYLIST_ID",
     "Case",
     "SPOTIFY_PLAYLIST_ID",
+    "TIDAL_PLAYLIST_ID",
     "build_cases",
 ]

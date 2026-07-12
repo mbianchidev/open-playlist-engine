@@ -32,7 +32,7 @@ from app.core.migration_state import (
     track_selected,
     uri_keys,
 )
-from app.core.models import PlaylistRef, Track
+from app.core.models import PlaylistKind, PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
@@ -144,6 +144,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             playlist_name=playlist.name,
             description=playlist.description
             or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            playlist_kind=playlist.kind,
             source_tracks=tracks,
         )
         logger.info(
@@ -371,8 +372,12 @@ async def _resolve_target_playlist(
     playlist_id: str,
     playlist_name: str,
     description: str,
+    playlist_kind: PlaylistKind,
     source_tracks: list[Track],
 ) -> str:
+    if playlist_kind is PlaylistKind.LIKED_TRACKS:
+        return target.info.require_liked_tracks_target(target_cred)
+
     previous = await _previous_target_playlist_id(session, job=job, playlist_id=playlist_id)
     if previous and await _target_playlist_exists(target, target_cred, previous):
         return previous

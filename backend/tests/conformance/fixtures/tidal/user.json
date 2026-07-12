@@ -1,0 +1,15 @@
+{
+  "data": {
+    "id": "tidal-user-1",
+    "type": "users",
+    "attributes": {
+      "username": "tidal_user",
+      "email": "tidal@example.com",
+      "country": "US",
+      "developerAccessTier": "THIRD_PARTY"
+    }
+  },
+  "links": {
+    "self": "/users/me"
+  }
+}

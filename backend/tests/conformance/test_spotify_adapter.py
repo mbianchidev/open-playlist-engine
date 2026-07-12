@@ -3,6 +3,8 @@ ISRC-first search, fidelity flags and URI parsing."""
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlparse
+
 import httpx
 import pytest
 
@@ -10,11 +12,12 @@ from app.core.adapter import (
     AccessDenied,
     AuthExpired,
     AuthKind,
+    CreatePlaylistSpec,
     ProviderCredential,
     RateLimited,
     RefreshTokenExpired,
 )
-from app.core.models import MediaType, Track
+from app.core.models import MediaType, PlaylistKind, Track
 from app.providers.spotify.adapter import (
     SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
     SpotifyAdapter,
@@ -191,6 +194,7 @@ async def test_iter_playlists_includes_liked_songs_owned_by_user() -> None:
     assert liked.collaborative is False
     assert liked.snapshot_id == "spotify:saved-tracks:total:2"
     assert liked.tracks_href == "/me/tracks"
+    assert liked.kind is PlaylistKind.LIKED_TRACKS
 
 
 async def test_read_liked_songs_uses_saved_tracks_endpoint() -> None:
@@ -230,6 +234,7 @@ async def test_read_liked_songs_uses_saved_tracks_endpoint() -> None:
     assert playlist.name == "Liked Songs"
     assert playlist.owner_id == "spotify-user"
     assert playlist.snapshot_id == "spotify:saved-tracks:total:1"
+    assert playlist.kind is PlaylistKind.LIKED_TRACKS
     assert len(playlist.tracks) == 1
     assert playlist.tracks[0].title == "Liked Song"
     assert playlist.tracks[0].provider_uris["spotify"] == "spotify:track:liked1"
@@ -256,7 +261,7 @@ async def test_read_liked_songs_forbidden_prompts_spotify_reconnect() -> None:
 
 async def test_read_supports_playlist_item_field_shape() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/tracks"):
+        if request.url.path.endswith("/items"):
             return httpx.Response(403, json={"error": {"status": 403, "message": "Forbidden"}})
         return httpx.Response(
             200,
@@ -306,10 +311,10 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
                             "id": playlist_id,
                             "name": "Saved from someone",
                             "owner": {"id": "other-user"},
-                            "tracks": {
+                            "items": {
                                 "total": 1,
                                 "href": (
-                                    f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+                                    f"https://api.spotify.com/v1/playlists/{playlist_id}/items"
                                     "?saved_ref=1"
                                 ),
                             },
@@ -319,7 +324,7 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
                 },
             )
         if (
-            request.url.path.endswith(f"/playlists/{playlist_id}/tracks")
+            request.url.path.endswith(f"/playlists/{playlist_id}/items")
             and request.url.params.get("saved_ref") == "1"
         ):
             return httpx.Response(
@@ -343,7 +348,7 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
                     "next": None,
                 },
             )
-        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+        if request.url.path.endswith(f"/playlists/{playlist_id}/items"):
             return httpx.Response(
                 400,
                 json={"error": {"status": 400, "message": "Invalid playlist id"}},
@@ -365,11 +370,11 @@ async def test_read_saved_playlist_falls_back_when_metadata_is_bad_request() -> 
     assert pl.tracks[0].title == "Shared Song"
 
 
-async def test_read_playlist_uses_tracks_href_when_metadata_track_items_are_empty() -> None:
+async def test_read_playlist_uses_items_href_when_metadata_items_are_empty() -> None:
     playlist_id = "shared-empty-page"
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+        if request.url.path.endswith(f"/playlists/{playlist_id}/items"):
             if request.url.params.get("from_meta") != "1":
                 return httpx.Response(
                     400,
@@ -402,9 +407,9 @@ async def test_read_playlist_uses_tracks_href_when_metadata_track_items_are_empt
                 json={
                     "id": playlist_id,
                     "name": "Shared empty page",
-                    "tracks": {
+                    "items": {
                         "href": (
-                            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+                            f"https://api.spotify.com/v1/playlists/{playlist_id}/items"
                             "?from_meta=1"
                         ),
                         "items": [],
@@ -426,7 +431,7 @@ async def test_forbidden_playlist_tracks_explains_spotify_owner_limit() -> None:
     playlist_id = "external-playlist"
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith(f"/playlists/{playlist_id}/tracks"):
+        if request.url.path.endswith(f"/playlists/{playlist_id}/items"):
             return httpx.Response(
                 403,
                 json={
@@ -442,8 +447,8 @@ async def test_forbidden_playlist_tracks_explains_spotify_owner_limit() -> None:
                 json={
                     "id": playlist_id,
                     "name": "External playlist",
-                    "tracks": {
-                        "href": f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+                    "items": {
+                        "href": f"https://api.spotify.com/v1/playlists/{playlist_id}/items",
                         "items": [],
                         "total": 12,
                     },
@@ -486,6 +491,94 @@ def test_track_id_parsing() -> None:
     assert _track_id("abc") == "abc"
 
 
+async def test_auth_begin_requests_library_write_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPE_SPOTIFY_CLIENT_ID", "client-id")
+    get_settings.cache_clear()
+
+    challenge = await SpotifyAuth().begin(user_id="local")
+    scopes = set(parse_qs(urlparse(challenge.redirect_url or "").query)["scope"][0].split())
+
+    assert "user-library-read" in scopes
+    assert "user-library-modify" in scopes
+
+    get_settings.cache_clear()
+
+
+async def test_create_playlist_uses_current_user_endpoint() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = request.read()
+        return httpx.Response(201, json={"id": "created"})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    playlist_id = await adapter.create_playlist(
+        _cred(), CreatePlaylistSpec(name="Mirror", description="Migrated")
+    )
+
+    assert playlist_id == "created"
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/v1/me/playlists"
+    assert b'"name":"Mirror"' in captured["body"]
+
+
+async def test_add_playlist_tracks_uses_items_endpoint() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = request.read()
+        return httpx.Response(201, json={"snapshot_id": "snapshot"})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.add_tracks(
+        _cred(),
+        "playlist",
+        ["spotify:track:t1", "https://open.spotify.com/track/t2"],
+    )
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/v1/playlists/playlist/items"
+    assert b'"spotify:track:t2"' in captured["body"]
+    assert all(result.ok for result in results)
+
+
+async def test_save_library_tracks_batches_at_current_limit() -> None:
+    calls: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.params["uris"].split(","))
+        return httpx.Response(204)
+
+    cred = _cred().model_copy(
+        update={"scopes": ["user-library-read", "user-library-modify"]}
+    )
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.add_tracks(
+        cred,
+        SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+        [f"spotify:track:t{i}" for i in range(41)],
+    )
+
+    assert [len(call) for call in calls] == [40, 1]
+    assert all(result.ok for result in results)
+
+
+async def test_save_library_tracks_requires_reconnect_for_old_scope() -> None:
+    adapter = SpotifyAdapter(transport=spotify_transport())
+    with pytest.raises(AccessDenied, match="user-library-modify"):
+        await adapter.add_tracks(
+            _cred().model_copy(update={"scopes": ["user-library-read"]}),
+            SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
+            ["spotify:track:t1"],
+        )
+
+
 def _ref(playlist_id: str = SPOTIFY_PLAYLIST_ID, name: str = "Roadtrip"):
     from app.core.models import PlaylistRef
 
@@ -494,7 +587,7 @@ def _ref(playlist_id: str = SPOTIFY_PLAYLIST_ID, name: str = "Roadtrip"):
 
 async def test_local_file_item_is_flagged_not_dropped() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/tracks"):
+        if request.url.path.endswith("/items"):
             return httpx.Response(
                 200,
                 json={
