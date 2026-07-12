@@ -650,6 +650,38 @@ button.compact {
     #11141a;
 }
 
+.apple-music-guide {
+  padding: 1rem;
+  border: 1px solid #5b2537;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(252, 60, 91, 0.15), transparent 40%),
+    #11141a;
+}
+
+.apple-auth-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.apple-token-fallback {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2a3039;
+}
+
+.apple-token-fallback summary {
+  cursor: pointer;
+  color: #c7d8ff;
+}
+
+.apple-token-fallback textarea {
+  width: 100%;
+  min-height: 6rem;
+  margin: 0.5rem 0;
+}
+
 .guide-heading {
   display: flex;
   align-items: flex-start;

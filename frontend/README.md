@@ -31,4 +31,5 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and the implemented self-host Spotify
-→ YouTube Music MVP.
+→ YouTube Music flow. Apple Music uses the same auth challenge interface with the
+official MusicKit JS v3 browser authorization flow.

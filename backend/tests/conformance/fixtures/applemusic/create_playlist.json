@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "id": "p.ope-created",
+      "type": "library-playlists",
+      "href": "/v1/me/library/playlists/p.ope-created",
+      "attributes": {
+        "name": "Mirror",
+        "description": {
+          "standard": "Migrated by OPE"
+        },
+        "canEdit": true,
+        "isPublic": false,
+        "dateAdded": "2026-01-03T00:00:00Z"
+      }
+    }
+  ]
+}

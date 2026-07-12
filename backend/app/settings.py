@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     spotify_client_secret: str = ""
     spotify_redirect_uri: str = "http://127.0.0.1:8000/api/auth/spotify/callback"
 
+    # Apple MusicKit developer token (set in .env)
+    apple_music_team_id: str = ""
+    apple_music_key_id: str = ""
+    apple_music_private_key: str = ""
+    apple_music_private_key_path: str = ""
+    apple_music_token_ttl_s: int = 86_400
+
     @property
     def is_hosted(self) -> bool:
         return self.deployment_mode is DeploymentMode.HOSTED

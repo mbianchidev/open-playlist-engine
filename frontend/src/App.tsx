@@ -13,6 +13,7 @@ import {
 } from "./api/client";
 import type {
   AccountView,
+  AuthChallenge,
   CreateMigrationBody,
   MigrationWarningsView,
   PlaylistRef,
@@ -31,6 +32,10 @@ export default function App() {
   const [selectedTracks, setSelectedTracks] = useState<Record<string, Set<string>>>({});
   const [ytHeaders, setYtHeaders] = useState("");
   const [ytHeaderFallback, setYtHeaderFallback] = useState(false);
+  const [appleAuthChallenge, setAppleAuthChallenge] = useState<AppleMusicChallenge | null>(null);
+  const [appleMusicConfigured, setAppleMusicConfigured] = useState(false);
+  const [appleUserToken, setAppleUserToken] = useState("");
+  const [musicKitReady, setMusicKitReady] = useState(() => Boolean(window.MusicKit));
   const [deviceChallenge, setDeviceChallenge] = useState<DeviceChallenge | null>(null);
   const [activeAuthProvider, setActiveAuthProvider] = useState<string | null>(null);
   const [blockingAlert, setBlockingAlert] = useState<BlockingAlert | null>(null);
@@ -46,6 +51,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
   const playlistLoadId = useRef(0);
+  const configuredAppleToken = useRef<string | null>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
@@ -130,9 +136,51 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    function handleMusicKitLoaded() {
+      setMusicKitReady(true);
+    }
+    if (window.MusicKit) handleMusicKitLoaded();
+    document.addEventListener("musickitloaded", handleMusicKitLoaded);
+    return () => document.removeEventListener("musickitloaded", handleMusicKitLoaded);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const musicKit = window.MusicKit;
+    if (!appleAuthChallenge || !musicKitReady || !musicKit) {
+      setAppleMusicConfigured(false);
+      return;
+    }
+    if (configuredAppleToken.current === appleAuthChallenge.developerToken) {
+      setAppleMusicConfigured(true);
+      return;
+    }
+    setAppleMusicConfigured(false);
+    void musicKit
+      .configure({
+        developerToken: appleAuthChallenge.developerToken,
+        app: { name: "Open Playlist Engine", build: "0.1.0" },
+      })
+      .then(() => {
+        if (cancelled) return;
+        configuredAppleToken.current = appleAuthChallenge.developerToken;
+        setAppleMusicConfigured(true);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(`Apple MusicKit setup failed: ${errorMessage(e)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [appleAuthChallenge, musicKitReady]);
+
+  useEffect(() => {
     authPollId.current += 1;
     setDeviceChallenge(null);
     setYtHeaderFallback(false);
+    setAppleAuthChallenge(null);
+    setAppleMusicConfigured(false);
+    setAppleUserToken("");
     setActiveAuthProvider(null);
   }, [source, target]);
 
@@ -194,17 +242,31 @@ export default function App() {
     setError(null);
     setNotice(null);
     setDeviceChallenge(null);
+    setAppleAuthChallenge(null);
+    setAppleMusicConfigured(false);
+    setAppleUserToken("");
     setActiveAuthProvider(provider);
     if (provider === "ytmusic") setYtHeaderFallback(false);
     try {
       const challenge = await beginAuth(provider);
       if (challenge.shape === "redirect" && challenge.redirect_url) {
         window.open(challenge.redirect_url, "_blank", "noopener,noreferrer");
-        setNotice("Finish Spotify auth in the new tab, then refresh accounts.");
+        const name = providers.find((item) => item.name === provider)?.display_name ?? provider;
+        setNotice(`Finish ${name} auth in the new tab, then refresh accounts.`);
         return;
       }
       if (challenge.shape === "form") {
         if (provider === "ytmusic") showYtHeaderFallback(provider);
+        if (provider === "applemusic") {
+          const developerToken = appleMusicDeveloperToken(challenge);
+          if (!developerToken) {
+            throw new Error("Apple Music auth challenge is missing a developer token.");
+          }
+          setAppleAuthChallenge({
+            developerToken,
+            instructions: challenge.instructions,
+          });
+        }
         setNotice(challenge.instructions ?? "Paste provider credentials below.");
         return;
       }
@@ -230,6 +292,52 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function connectAppleMusic() {
+    const musicKit = window.MusicKit;
+    if (!appleAuthChallenge || !musicKit || !appleMusicConfigured) {
+      setError("Apple MusicKit is still loading. Try again in a moment.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const authorization = musicKit.getInstance().authorize();
+      const musicUserToken = await authorization;
+      await finishAppleMusicConnection(musicUserToken);
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function connectAppleMusicToken() {
+    if (!appleUserToken.trim()) {
+      setError("Paste a Music User Token first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await finishAppleMusicConnection(appleUserToken.trim());
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishAppleMusicConnection(musicUserToken: string) {
+    if (!musicUserToken) throw new Error("Apple Music did not return a Music User Token.");
+    await completeAuth("applemusic", { music_user_token: musicUserToken });
+    setAppleAuthChallenge(null);
+    setAppleMusicConfigured(false);
+    setAppleUserToken("");
+    setActiveAuthProvider(null);
+    setNotice("Apple Music connected.");
+    await refreshAccounts();
   }
 
   async function pollDeviceAuth(challenge: DeviceChallenge, pollId: number) {
@@ -726,6 +834,68 @@ export default function App() {
             ) : null}
           </div>
         ) : null}
+        {activeAuthProvider === "applemusic" && appleAuthChallenge ? (
+          <div className="form-block apple-music-guide">
+            <div className="guide-heading">
+              <div>
+                <p className="eyebrow">Official MusicKit authorization</p>
+                <h3>Connect your Apple Music library</h3>
+                <p className="muted">
+                  Apple uses a signed developer token and a browser-issued Music User Token
+                  instead of OAuth client credentials.
+                </p>
+              </div>
+              <a
+                className="button-link"
+                href="https://music.apple.com"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Apple Music
+              </a>
+            </div>
+            <div className="apple-auth-status" aria-live="polite">
+              <span className={`header-check ${musicKitReady ? "ok" : ""}`}>
+                {musicKitReady ? "MusicKit loaded" : "Loading MusicKit"}
+              </span>
+              <span className={`header-check ${appleMusicConfigured ? "ok" : ""}`}>
+                {appleMusicConfigured ? "Developer token ready" : "Preparing developer token"}
+              </span>
+            </div>
+            <p className="muted">
+              Apple will open a sign-in window and ask permission to access your music library.
+              An active Apple Music subscription is required.
+            </p>
+            <button
+              className="primary"
+              disabled={busy || !appleMusicConfigured}
+              onClick={connectAppleMusic}
+            >
+              {busy ? "Connecting..." : "Authorize with Apple Music"}
+            </button>
+            <details className="apple-token-fallback">
+              <summary>Advanced: use an existing Music User Token</summary>
+              <p className="muted">
+                Use this only for local testing. Music User Tokens grant access to your library
+                and must stay private.
+              </p>
+              <label htmlFor="appleUserToken">Music User Token</label>
+              <textarea
+                id="appleUserToken"
+                value={appleUserToken}
+                onChange={(event) => setAppleUserToken(event.target.value)}
+                placeholder="Paste a Music User Token"
+              />
+              <button
+                className="secondary"
+                disabled={busy || !appleUserToken.trim()}
+                onClick={connectAppleMusicToken}
+              >
+                Connect with token
+              </button>
+            </details>
+          </div>
+        ) : null}
         {activeAuthProvider === "ytmusic" && ytHeaderFallback ? (
           <div className="form-block header-guide">
             <div className="guide-heading">
@@ -1012,6 +1182,11 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
+interface AppleMusicChallenge {
+  developerToken: string;
+  instructions: string | null;
+}
+
 interface BlockingAlert {
   title: string;
   message: string;
@@ -1208,6 +1383,13 @@ function AccountPanel({ label, provider, account, busy, onConnect, onTest }: Acc
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function appleMusicDeveloperToken(challenge: AuthChallenge): string | null {
+  const field = challenge.form_schema?.music_user_token;
+  if (!field || typeof field !== "object") return null;
+  const token = (field as Record<string, unknown>).developer_token;
+  return typeof token === "string" && token ? token : null;
 }
 
 function sleep(ms: number): Promise<void> {

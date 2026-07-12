@@ -1,0 +1,12 @@
+{
+  "data": [
+    {
+      "id": "us",
+      "type": "storefronts",
+      "attributes": {
+        "name": "United States",
+        "defaultLanguageTag": "en-US"
+      }
+    }
+  ]
+}

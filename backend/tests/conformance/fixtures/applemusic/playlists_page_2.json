@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "id": "p.ope-focus",
+      "type": "library-playlists",
+      "href": "/v1/me/library/playlists/p.ope-focus",
+      "attributes": {
+        "name": "Focus",
+        "canEdit": true,
+        "isPublic": false,
+        "dateAdded": "2026-01-02T00:00:00Z"
+      }
+    }
+  ]
+}

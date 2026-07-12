@@ -8,6 +8,7 @@ from app.core.registry import all_info
 def test_spotify_registered() -> None:
     names = {i.name for i in all_info()}
     assert "spotify" in names
+    assert "applemusic" in names
 
 
 def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
@@ -18,3 +19,6 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     # Spotify can be a source (reads tracks) and has ISRC.
     assert rows["spotify"]["can_source"] is True
     assert rows["spotify"]["has_isrc"] is True
+    assert rows["applemusic"]["can_source"] is True
+    assert rows["applemusic"]["can_target"] is True
+    assert rows["applemusic"]["auth_kind"] == "developer_user_token"
