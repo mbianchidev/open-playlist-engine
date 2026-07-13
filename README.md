@@ -14,7 +14,8 @@ instantly works with all the others — both as source and target.
 > OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
 > official Apple MusicKit library read/search/write. Persisted credentials,
 > playlist/track selection, partial-migration detection, migration jobs, review
-> actions and SSE progress are wired. Other provider directions remain gated until
+> actions, SSE progress and migration statistics are wired. Other provider
+> directions remain gated until
 > their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -79,6 +80,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
 `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+Self-host mode resolves the migration owner server-side as the local user. Hosted
+mode fails closed until a real user-authentication dependency is configured; it
+does not accept a caller-provided user ID.
 Safe migration defaults are intentionally slow and can be overridden only after a
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
@@ -126,7 +130,11 @@ ARQ's 5-minute default timeout.
 9. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-10. Re-running a playlist reuses an existing migrated target playlist, labels
+10. Open the **Stats** tab to inspect one migration from the playlist-name dropdown
+    or view all-time aggregate stats filtered by source and target provider. The
+    **Migration** tab keeps provider setup, playlist selection, review, and progress
+    in a separate workspace.
+11. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
 

@@ -6,6 +6,7 @@ import {
   subscribeProgress,
 } from "../api/client";
 import type { JobItemView, JobView, ProgressEvent } from "../api/types";
+import { providerLabel } from "../utils/providers";
 
 interface Props {
   jobId: string;
@@ -30,7 +31,7 @@ export default function ProgressBoard({
   const [collapsed, setCollapsed] = useState(false);
   const [reviewCollapsed, setReviewCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const notifiedDoneForJob = useRef<string | null>(null);
+  const notifiedTerminalForJob = useRef<string | null>(null);
   const locallyReviewedItems = useRef<Map<string, JobItemView>>(new Map());
   const targetProviderLabel = job ? providerLabel(job.target_provider) : "target provider";
   const targetPlaylists =
@@ -64,8 +65,11 @@ export default function ProgressBoard({
       const payload = JSON.parse(e.data) as ProgressEvent;
       if (payload.job) {
         setJob(payload.job);
-        if (payload.job.status === "done" && notifiedDoneForJob.current !== jobId) {
-          notifiedDoneForJob.current = jobId;
+        if (
+          isTerminalStatus(payload.job.status) &&
+          notifiedTerminalForJob.current !== jobId
+        ) {
+          notifiedTerminalForJob.current = jobId;
           void onMigrationChanged?.();
         }
       }
@@ -519,6 +523,10 @@ function statusLabel(status: string): string {
   return status.replace("_", " ");
 }
 
+function isTerminalStatus(status: string): boolean {
+  return status === "done" || status === "failed";
+}
+
 function shouldPromptReconnect(message: string): boolean {
   const normalized = message.toLowerCase();
   return normalized.includes("reconnect") || normalized.includes("signed-in session");
@@ -568,14 +576,4 @@ function targetPlaylistUrl(provider: string, playlistId: string): string | null 
     return `https://open.spotify.com/playlist/${encodeURIComponent(playlistId)}`;
   }
   return null;
-}
-
-function providerLabel(provider: string): string {
-  if (provider === "ytmusic" || provider === "youtube" || provider === "youtube_music") {
-    return "YouTube Music";
-  }
-  if (provider === "spotify") {
-    return "Spotify";
-  }
-  return "target provider";
 }

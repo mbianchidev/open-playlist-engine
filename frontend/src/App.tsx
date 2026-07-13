@@ -20,10 +20,12 @@ import type {
   ProviderView,
   Track,
 } from "./api/types";
+import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
 import ProgressBoard from "./components/ProgressBoard";
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("migration");
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [accounts, setAccounts] = useState<AccountView[]>([]);
   const [playlists, setPlaylists] = useState<PlaylistRef[]>([]);
@@ -48,10 +50,13 @@ export default function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
   const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
+  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
   const playlistLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
+  const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const statsTabRef = useRef<HTMLButtonElement>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
@@ -129,6 +134,11 @@ export default function App() {
     },
     [source, sourceAccount?.id, target, targetAccount?.id],
   );
+
+  const handleMigrationChanged = useCallback(async () => {
+    setStatsRefreshKey((value) => value + 1);
+    await refreshSourcePlaylists();
+  }, [refreshSourcePlaylists]);
 
   useEffect(() => {
     getProviders().then(setProviders).catch((e: unknown) => setError(errorMessage(e)));
@@ -446,12 +456,14 @@ export default function App() {
       if (preflight.warnings.length > 0 && !confirm(warningMessage(preflight))) return;
       const job = await createMigration({ ...body, acknowledge_warnings: true });
       setJobId(job.id);
+      setStatsRefreshKey((value) => value + 1);
       deselectStartedPlaylists(playlistIds);
     } catch (e: unknown) {
       if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
         try {
           const job = await createMigration({ ...body, acknowledge_warnings: true });
           setJobId(job.id);
+          setStatsRefreshKey((value) => value + 1);
           deselectStartedPlaylists(playlistIds);
         } catch (retryError: unknown) {
           showAppError(retryError);
@@ -761,6 +773,21 @@ export default function App() {
     );
   }
 
+  function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const nextTab =
+      event.key === "Home"
+        ? "migration"
+        : event.key === "End"
+          ? "stats"
+          : activeTab === "migration"
+            ? "stats"
+            : "migration";
+    setActiveTab(nextTab);
+    (nextTab === "migration" ? migrationTabRef : statsTabRef).current?.focus();
+  }
+
   return (
     <div className="app">
       {blockingAlert ? (
@@ -769,46 +796,91 @@ export default function App() {
       <h1>Open Playlist Engine</h1>
       <p className="subtitle">Migrate playlists between any two music services.</p>
 
-      {error ? <p className="warn">⚠ {error}</p> : null}
-      {notice ? <p className="notice">{notice}</p> : null}
-
-      <div className="lanes">
-        <ProviderPicker
-          title="From"
-          role="source"
-          providers={providers}
-          selected={source}
-          onSelect={setSource}
-        />
-        <ProviderPicker
-          title="To"
-          role="target"
-          providers={providers}
-          selected={target}
-          onSelect={setTarget}
-        />
+      <div
+        className="workspace-tabs"
+        role="tablist"
+        aria-label="Open Playlist Engine workspace"
+        onKeyDown={handleTabKeyDown}
+      >
+        <button
+          ref={migrationTabRef}
+          id="migration-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Migration"
+          aria-selected={activeTab === "migration"}
+          aria-controls="migration-panel"
+          tabIndex={activeTab === "migration" ? 0 : -1}
+          onClick={() => setActiveTab("migration")}
+        >
+          <span>Migration</span>
+          <small>Move playlists</small>
+        </button>
+        <button
+          ref={statsTabRef}
+          id="stats-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Stats"
+          aria-selected={activeTab === "stats"}
+          aria-controls="stats-panel"
+          tabIndex={activeTab === "stats" ? 0 : -1}
+          onClick={() => setActiveTab("stats")}
+        >
+          <span>Stats</span>
+          <small>Review history</small>
+        </button>
       </div>
 
-      <section className="card flow">
-        <h2>Connect accounts</h2>
-        <div className="account-grid">
-          <AccountPanel
-            label="Source"
-            provider={source}
-            account={sourceAccount}
-            busy={busy}
-            onConnect={connect}
-            onTest={testConnection}
-          />
-          <AccountPanel
-            label="Target"
-            provider={target}
-            account={targetAccount}
-            busy={busy}
-            onConnect={connect}
-            onTest={testConnection}
-          />
-        </div>
+      {activeTab === "migration" ? (
+        <div
+          id="migration-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="migration-tab"
+        >
+          {error ? <p className="warn">⚠ {error}</p> : null}
+          {notice ? <p className="notice">{notice}</p> : null}
+
+          <div className="lanes">
+            <ProviderPicker
+              title="From"
+              role="source"
+              providers={providers}
+              selected={source}
+              onSelect={setSource}
+            />
+            <ProviderPicker
+              title="To"
+              role="target"
+              providers={providers}
+              selected={target}
+              onSelect={setTarget}
+            />
+          </div>
+
+          <section className="card flow">
+            <h2>Connect accounts</h2>
+            <div className="account-grid">
+              <AccountPanel
+                label="Source"
+                provider={source}
+                account={sourceAccount}
+                busy={busy}
+                onConnect={connect}
+                onTest={testConnection}
+              />
+              <AccountPanel
+                label="Target"
+                provider={target}
+                account={targetAccount}
+                busy={busy}
+                onConnect={connect}
+                onTest={testConnection}
+              />
+            </div>
         {deviceChallenge ? (
           <div className="device-block">
             <p className="muted">Open this page and enter the code:</p>
@@ -967,13 +1039,13 @@ export default function App() {
             </div>
           </div>
         ) : null}
-        <button className="secondary" disabled={busy} onClick={refreshAccounts}>
-          Refresh accounts
-        </button>
-      </section>
+            <button className="secondary" disabled={busy} onClick={refreshAccounts}>
+              Refresh accounts
+            </button>
+          </section>
 
-      {source && sourceAccount ? (
-        <section className="card flow">
+          {source && sourceAccount ? (
+            <section className="card flow">
           <div className="section-heading">
             <div>
               <h2>Pick playlists</h2>
@@ -1039,7 +1111,7 @@ export default function App() {
                 <ProgressBoard
                   className="progress-popover"
                   jobId={jobId}
-                  onMigrationChanged={refreshSourcePlaylists}
+                  onMigrationChanged={handleMigrationChanged}
                   onReconnectProvider={connect}
                 />
               </div>
@@ -1126,9 +1198,19 @@ export default function App() {
               {migrationCandidatePlaylists.map(renderPlaylistCard)}
             </div>
           )}
-        </section>
-      ) : null}
-
+            </section>
+          ) : null}
+        </div>
+      ) : (
+        <div
+          id="stats-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="stats-tab"
+        >
+          <MigrationStatsPanel providers={providers} refreshKey={statsRefreshKey} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1181,6 +1263,8 @@ interface DeviceChallenge {
   state: string;
   pollIntervalS: number;
 }
+
+type WorkspaceTab = "migration" | "stats";
 
 interface AppleMusicChallenge {
   developerToken: string;

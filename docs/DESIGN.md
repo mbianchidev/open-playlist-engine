@@ -35,10 +35,13 @@ The self-hosted MVP currently exposes only implemented capabilities in the UI:
 Spotify, Tidal, and YouTube Music are source/target providers. Their native saved
 track libraries share the universal `PlaylistKind.LIKED_TRACKS` kind, so Spotify
 Liked Songs, Tidal My Collection, and YouTube Music Liked Songs map directly
-without creating ordinary playlists. The persisted job pipeline supports import
-→ match → write with SSE item progress; low-confidence matches are marked
-`needs_review` and can be approved, batch-approved, corrected, skipped, or
-batch-denied from the progress panel.
+without creating ordinary playlists. Apple Music exposes its implemented official
+MusicKit library read/search/write capabilities. The persisted job pipeline
+supports import → match → write with SSE item progress; low-confidence matches are
+marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
+batch-denied from the progress panel. The UI also exposes ledger-backed
+single-migration and all-time aggregate statistics with source/target provider
+filters.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -80,6 +83,15 @@ songs. The worker reuses a previously observed target playlist, or a same-name
 target playlist whose songs overlap, and skips duplicate target songs with a
 per-item reason instead of adding them twice.
 
+### Migration statistics
+
+Single-migration and aggregate statistics read from `migration_job` and `job_item`
+instead of maintaining separate counters. The same ledger rows that power progress,
+review, rerun detection and duplicate handling also provide status buckets
+(`written`, `skipped`, `needs_review`, `failed`, `matched`, `pending`) for one
+selected migration and all-time totals. Aggregate queries can be filtered by source
+provider, target provider, or both.
+
 ---
 
 ## 3. Architecture
@@ -110,6 +122,9 @@ the same codebase can run **hosted**. A single `OPE_DEPLOYMENT_MODE`
 through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
 - header/cookie-paste auth is allowed **only** in self-host (`allow_header_paste`).
 - the shared match graph stays local unless explicitly enabled.
+- migration ownership is resolved by a server-side dependency. Self-host returns
+  the local user; hosted mode rejects migration requests until real authentication
+  is wired, rather than trusting a query-string user ID.
 
 ---
 

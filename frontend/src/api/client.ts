@@ -1,11 +1,14 @@
 import type {
   AccountView,
+  AggregateMigrationStatsView,
   AuthChallenge,
   ConnectionView,
   ConnectionTestView,
   CreateMigrationBody,
   JobItemView,
   JobView,
+  MigrationOptionView,
+  MigrationStatsView,
   MigrationWarningsView,
   Playlist,
   PlaylistRef,
@@ -117,6 +120,31 @@ export async function createMigration(body: CreateMigrationBody): Promise<JobVie
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }),
+  );
+}
+
+export async function listMigrations(): Promise<MigrationOptionView[]> {
+  return json<MigrationOptionView[]>(await fetch("/api/migrations"));
+}
+
+export interface AggregateMigrationStatsFilters {
+  sourceProvider?: string | null;
+  targetProvider?: string | null;
+}
+
+export async function getAggregateMigrationStats(
+  filters: AggregateMigrationStatsFilters = {},
+): Promise<AggregateMigrationStatsView> {
+  const params = new URLSearchParams();
+  if (filters.sourceProvider) params.set("source_provider", filters.sourceProvider);
+  if (filters.targetProvider) params.set("target_provider", filters.targetProvider);
+  const suffix = params.size ? `?${params}` : "";
+  return json<AggregateMigrationStatsView>(await fetch(`/api/migrations/stats${suffix}`));
+}
+
+export async function getMigrationStats(jobId: string): Promise<MigrationStatsView> {
+  return json<MigrationStatsView>(
+    await fetch(`/api/migrations/${encodeURIComponent(jobId)}/stats`),
   );
 }
 
