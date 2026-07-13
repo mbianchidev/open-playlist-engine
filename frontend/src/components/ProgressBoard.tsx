@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from "lucide-react";
 import {
   getMigrationItems,
   reviewMigrationItem,
@@ -90,7 +91,10 @@ export default function ProgressBoard({
           <strong>{playlistLabel}</strong>
           <span className="muted">Migration {shortJobId(jobId)}</span>
         </span>
-        <span className="muted">{collapsed ? "Show" : "Hide"}</span>
+        <span className="collapse-label">
+          {collapsed ? "Show" : "Hide"}
+          {collapsed ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
+        </span>
       </button>
       <div
         className="migration-progress-meter"
@@ -112,7 +116,10 @@ export default function ProgressBoard({
         <div className="progress-panel-body">
           {job?.status === "done" ? (
             <div className="notice migration-success">
-              <strong>Migration succeeded.</strong>
+              <strong>
+                <CheckCircle2 aria-hidden="true" />
+                Migration succeeded.
+              </strong>
               {targetPlaylists.length > 0 ? (
                 <div className="target-playlists">
                   {targetPlaylists.map((playlist) =>
@@ -124,6 +131,7 @@ export default function ProgressBoard({
                         rel="noreferrer"
                       >
                         Open {playlist.label} in {targetProviderLabel}
+                        <ExternalLink aria-hidden="true" />
                       </a>
                     ) : (
                       <span key={playlist.id}>
@@ -144,6 +152,7 @@ export default function ProgressBoard({
                 disabled={!onReconnectProvider}
                 onClick={() => void onReconnectProvider?.(reconnectProvider)}
               >
+                <RotateCcw aria-hidden="true" />
                 Reconnect {providerLabel(reconnectProvider)}
               </button>
             </div>
@@ -164,7 +173,14 @@ export default function ProgressBoard({
                     {counts.failed ? ` · ${counts.failed} failed` : ""}
                   </span>
                 </span>
-                <span className="muted">{reviewCollapsed ? "Show" : "Hide"}</span>
+                <span className="collapse-label">
+                  {reviewCollapsed ? "Show" : "Hide"}
+                  {reviewCollapsed ? (
+                    <ChevronDown aria-hidden="true" />
+                  ) : (
+                    <ChevronUp aria-hidden="true" />
+                  )}
+                </span>
               </button>
               {!reviewCollapsed ? (
                 <div className="review-bin-body">

@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ArrowRight,
+  BarChart3,
+  Check,
+  CircleGauge,
+  ListMusic,
+  Music2,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Wifi,
+} from "lucide-react";
+import {
   ApiError,
   beginAuth,
   completeAuth,
@@ -22,7 +35,9 @@ import type {
 } from "./api/types";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
+import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
+import { providerLabel } from "./utils/providers";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("migration");
@@ -97,6 +112,12 @@ export default function App() {
   const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
     selectedPlaylists.has(playlist.id),
   ).length;
+  const sourceLabel = source
+    ? providers.find((provider) => provider.name === source)?.display_name ?? providerLabel(source)
+    : "Choose source";
+  const targetLabel = target
+    ? providers.find((provider) => provider.name === target)?.display_name ?? providerLabel(target)
+    : "Choose target";
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
@@ -793,8 +814,22 @@ export default function App() {
       {blockingAlert ? (
         <BlockingAlertBanner alert={blockingAlert} onClose={() => setBlockingAlert(null)} />
       ) : null}
-      <h1>Open Playlist Engine</h1>
-      <p className="subtitle">Migrate playlists between any two music services.</p>
+      <header className="app-header">
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true">
+            <Music2 />
+            <ArrowRight />
+          </span>
+          <div>
+            <h1>Open Playlist Engine</h1>
+            <p className="subtitle">Your music, free to move.</p>
+          </div>
+        </div>
+        <div className="product-promise">
+          <ShieldCheck aria-hidden="true" />
+          <span>Local-first migration</span>
+        </div>
+      </header>
 
       <div
         className="workspace-tabs"
@@ -814,7 +849,10 @@ export default function App() {
           tabIndex={activeTab === "migration" ? 0 : -1}
           onClick={() => setActiveTab("migration")}
         >
-          <span>Migration</span>
+          <span>
+            <ListMusic aria-hidden="true" />
+            Migration
+          </span>
           <small>Move playlists</small>
         </button>
         <button
@@ -829,7 +867,10 @@ export default function App() {
           tabIndex={activeTab === "stats" ? 0 : -1}
           onClick={() => setActiveTab("stats")}
         >
-          <span>Stats</span>
+          <span>
+            <BarChart3 aria-hidden="true" />
+            Stats
+          </span>
           <small>Review history</small>
         </button>
       </div>
@@ -844,25 +885,60 @@ export default function App() {
           {error ? <p className="warn">⚠ {error}</p> : null}
           {notice ? <p className="notice">{notice}</p> : null}
 
-          <div className="lanes">
-            <ProviderPicker
-              title="From"
-              role="source"
-              providers={providers}
-              selected={source}
-              onSelect={setSource}
-            />
-            <ProviderPicker
-              title="To"
-              role="target"
-              providers={providers}
-              selected={target}
-              onSelect={setTarget}
-            />
-          </div>
+          <section
+            className="migration-route"
+            aria-label={`Move playlists from ${sourceLabel} to ${targetLabel}`}
+          >
+            <div className="route-summary">
+              <div className="route-endpoint">
+                <ProviderIcon provider={source} />
+                <span>
+                  <small>Source</small>
+                  <strong>{sourceLabel}</strong>
+                </span>
+              </div>
+              <div className="route-rail" aria-hidden="true">
+                <span />
+                <ArrowRight />
+              </div>
+              <div className="route-endpoint route-endpoint-target">
+                <ProviderIcon provider={target} />
+                <span>
+                  <small>Target</small>
+                  <strong>{targetLabel}</strong>
+                </span>
+              </div>
+            </div>
+            <div className="lanes">
+              <ProviderPicker
+                title="From"
+                role="source"
+                providers={providers}
+                selected={source}
+                onSelect={setSource}
+              />
+              <ProviderPicker
+                title="To"
+                role="target"
+                providers={providers}
+                selected={target}
+                onSelect={setTarget}
+              />
+            </div>
+          </section>
 
           <section className="card flow">
-            <h2>Connect accounts</h2>
+            <div className="section-heading">
+              <div className="section-title">
+                <span className="section-icon" aria-hidden="true">
+                  <Wifi />
+                </span>
+                <div>
+                  <h2>Connect accounts</h2>
+                  <p className="muted">Authorize both services before choosing playlists.</p>
+                </div>
+              </div>
+            </div>
             <div className="account-grid">
               <AccountPanel
                 label="Source"
@@ -1040,6 +1116,7 @@ export default function App() {
           </div>
         ) : null}
             <button className="secondary" disabled={busy} onClick={refreshAccounts}>
+              <RefreshCw aria-hidden="true" />
               Refresh accounts
             </button>
           </section>
@@ -1047,11 +1124,16 @@ export default function App() {
           {source && sourceAccount ? (
             <section className="card flow">
           <div className="section-heading">
-            <div>
+            <div className="section-title">
+              <span className="section-icon" aria-hidden="true">
+                <ListMusic />
+              </span>
+              <div>
               <h2>Pick playlists</h2>
               <p className="muted">
                 {selectedMigrationPlaylistIds.length} of {availablePlaylists.length} migratable selected
               </p>
+              </div>
             </div>
             <div className="toolbar">
               <button
@@ -1063,6 +1145,7 @@ export default function App() {
                 }
                 onClick={selectAllPlaylists}
               >
+                <Check aria-hidden="true" />
                 Select all
               </button>
               <button
@@ -1077,6 +1160,7 @@ export default function App() {
                 disabled={busy || playlistLoading}
                 onClick={() => void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })}
               >
+                <RefreshCw aria-hidden="true" />
                 {playlistLoading ? "Refreshing…" : "Refresh playlists"}
               </button>
             </div>
@@ -1089,7 +1173,10 @@ export default function App() {
           <div className="migration-top-stack">
             <div className="migration-action-bar">
               <div>
-                <p className="eyebrow">Ready to migrate</p>
+                <p className="action-label">
+                  <CircleGauge aria-hidden="true" />
+                  Ready to migrate
+                </p>
                 <p className="muted">
                   {selectedMigrationPlaylistIds.length} playlist
                   {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
@@ -1103,6 +1190,7 @@ export default function App() {
                 ) : null}
               </div>
               <button className="primary" disabled={startDisabled} onClick={() => start()}>
+                <Play aria-hidden="true" />
                 {busy ? "Starting…" : "Start migration"}
               </button>
             </div>
@@ -1440,25 +1528,35 @@ interface AccountPanelProps {
 
 function AccountPanel({ label, provider, account, busy, onConnect, onTest }: AccountPanelProps) {
   return (
-    <div>
-      <h3>{label}</h3>
+    <div className="account-panel">
+      <div className="account-heading">
+        <ProviderIcon provider={provider} />
+        <div>
+          <span className="account-role">{label}</span>
+          <h3>{provider ? providerLabel(provider) : "No provider selected"}</h3>
+        </div>
+      </div>
       {!provider ? <p className="muted">Pick a provider first.</p> : null}
       {provider && account ? (
         <>
           <p className="connected">
-            Connected: {account.display_name ?? account.provider_user_id ?? account.id}
+            <Check aria-hidden="true" />
+            Connected as {account.display_name ?? account.provider_user_id ?? account.id}
           </p>
           <button className="secondary compact" disabled={busy} onClick={() => onTest(account)}>
+            <Wifi aria-hidden="true" />
             Test connection
           </button>
           <button className="secondary compact" disabled={busy} onClick={() => onConnect(provider)}>
+            <RotateCcw aria-hidden="true" />
             Reconnect
           </button>
         </>
       ) : null}
       {provider && !account ? (
         <button className="secondary" disabled={busy} onClick={() => onConnect(provider)}>
-          Connect {provider}
+          <ProviderIcon provider={provider} className="provider-icon-inline" />
+          Connect {providerLabel(provider)}
         </button>
       ) : null}
     </div>

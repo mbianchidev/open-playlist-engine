@@ -4,5 +4,10 @@ export function providerLabel(provider: string | null | undefined): string {
     return "YouTube Music";
   }
   if (provider === "spotify") return "Spotify";
-  return provider;
+  if (provider === "applemusic" || provider === "apple_music") return "Apple Music";
+  if (provider === "tidal") return "Tidal";
+  if (provider === "deezer") return "Deezer";
+  return provider
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
