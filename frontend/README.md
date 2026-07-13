@@ -3,6 +3,11 @@
 Vite · React 19 · TypeScript. A pure SPA that talks only to the backend's
 OpenAPI surface — no shared code with the backend (monorepo, hard-separated).
 
+The interface uses Lucide for product controls and Simple Icons through
+`react-icons` for provider identity. New providers must render through
+`ProviderIcon`, which supplies a generic music fallback when no brand mark is
+registered.
+
 ## Develop
 ```bash
 npm install
@@ -36,3 +41,10 @@ Native liked-track collections map across Spotify Liked Songs, Tidal My Collecti
 and YouTube Music Liked Songs.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
+
+## Visual system
+
+`src/index.css` retains the established component and state selectors.
+`src/theme.css` owns the product tokens, provider-aware presentation, responsive
+layout, and motion overrides. Keep dynamic status classes and the ARIA tab
+relationships intact when changing presentation.

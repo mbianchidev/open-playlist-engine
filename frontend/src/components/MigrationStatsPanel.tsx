@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { BarChart3, History, RefreshCw } from "lucide-react";
 import {
   getAggregateMigrationStats,
   getMigrationStats,
@@ -122,22 +123,31 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
   return (
     <section className={["card", "flow", "migration-stats", className].filter(Boolean).join(" ")}>
       <div className="section-heading">
-        <div>
-          <h2>Migration stats</h2>
-          <p className="muted">Inspect one migration or all-time migration totals.</p>
+        <div className="section-title">
+          <span className="section-icon" aria-hidden="true">
+            <BarChart3 />
+          </span>
+          <div>
+            <h2>Migration stats</h2>
+            <p className="muted">Inspect one migration or all-time migration totals.</p>
+          </div>
         </div>
         <button
           className="secondary compact"
           disabled={listLoading || aggregateLoading || selectedLoading}
           onClick={() => setManualRefresh((value) => value + 1)}
         >
+          <RefreshCw aria-hidden="true" />
           {listLoading || aggregateLoading || selectedLoading ? "Refreshing..." : "Refresh stats"}
         </button>
       </div>
 
       <div className="stats-section">
         <div className="stats-subheading">
-          <h3>Single migration</h3>
+          <h3>
+            <History aria-hidden="true" />
+            Single migration
+          </h3>
           {selectedStats ? (
             <span className={`badge status-${selectedStats.status}`}>{statusLabel(selectedStats.status)}</span>
           ) : null}

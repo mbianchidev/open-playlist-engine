@@ -442,3 +442,29 @@ generated OpenAPI client.
 - Sharing the global graph as an open dataset — needs legal review.
 - Provider priority after Spotify + YT Music (Tidal looks lowest-friction).
 - When to split into two repos (if ever) — current hard separation keeps it cheap.
+
+## 17. Frontend visual language
+
+The frontend is a focused migration workspace rather than a generic dashboard.
+Its visual signature is the source-to-target route: provider identities are
+shown as recognizable endpoints, while the surrounding controls remain
+familiar and task-oriented.
+
+- Graphite surfaces and cool-white text keep long migration sessions readable.
+- Electric periwinkle is reserved for primary actions, current selection, and
+  focus.
+- Spotify, Tidal, YouTube Music, and Apple Music retain their service marks and
+  brand colors inside provider identity components only.
+- Provider color never communicates state by itself; selection also uses
+  borders, check marks, text, `aria-pressed`, and native disabled behavior.
+- Status, warning, success, and review styles remain semantic across playlist,
+  progress, and statistics views.
+- Motion communicates state changes in 150–250 ms and is removed when reduced
+  motion is requested.
+- The desktop workspace expands to use available width; provider lanes,
+  accounts, toolbars, playlists, reviews, and stats collapse structurally for
+  narrow screens.
+
+The implementation keeps the existing API behavior and accessible tab model.
+`frontend/src/index.css` retains the component/state selector vocabulary, while
+`frontend/src/theme.css` supplies tokens and the current visual treatment.
