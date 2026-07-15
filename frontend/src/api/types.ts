@@ -1,6 +1,8 @@
-// Hand-written until `npm run gen:api` produces schema.d.ts from the backend's
-// OpenAPI document. The frontend depends only on these shapes — never on backend
-// internals (monorepo, hard-separated).
+import type { components } from "./schema";
+
+type ApiSchema<Name extends keyof components["schemas"]> = Required<
+  components["schemas"][Name]
+>;
 
 export interface ProviderView {
   name: string;
@@ -119,94 +121,50 @@ export interface CreateMigrationBody {
   acknowledge_warnings?: boolean;
 }
 
-export interface JobView {
-  id: string;
-  status: string;
-  source_provider: string;
-  target_provider: string;
-  total: number;
-  done: number;
-  failed: number;
-  error: string | null;
-}
-
-export interface StatusCounts {
-  total: number;
-  pending: number;
-  matched: number;
-  needs_review: number;
-  written: number;
-  skipped: number;
-  failed: number;
-  other: Record<string, number>;
-}
-
-export interface MigrationOptionView {
-  id: string;
-  label: string;
-  playlist_names: string[];
-  status: string;
-  source_provider: string;
-  target_provider: string;
-  created_at: string | null;
-}
-
-export interface PlaylistStatsView {
-  source_playlist_id: string;
-  source_playlist_name: string | null;
-  target_playlist_id: string | null;
+export type JobView = ApiSchema<"JobView">;
+export type StatusCounts = ApiSchema<"StatusCounts">;
+export type MigrationOptionView = ApiSchema<"MigrationOptionView">;
+export type AccountHistoryView = ApiSchema<"AccountHistoryView">;
+export type PlaylistStatsView = Omit<ApiSchema<"PlaylistStatsView">, "counts"> & {
   counts: StatusCounts;
-}
-
-export interface MigrationStatsView {
-  id: string;
-  label: string;
-  playlist_names: string[];
-  status: string;
-  source_provider: string;
-  target_provider: string;
-  created_at: string | null;
+};
+export type MigrationStatsView = Omit<
+  ApiSchema<"MigrationStatsView">,
+  "counts" | "playlists" | "source_account" | "target_account" | "warnings"
+> & {
   counts: StatusCounts;
-  playlist_count: number;
   playlists: PlaylistStatsView[];
-  empty: boolean;
-  message: string | null;
-}
-
-export interface AggregateMigrationStatsView {
-  source_provider: string | null;
-  target_provider: string | null;
-  total_migrations: number;
-  total_playlists: number;
-  counts: StatusCounts;
-  empty: boolean;
-  message: string | null;
-}
-
-export interface MigrationWarningsView {
-  code: string;
-  message: string;
+  source_account: AccountHistoryView | null;
+  target_account: AccountHistoryView | null;
   warnings: { code: string; message: string }[];
+};
+export type AggregateMigrationStatsView = Omit<
+  ApiSchema<"AggregateMigrationStatsView">,
+  "counts"
+> & {
+  counts: StatusCounts;
+};
+export type MigrationWarningsView = Omit<ApiSchema<"MigrationWarningsView">, "warnings"> & {
+  warnings: { code: string; message: string }[];
+};
+export type JobItemView = ApiSchema<"JobItemView">;
+
+export interface MigrationItemFilters {
+  sourcePlaylistId?: string | null;
+  statuses?: string[];
+  minConfidence?: number | null;
+  maxConfidence?: number | null;
+  reason?: string | null;
+  title?: string | null;
+  artist?: string | null;
+  problemOnly?: boolean;
 }
 
-export interface JobItemView {
-  id: string;
-  source_playlist_id: string;
-  source_playlist_name: string | null;
-  target_playlist_id: string | null;
-  position: number;
-  title: string;
-  artist: string;
-  album: string | null;
-  duration_s: number | null;
-  release_year: number | null;
-  explicit: boolean | null;
-  isrc: string | null;
-  source_metadata: Record<string, unknown>;
-  target_uri: string | null;
-  confidence: number | null;
-  status: string;
-  reason: string | null;
+export interface MigrationItemPage {
+  items: JobItemView[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface ProgressEvent {

@@ -60,5 +60,12 @@ match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
 
+The existing migration stats API also exposes complete history details. Item rows
+support owner-scoped filters and optional paging, while
+`GET /api/migrations/{job_id}/report` streams versioned CSV or JSON exports without
+materializing the full result. Item detail defaults to 90-day retention; the ARQ
+worker snapshots summaries and removes expired job/operation rows in bounded hourly
+batches. See [`docs/MIGRATION_HISTORY.md`](../docs/MIGRATION_HISTORY.md).
+
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

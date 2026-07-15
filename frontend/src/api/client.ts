@@ -7,6 +7,8 @@ import type {
   CreateMigrationBody,
   JobItemView,
   JobView,
+  MigrationItemFilters,
+  MigrationItemPage,
   MigrationOptionView,
   MigrationStatsView,
   MigrationWarningsView,
@@ -160,8 +162,47 @@ export async function preflightMigration(
   );
 }
 
-export async function getMigrationItems(jobId: string): Promise<JobItemView[]> {
-  return json<JobItemView[]>(await fetch(`/api/migrations/${jobId}/items`));
+export async function getMigrationItems(
+  jobId: string,
+  filters: MigrationItemFilters = {},
+): Promise<JobItemView[]> {
+  const params = migrationItemParams(filters);
+  const suffix = params.size ? `?${params}` : "";
+  return json<JobItemView[]>(
+    await fetch(`/api/migrations/${encodeURIComponent(jobId)}/items${suffix}`),
+  );
+}
+
+export async function getMigrationItemPage(
+  jobId: string,
+  filters: MigrationItemFilters,
+  options: { limit: number; offset: number },
+): Promise<MigrationItemPage> {
+  const params = migrationItemParams(filters);
+  params.set("limit", String(options.limit));
+  params.set("offset", String(options.offset));
+  const response = await fetch(`/api/migrations/${encodeURIComponent(jobId)}/items?${params}`);
+  const items = await json<JobItemView[]>(response);
+  const totalHeader = response.headers.get("x-total-count");
+  const total = totalHeader === null ? items.length : Number(totalHeader);
+  return {
+    items,
+    total: Number.isFinite(total) ? total : items.length,
+    limit: options.limit,
+    offset: options.offset,
+  };
+}
+
+export function migrationReportUrl(
+  jobId: string,
+  format: "csv" | "json",
+  scope: "all" | "problems",
+  filters: MigrationItemFilters = {},
+): string {
+  const params = migrationItemParams(filters);
+  params.set("format", format);
+  params.set("scope", scope);
+  return `/api/migrations/${encodeURIComponent(jobId)}/report?${params}`;
 }
 
 export async function reviewMigrationItem(
@@ -193,7 +234,24 @@ export async function reviewMigrationItems(
 
 // SSE stream of migration progress. Returns a disposer.
 export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) => void): () => void {
-  const source = new EventSource(`/api/migrations/${jobId}/events`);
+  const source = new EventSource(`/api/migrations/${encodeURIComponent(jobId)}/events`);
   source.addEventListener("progress", onMessage as EventListener);
   return () => source.close();
+}
+
+function migrationItemParams(filters: MigrationItemFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.sourcePlaylistId) params.set("source_playlist_id", filters.sourcePlaylistId);
+  for (const status of filters.statuses ?? []) params.append("status", status);
+  if (filters.minConfidence !== null && filters.minConfidence !== undefined) {
+    params.set("min_confidence", String(filters.minConfidence));
+  }
+  if (filters.maxConfidence !== null && filters.maxConfidence !== undefined) {
+    params.set("max_confidence", String(filters.maxConfidence));
+  }
+  if (filters.reason) params.set("reason", filters.reason);
+  if (filters.title) params.set("title", filters.title);
+  if (filters.artist) params.set("artist", filters.artist);
+  if (filters.problemOnly) params.set("problem_only", "true");
+  return params;
 }

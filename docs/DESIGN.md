@@ -40,8 +40,8 @@ MusicKit library read/search/write capabilities. The persisted job pipeline
 supports import → match → write with SSE item progress; low-confidence matches are
 marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
 batch-denied from the progress panel. The UI also exposes ledger-backed
-single-migration and all-time aggregate statistics with source/target provider
-filters.
+single-migration history, streamed reports, and all-time aggregate statistics with
+source/target provider filters.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -83,14 +83,23 @@ songs. The worker reuses a previously observed target playlist, or a same-name
 target playlist whose songs overlap, and skips duplicate target songs with a
 per-item reason instead of adding them twice.
 
-### Migration statistics
+### Migration history, statistics, and reports
 
-Single-migration and aggregate statistics read from `migration_job` and `job_item`
-instead of maintaining separate counters. The same ledger rows that power progress,
-review, rerun detection and duplicate handling also provide status buckets
-(`written`, `skipped`, `needs_review`, `failed`, `matched`, `pending`) for one
-selected migration and all-time totals. Aggregate queries can be filtered by source
-provider, target provider, or both.
+Single-migration history and aggregate statistics read from `migration_job` and
+`job_item` instead of maintaining a second analytics store. The same ledger rows
+that power progress, review, rerun detection and duplicate handling provide status
+buckets (`written`, `skipped`, `needs_review`, `failed`, `matched`, `pending`),
+filterable item inspection, and streamed CSV/JSON reports. Every query joins through
+the server-resolved owner; account labels are resolved only from that user's current
+accounts.
+
+Terminal jobs persist lifecycle timestamps, warnings, a compact result summary, and
+an item-detail expiry. Summary history remains indefinitely. The ARQ worker
+periodically snapshots and deletes expired `job_item`/`operation_ledger` rows;
+accepted review decisions live in a separate private table so retention cleanup does
+not regress future match suggestions. See
+[`MIGRATION_HISTORY.md`](MIGRATION_HISTORY.md) for the stable report schema and
+configuration.
 
 ---
 
@@ -358,6 +367,7 @@ graph as an open dataset is deferred pending legal review.
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
 | `migration_job`, `job_item` | jobs + per-song status (drives progress) | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
+| `review_decision` | retained accepted low-confidence matches | private |
 | `track_identity` | canonical track (UUID pk, ISRC as evidence) | global, no PII |
 | `track_edge` | provider links with confidence/source/scope | global + per-account overlays |
 
