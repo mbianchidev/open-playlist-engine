@@ -20,6 +20,7 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     ProviderCredential,
+    PublicPlaylistRef,
     RateLimited,
 )
 from app.core.models import Track
@@ -112,6 +113,67 @@ async def test_read_paginates_and_enriches_library_tracks() -> None:
     )
     assert playlist.tracks[0].composer == "Composer One"
     assert playlist.tracks[1].explicit is True
+
+
+async def test_public_catalog_playlist_read_needs_only_developer_token() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers.get("authorization") == "Bearer developer-token"
+        assert "music-user-token" not in request.headers
+        if request.url.path == "/v1/catalog/us/playlists/pl.u-public":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "pl.u-public",
+                            "type": "playlists",
+                            "attributes": {
+                                "name": "Public Apple Playlist",
+                                "curatorName": "Apple Music",
+                                "description": {"standard": "Shared fixture"},
+                            },
+                            "relationships": {
+                                "tracks": {
+                                    "data": [
+                                        {
+                                            "id": "1001",
+                                            "type": "songs",
+                                            "attributes": {
+                                                "name": "Song One",
+                                                "artistName": "Artist One",
+                                                "albumName": "Album One",
+                                                "durationInMillis": 180000,
+                                                "isrc": "US0000000001",
+                                            },
+                                        }
+                                    ]
+                                }
+                            },
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(404, json={"errors": [{"detail": request.url.path}]})
+
+    adapter = AppleMusicAdapter(
+        transport=httpx.MockTransport(handler),
+        developer_token="developer-token",
+    )
+
+    playlist = await adapter.read_public_playlist(
+        PublicPlaylistRef(
+            id="pl.u-public",
+            canonical_url="https://music.apple.com/us/playlist/pl.u-public",
+            metadata={"storefront": "us"},
+        )
+    )
+
+    assert playlist.name == "Public Apple Playlist"
+    assert playlist.owner_id == "Apple Music"
+    assert playlist.description == "Shared fixture"
+    assert playlist.tracks[0].provider_uris["applemusic"] == (
+        "applemusic:catalog:us:song:1001"
+    )
 
 
 async def test_search_prefers_isrc_then_falls_back_to_text() -> None:

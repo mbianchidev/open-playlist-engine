@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.providers  # noqa: F401  (registers adapters on import)
 from app import __version__
-from app.api import auth, migrations, playlists, providers
+from app.api import auth, imports, migrations, playlists, providers
 from app.settings import get_settings
 
 app = FastAPI(title="Open Playlist Engine", version=__version__)
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(providers.router)
 app.include_router(auth.router)
 app.include_router(playlists.router)
+app.include_router(imports.router)
 app.include_router(migrations.router)
 
 

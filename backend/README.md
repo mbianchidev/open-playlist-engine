@@ -7,9 +7,12 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
+- `app/imports/` — text parsing, URL resolvers, bounded SSRF-safe fetching, and
+  persisted import-source loading.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/imports`,
+  `/migrations`).
 
 ## Develop
 ```bash
@@ -41,6 +44,11 @@ read/search/write; `MatchService` owns matching.
 | YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 | Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
 
+Public URL reads use adapter hooks for unauthenticated YouTube Music playlists and
+Apple Music catalog playlists. Spotify and TIDAL URL imports deliberately require
+the minimum matching source connection rather than scraping or bypassing provider
+access controls.
+
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
 the conformance suite instantiates the adapter classes directly with a seam, so CI
@@ -59,6 +67,11 @@ partial-migration labels, duplicate skips, batch review actions, and low-confide
 match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+`POST /api/imports/preview` accepts the discriminated `url` and `text` request
+shapes. It persists an owner-scoped `ImportedPlaylist` snapshot; migration jobs
+store only its ID and a stable synthetic account key. Workers reload the snapshot
+instead of depending on browser memory, expiring tokens, or a second source fetch.
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

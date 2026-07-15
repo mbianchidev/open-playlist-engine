@@ -96,6 +96,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /imports/preview:
+    post:
+      summary: Preview a public URL or pasted-text import
+      description: |
+        Resolves a supported public playlist URL or parses a bounded pasted track
+        list into the universal Playlist model. Successful previews return a
+        persisted, owner-scoped import snapshot identifier for migration creation.
+      operationId: previewImport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/UrlImportPreviewRequest"
+                - $ref: "#/components/schemas/TextImportPreviewRequest"
+              discriminator:
+                propertyName: kind
+      responses:
+        "200":
+          description: Normalized import preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportPreview"
+        "400":
+          description: Unsupported URL, malformed text, or invalid remote content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The provider requires a matching connected source account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceConnectionRequired"
+        "413":
+          description: Input or playlist exceeds configured import limits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /open-playlists/export:
     post:
       summary: Export a playlist
@@ -322,6 +366,112 @@ components:
           type: object
           additionalProperties: true
           description: Provider-specific playlist data. The structure depends on the source provider.
+
+    UrlImportPreviewRequest:
+      type: object
+      required:
+        - kind
+        - url
+      properties:
+        kind:
+          type: string
+          enum: [url]
+        url:
+          type: string
+          format: uri
+          description: Supported HTTPS provider or allowlisted Open Playlist Engine share URL.
+        source_account_id:
+          type: string
+          description: Optional matching source account for providers that require authentication.
+
+    TextImportPreviewRequest:
+      type: object
+      required:
+        - kind
+        - text
+      properties:
+        kind:
+          type: string
+          enum: [text]
+        text:
+          type: string
+          description: Bounded track list using one row per track.
+        name:
+          type: string
+          description: Optional playlist name.
+
+    ImportIssue:
+      type: object
+      required:
+        - code
+        - message
+        - severity
+      properties:
+        line:
+          type: integer
+          nullable: true
+        code:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [warning, error]
+        raw:
+          type: string
+          nullable: true
+
+    ImportPreview:
+      type: object
+      required:
+        - import_id
+        - source
+        - playlist
+        - issues
+        - track_count
+        - unsupported_count
+      properties:
+        import_id:
+          type: string
+        source:
+          type: object
+          required: [provider, label, locator]
+          properties:
+            provider:
+              type: string
+            label:
+              type: string
+            locator:
+              type: string
+        playlist:
+          $ref: "#/components/schemas/Playlist"
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportIssue"
+        track_count:
+          type: integer
+        unsupported_count:
+          type: integer
+
+    SourceConnectionRequired:
+      type: object
+      required:
+        - code
+        - message
+        - provider
+        - action
+      properties:
+        code:
+          type: string
+          enum: [source_connection_required]
+        message:
+          type: string
+        provider:
+          type: string
+        action:
+          type: string
+          enum: [connect_source]
 
     ExportRequest:
       type: object

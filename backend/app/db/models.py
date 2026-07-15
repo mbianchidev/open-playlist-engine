@@ -119,6 +119,24 @@ class CachedPlaylistTracks(Base):
 
 
 # --------------------------------------------------------------------------- #
+# Imported source snapshots (private)
+# --------------------------------------------------------------------------- #
+class ImportedPlaylist(Base):
+    __tablename__ = "imported_playlist"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    source_provider: Mapped[str] = mapped_column(String, index=True)
+    source_label: Mapped[str] = mapped_column(String)
+    source_locator: Mapped[str] = mapped_column(String)
+    source_fingerprint: Mapped[str] = mapped_column(String, index=True)
+    playlist_id: Mapped[str] = mapped_column(String, index=True)
+    playlist: Mapped[dict] = mapped_column(JSON)
+    issues: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# --------------------------------------------------------------------------- #
 # Jobs & operation ledger (private)
 # --------------------------------------------------------------------------- #
 class MigrationJob(Base):

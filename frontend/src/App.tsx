@@ -4,6 +4,8 @@ import {
   BarChart3,
   Check,
   CircleGauge,
+  FileText,
+  Link2,
   ListMusic,
   Music2,
   Play,
@@ -22,12 +24,14 @@ import {
   getPlaylists,
   getProviders,
   preflightMigration,
+  previewImport,
   testAccountConnection,
 } from "./api/client";
 import type {
   AccountView,
   AuthChallenge,
   CreateMigrationBody,
+  ImportPreview,
   MigrationWarningsView,
   PlaylistRef,
   ProviderView,
@@ -60,8 +64,14 @@ export default function App() {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [sourceMode, setSourceMode] = useState<SourceMode>("account");
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  const [importUrl, setImportUrl] = useState("");
+  const [importText, setImportText] = useState("");
+  const [importName, setImportName] = useState("");
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importRequiredProvider, setImportRequiredProvider] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
   const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
@@ -74,9 +84,11 @@ export default function App() {
   const statsTabRef = useRef<HTMLButtonElement>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
+  const importSourceAccount =
+    accounts.find((account) => account.provider === importRequiredProvider) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
   const blockedSpotifyPlaylists = playlists.filter((playlist) =>
-    isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
+    sourceMode === "account" && isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
   );
   const blockedSpotifyPlaylistIds = new Set(blockedSpotifyPlaylists.map((playlist) => playlist.id));
   const availablePlaylists = playlists.filter((playlist) => !blockedSpotifyPlaylistIds.has(playlist.id));
@@ -89,10 +101,9 @@ export default function App() {
     .map((id) => availablePlaylists.find((playlist) => playlist.id === id))
     .filter((playlist): playlist is PlaylistRef => Boolean(playlist));
   const startDisabled =
-    !source ||
     !target ||
-    !sourceAccount ||
     !targetAccount ||
+    (sourceMode === "account" ? !source || !sourceAccount : !importPreview) ||
     selectedMigrationPlaylistIds.length === 0 ||
     busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
@@ -112,16 +123,26 @@ export default function App() {
   const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
     selectedPlaylists.has(playlist.id),
   ).length;
-  const sourceLabel = source
-    ? providers.find((provider) => provider.name === source)?.display_name ?? providerLabel(source)
-    : "Choose source";
+  const sourceLabel =
+    sourceMode === "account"
+      ? source
+        ? providers.find((provider) => provider.name === source)?.display_name ??
+          providerLabel(source)
+        : "Choose source"
+      : importPreview?.source.label ?? (sourceMode === "url" ? "Public URL" : "Pasted text");
   const targetLabel = target
     ? providers.find((provider) => provider.name === target)?.display_name ?? providerLabel(target)
     : "Choose target";
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
-      if (!source || !sourceAccount || !target || !targetAccount) {
+      if (
+        sourceMode !== "account" ||
+        !source ||
+        !sourceAccount ||
+        !target ||
+        !targetAccount
+      ) {
         setPlaylistLoading(false);
         return;
       }
@@ -153,7 +174,7 @@ export default function App() {
         if (loadId === playlistLoadId.current) setPlaylistLoading(false);
       }
     },
-    [source, sourceAccount?.id, target, targetAccount?.id],
+    [sourceMode, source, sourceAccount?.id, target, targetAccount?.id],
   );
 
   const handleMigrationChanged = useCallback(async () => {
@@ -216,6 +237,7 @@ export default function App() {
   }, [source, target]);
 
   useEffect(() => {
+    if (sourceMode !== "account") return;
     playlistLoadId.current += 1;
     setPlaylists([]);
     setPlaylistError(null);
@@ -224,7 +246,7 @@ export default function App() {
     setPlaylistTracks({});
     setSelectedTracks({});
     void refreshSourcePlaylists({ resetSelection: true });
-  }, [refreshSourcePlaylists]);
+  }, [refreshSourcePlaylists, sourceMode]);
 
   useEffect(() => {
     if (!blockingAlert) return;
@@ -455,8 +477,123 @@ export default function App() {
     }
   }
 
+  function chooseSourceMode(mode: SourceMode) {
+    if (mode === sourceMode) return;
+    playlistLoadId.current += 1;
+    authPollId.current += 1;
+    setSourceMode(mode);
+    setDeviceChallenge(null);
+    setYtHeaderFallback(false);
+    setAppleAuthChallenge(null);
+    setAppleMusicConfigured(false);
+    setAppleUserToken("");
+    setActiveAuthProvider(null);
+    setImportPreview(null);
+    setImportRequiredProvider(null);
+    setPlaylists([]);
+    setPlaylistTracks({});
+    setSelectedTracks({});
+    setSelectedPlaylists(new Set());
+    setPlaylistError(null);
+    setError(null);
+    setNotice(null);
+  }
+
+  function invalidateImportPreview() {
+    setImportPreview(null);
+    setImportRequiredProvider(null);
+    setPlaylists([]);
+    setPlaylistTracks({});
+    setSelectedTracks({});
+    setSelectedPlaylists(new Set());
+    setError(null);
+    setNotice(null);
+  }
+
+  async function previewImportedSource() {
+    if (sourceMode === "account") return;
+    if (sourceMode === "url" && !importUrl.trim()) {
+      setError("Paste a public playlist URL first.");
+      return;
+    }
+    if (sourceMode === "text" && !importText.trim()) {
+      setError("Paste at least one track first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setImportPreview(null);
+    setImportRequiredProvider(null);
+    setPlaylists([]);
+    setPlaylistTracks({});
+    setSelectedTracks({});
+    setSelectedPlaylists(new Set());
+    try {
+      const accountId = importSourceAccount?.id;
+      const body =
+        sourceMode === "url"
+          ? {
+              kind: "url" as const,
+              url: importUrl.trim(),
+              source_account_id: accountId,
+            }
+          : {
+              kind: "text" as const,
+              text: importText,
+              name: importName.trim() || null,
+            };
+      let preview: ImportPreview;
+      try {
+        preview = await previewImport(body);
+      } catch (e: unknown) {
+        const action = importConnectionAction(e);
+        const connected = action
+          ? accounts.find((account) => account.provider === action.provider)
+          : null;
+        if (sourceMode === "url" && action && connected && !accountId) {
+          preview = await previewImport({
+            kind: "url",
+            url: importUrl.trim(),
+            source_account_id: connected.id,
+          });
+        } else {
+          if (action) {
+            setImportRequiredProvider(action.provider);
+            setSource(action.provider);
+          }
+          throw e;
+        }
+      }
+      applyImportPreview(preview);
+    } catch (e: unknown) {
+      showAppError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyImportPreview(preview: ImportPreview) {
+    const ref = importPlaylistRef(preview);
+    const keys = unmigratedTrackKeys(preview.playlist.tracks);
+    setImportPreview(preview);
+    setImportRequiredProvider(null);
+    setPlaylists([ref]);
+    setPlaylistTracks({ [ref.id]: preview.playlist.tracks });
+    setSelectedTracks({ [ref.id]: new Set(keys) });
+    setSelectedPlaylists(keys.length > 0 ? new Set([ref.id]) : new Set());
+    setPlaylistError(null);
+    setError(null);
+    const issueCount = preview.issues.length;
+    setNotice(
+      `Previewed ${preview.track_count} tracks${
+        issueCount ? ` with ${issueCount} parsing or compatibility warning${issueCount === 1 ? "" : "s"}` : ""
+      }.`,
+    );
+  }
+
   async function start() {
-    if (!source || !target || !sourceAccount || !targetAccount) return;
+    if (!target || !targetAccount) return;
     const playlistIds = selectedMigrationPlaylistIds;
     const tracks = Object.fromEntries(
       playlistIds
@@ -464,12 +601,18 @@ export default function App() {
         .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
     );
     const body: CreateMigrationBody = {
-      source_provider: source,
       target_provider: target,
-      source_account_id: sourceAccount.id,
       target_account_id: targetAccount.id,
       selection: { playlist_ids: playlistIds, tracks },
     };
+    if (sourceMode === "account") {
+      if (!source || !sourceAccount) return;
+      body.source_provider = source;
+      body.source_account_id = sourceAccount.id;
+    } else {
+      if (!importPreview) return;
+      body.source_import_id = importPreview.import_id;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -512,11 +655,17 @@ export default function App() {
       closePlaylistSongs(id);
       return;
     }
-    const loaded = playlistTracks[id];
+    const importedTracks =
+      importPreview?.playlist.id === id ? importPreview.playlist.tracks : undefined;
+    const loaded = playlistTracks[id] ?? importedTracks;
     if (loaded) {
       const selectableKeys = unmigratedTrackKeys(loaded);
       if (selectableKeys.length === 0) {
-        markPlaylistFullyMigrated(id, loaded.length);
+        if (hasUnsupportedRemainingTracks(loaded)) {
+          setNotice("This playlist has no supported tracks to migrate.");
+        } else {
+          markPlaylistFullyMigrated(id, loaded.length);
+        }
         closePlaylistSongs(id);
         return;
       }
@@ -529,6 +678,9 @@ export default function App() {
         ...prevTracks,
         [id]: new Set(selectableKeys),
       }));
+      if (!playlistTracks[id]) {
+        setPlaylistTracks((prevTracks) => ({ ...prevTracks, [id]: loaded }));
+      }
       return;
     }
     setSelectedPlaylists((prev) => {
@@ -568,6 +720,17 @@ export default function App() {
   }
 
   async function loadTracks(playlist: PlaylistRef, options: { forceRefresh?: boolean } = {}) {
+    if (sourceMode !== "account") {
+      if (!importPreview || importPreview.playlist.id !== playlist.id) return;
+      const tracks = importPreview.playlist.tracks;
+      const defaultSelected = unmigratedTrackKeys(tracks);
+      setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: tracks }));
+      setSelectedTracks((prev) => ({
+        ...prev,
+        [playlist.id]: new Set(defaultSelected),
+      }));
+      return;
+    }
     if (!source || !sourceAccount || !target || !targetAccount) return;
     setBusy(true);
     setError(null);
@@ -579,8 +742,14 @@ export default function App() {
       });
       const defaultSelected = unmigratedTrackKeys(detail.tracks);
       if (detail.tracks.length > 0 && defaultSelected.length === 0) {
-        markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
-        closePlaylistSongs(playlist.id);
+        if (hasUnsupportedRemainingTracks(detail.tracks)) {
+          setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
+          setSelectedTracks((prev) => ({ ...prev, [playlist.id]: new Set() }));
+          setNotice("This playlist has no supported tracks to migrate.");
+        } else {
+          markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
+          closePlaylistSongs(playlist.id);
+        }
         return;
       }
       setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
@@ -631,7 +800,11 @@ export default function App() {
     }
     const tracks = playlistTracks[playlistId] ?? [];
     const keys = tracks
-      .filter((track) => mode === "all" || track.migration_status !== "migrated")
+      .filter(
+        (track) =>
+          isTrackSelectable(track) &&
+          (mode === "all" || track.migration_status !== "migrated"),
+      )
       .map(trackKey);
     setSelectedTracks((prev) => ({ ...prev, [playlistId]: new Set(keys) }));
     setSelectedPlaylists((prev) => {
@@ -696,17 +869,13 @@ export default function App() {
             {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
           </span>
         </label>
-        {selectedPlaylists.has(playlist.id) ? (
+        {selectedPlaylists.has(playlist.id) && !playlistTracks[playlist.id] ? (
           <button
             className="secondary compact"
             disabled={busy}
             onClick={() => loadTracks(playlist)}
           >
-            {playlistTracks[playlist.id]
-              ? "Show cached songs"
-              : playlist.migration_status === "delta"
-                ? "Choose new tracks"
-                : "Choose tracks"}
+            {playlist.migration_status === "delta" ? "Choose new tracks" : "Choose tracks"}
           </button>
         ) : null}
         {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
@@ -733,26 +902,35 @@ export default function App() {
               >
                 Deselect playlist
               </button>
-              <button
-                className="secondary compact"
-                disabled={busy}
-                onClick={() => loadTracks(playlist, { forceRefresh: true })}
-              >
-                Refresh songs
-              </button>
+              {sourceMode === "account" ? (
+                <button
+                  className="secondary compact"
+                  disabled={busy}
+                  onClick={() => loadTracks(playlist, { forceRefresh: true })}
+                >
+                  Refresh songs
+                </button>
+              ) : null}
             </div>
             {playlistTracks[playlist.id].map((track) => {
               const key = trackKey(track);
+              const selectable = isTrackSelectable(track);
               return (
                 <label key={key} className="track-row">
                   <input
                     type="checkbox"
                     checked={selectedTracks[playlist.id]?.has(key) ?? false}
+                    disabled={!selectable}
                     onChange={() => toggleTrack(playlist.id, key)}
                   />
                   <span>
                     {track.title} — {track.artist}
                     {track.explicit ? <span className="badge inline">explicit</span> : null}
+                    {!selectable ? (
+                      <span className="badge inline migration-blocked">
+                        {track.unsupported_reason ?? "unsupported"}
+                      </span>
+                    ) : null}
                     {track.migration_status === "migrated" ? (
                       <span className="badge inline migration-migrated">migrated</span>
                     ) : playlist.migration_status === "delta" ? (
@@ -891,7 +1069,13 @@ export default function App() {
           >
             <div className="route-summary">
               <div className="route-endpoint">
-                <ProviderIcon provider={source} />
+                <ProviderIcon
+                  provider={
+                    sourceMode === "account"
+                      ? source
+                      : importPreview?.source.provider ?? sourceMode
+                  }
+                />
                 <span>
                   <small>Source</small>
                   <strong>{sourceLabel}</strong>
@@ -909,14 +1093,119 @@ export default function App() {
                 </span>
               </div>
             </div>
+            <div className="source-mode-switch" aria-label="Source type">
+              <button
+                type="button"
+                aria-pressed={sourceMode === "account"}
+                onClick={() => chooseSourceMode("account")}
+              >
+                <Wifi aria-hidden="true" />
+                Connected account
+              </button>
+              <button
+                type="button"
+                aria-pressed={sourceMode === "url"}
+                onClick={() => chooseSourceMode("url")}
+              >
+                <Link2 aria-hidden="true" />
+                Public URL
+              </button>
+              <button
+                type="button"
+                aria-pressed={sourceMode === "text"}
+                onClick={() => chooseSourceMode("text")}
+              >
+                <FileText aria-hidden="true" />
+                Pasted text
+              </button>
+            </div>
             <div className="lanes">
-              <ProviderPicker
-                title="From"
-                role="source"
-                providers={providers}
-                selected={source}
-                onSelect={setSource}
-              />
+              {sourceMode === "account" ? (
+                <ProviderPicker
+                  title="From"
+                  role="source"
+                  providers={providers}
+                  selected={source}
+                  onSelect={setSource}
+                />
+              ) : (
+                <section className="card provider-picker provider-picker-source import-source-panel">
+                  <div className="provider-picker-heading">
+                    <span className="step-number">1</span>
+                    <div>
+                      <h2>{sourceMode === "url" ? "Import a shared playlist" : "Paste a track list"}</h2>
+                      <p className="muted">
+                        {sourceMode === "url"
+                          ? "Only supported playlist hosts are accepted."
+                          : "Use one track per line, artist - title, or tabular columns."}
+                      </p>
+                    </div>
+                  </div>
+                  {sourceMode === "url" ? (
+                    <div className="import-fields">
+                      <label htmlFor="publicPlaylistUrl">Public playlist URL</label>
+                      <input
+                        id="publicPlaylistUrl"
+                        type="url"
+                        value={importUrl}
+                        onChange={(event) => {
+                          setImportUrl(event.target.value);
+                          invalidateImportPreview();
+                        }}
+                        placeholder="https://music.youtube.com/playlist?list=..."
+                      />
+                      <p className="muted import-security-note">
+                        HTTPS only. Redirects, response size, and public-network destinations are
+                        strictly limited.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="import-fields">
+                      <label htmlFor="importPlaylistName">Playlist name</label>
+                      <input
+                        id="importPlaylistName"
+                        value={importName}
+                        onChange={(event) => {
+                          setImportName(event.target.value);
+                          invalidateImportPreview();
+                        }}
+                        placeholder="Imported track list"
+                      />
+                      <label htmlFor="importTrackText">Tracks</label>
+                      <textarea
+                        id="importTrackText"
+                        value={importText}
+                        onChange={(event) => {
+                          setImportText(event.target.value);
+                          invalidateImportPreview();
+                        }}
+                        placeholder={"# Comments start with #\nBjörk - Jóga\nMassive Attack\tTeardrop\tMezzanine"}
+                      />
+                    </div>
+                  )}
+                  <button
+                    className="primary import-preview-button"
+                    disabled={
+                      busy ||
+                      (sourceMode === "url" ? !importUrl.trim() : !importText.trim())
+                    }
+                    onClick={previewImportedSource}
+                  >
+                    {busy ? "Previewing…" : importPreview ? "Refresh preview" : "Preview import"}
+                  </button>
+                  {importPreview ? (
+                    <div className="import-preview-summary" aria-live="polite">
+                      <strong>{importPreview.playlist.name}</strong>
+                      <span>
+                        {importPreview.track_count} tracks from {importPreview.source.label}
+                      </span>
+                      {importPreview.playlist.owner_id ? (
+                        <span>Owner: {importPreview.playlist.owner_id}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              )}
               <ProviderPicker
                 title="To"
                 role="target"
@@ -935,19 +1224,43 @@ export default function App() {
                 </span>
                 <div>
                   <h2>Connect accounts</h2>
-                  <p className="muted">Authorize both services before choosing playlists.</p>
+                  <p className="muted">
+                    {sourceMode === "account"
+                      ? "Authorize both services before choosing playlists."
+                      : "Only the target is always required. Some playlist URLs also need source access."}
+                  </p>
                 </div>
               </div>
             </div>
             <div className="account-grid">
-              <AccountPanel
-                label="Source"
-                provider={source}
-                account={sourceAccount}
-                busy={busy}
-                onConnect={connect}
-                onTest={testConnection}
-              />
+              {sourceMode === "account" ? (
+                <AccountPanel
+                  label="Source"
+                  provider={source}
+                  account={sourceAccount}
+                  busy={busy}
+                  onConnect={connect}
+                  onTest={testConnection}
+                />
+              ) : importRequiredProvider ? (
+                <AccountPanel
+                  label="Source access required"
+                  provider={importRequiredProvider}
+                  account={importSourceAccount}
+                  busy={busy}
+                  onConnect={connect}
+                  onTest={testConnection}
+                />
+              ) : (
+                <div className="account-panel import-access-status">
+                  <p className="eyebrow">Source access</p>
+                  <strong>{importPreview ? "Preview ready" : "Not required yet"}</strong>
+                  <p className="muted">
+                    Public APIs are used where available. Private or restricted links will ask
+                    for the matching provider connection.
+                  </p>
+                </div>
+              )}
               <AccountPanel
                 label="Target"
                 provider={target}
@@ -1121,7 +1434,8 @@ export default function App() {
             </button>
           </section>
 
-          {source && sourceAccount ? (
+          {(sourceMode === "account" && source && sourceAccount) ||
+          (sourceMode !== "account" && importPreview) ? (
             <section className="card flow">
           <div className="section-heading">
             <div className="section-title">
@@ -1155,21 +1469,55 @@ export default function App() {
               >
                 Deselect all
               </button>
-              <button
-                className="secondary compact"
-                disabled={busy || playlistLoading}
-                onClick={() => void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })}
-              >
-                <RefreshCw aria-hidden="true" />
-                {playlistLoading ? "Refreshing…" : "Refresh playlists"}
-              </button>
+              {sourceMode === "account" ? (
+                <button
+                  className="secondary compact"
+                  disabled={busy || playlistLoading}
+                  onClick={() =>
+                    void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })
+                  }
+                >
+                  <RefreshCw aria-hidden="true" />
+                  {playlistLoading ? "Refreshing…" : "Refresh playlists"}
+                </button>
+              ) : null}
             </div>
           </div>
-          <p className="cache-guidance">
-            Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only
-            for new playlists or changed snapshots; songs are cached per playlist until Spotify
-            reports a new snapshot.
-          </p>
+          {sourceMode === "account" ? (
+            <p className="cache-guidance">
+              Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only
+              for new playlists or changed snapshots; songs are cached per playlist until Spotify
+              reports a new snapshot.
+            </p>
+          ) : importPreview ? (
+            <div className="import-preview-details">
+              <p className="cache-guidance">
+                Snapshot saved from {importPreview.source.locator}. The migration worker uses this
+                exact preview, even if the source changes later.
+              </p>
+              {importPreview.issues.length > 0 ? (
+                <div className="import-issues" role="status">
+                  <strong>
+                    {importPreview.issues.length} parsing or compatibility warning
+                    {importPreview.issues.length === 1 ? "" : "s"}
+                  </strong>
+                  <ul>
+                    {importPreview.issues.slice(0, 20).map((issue, index) => (
+                      <li key={`${issue.line ?? "item"}-${issue.code}-${index}`}>
+                        {issue.line ? `Line ${issue.line}: ` : ""}
+                        {issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                  {importPreview.issues.length > 20 ? (
+                    <p className="muted">
+                      {importPreview.issues.length - 20} more warnings are not shown.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="migration-top-stack">
             <div className="migration-action-bar">
               <div>
@@ -1320,11 +1668,45 @@ function isAnnotatedMigratedPlaylist(playlist: PlaylistRef): boolean {
 }
 
 function unmigratedTrackKeys(tracks: Track[]): string[] {
-  return tracks.filter((track) => track.migration_status !== "migrated").map(trackKey);
+  return tracks.filter(isTrackSelectable).map(trackKey);
+}
+
+function isTrackSelectable(track: Track): boolean {
+  return (
+    track.migration_status !== "migrated" &&
+    track.media_type === "track" &&
+    !track.is_local &&
+    !track.unsupported_reason
+  );
+}
+
+function hasUnsupportedRemainingTracks(tracks: Track[]): boolean {
+  return tracks.some(
+    (track) => track.migration_status !== "migrated" && !isTrackSelectable(track),
+  );
 }
 
 function trackKey(track: Track): string {
   return track.source_item_id ?? track.id ?? String(track.position ?? track.title);
+}
+
+function importPlaylistRef(preview: ImportPreview): PlaylistRef {
+  return {
+    id: preview.playlist.id ?? preview.import_id,
+    name: preview.playlist.name,
+    track_count: preview.track_count,
+    owner_id: preview.playlist.owner_id,
+    collaborative: null,
+    snapshot_id: null,
+    tracks_href: null,
+    migration_status: null,
+    migrated_track_count: 0,
+    remaining_track_count: preview.track_count,
+    migration_note: preview.unsupported_count
+      ? `${preview.unsupported_count} unsupported`
+      : null,
+    kind: preview.playlist.kind,
+  };
 }
 
 function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningsView } {
@@ -1344,6 +1726,28 @@ function warningMessage(detail: MigrationWarningsView): string {
   ].join("\n");
 }
 
+interface ImportConnectionAction {
+  code: "source_connection_required";
+  message: string;
+  provider: string;
+  action: "connect_source";
+}
+
+function importConnectionAction(error: unknown): ImportConnectionAction | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  if (!error.detail || typeof error.detail !== "object") return null;
+  const detail = error.detail as Partial<ImportConnectionAction>;
+  if (
+    detail.code !== "source_connection_required" ||
+    detail.action !== "connect_source" ||
+    typeof detail.message !== "string" ||
+    typeof detail.provider !== "string"
+  ) {
+    return null;
+  }
+  return detail as ImportConnectionAction;
+}
+
 interface DeviceChallenge {
   provider: string;
   userCode: string;
@@ -1353,6 +1757,7 @@ interface DeviceChallenge {
 }
 
 type WorkspaceTab = "migration" | "stats";
+type SourceMode = "account" | "url" | "text";
 
 interface AppleMusicChallenge {
   developerToken: string;

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -51,6 +52,17 @@ class Settings(BaseSettings):
     migration_safe_min_job_gap_s: int = 120
     migration_worker_job_timeout_s: int = 3600
 
+    # Public URL and pasted-text imports
+    import_max_text_bytes: int = 262_144
+    import_max_items: int = 1000
+    import_max_line_chars: int = 2000
+    import_max_field_chars: int = 500
+    import_max_url_chars: int = 2048
+    import_max_response_bytes: int = 2_000_000
+    import_max_redirects: int = 3
+    import_http_timeout_s: float = 10.0
+    import_open_playlist_hosts: str = ""
+
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
@@ -76,6 +88,18 @@ class Settings(BaseSettings):
     def allow_header_paste(self) -> bool:
         """Pasting provider session headers/cookies is only safe when self-hosted."""
         return not self.is_hosted
+
+    @property
+    def open_playlist_import_hosts(self) -> set[str]:
+        hosts = {
+            host.strip().lower().rstrip(".")
+            for host in self.import_open_playlist_hosts.split(",")
+            if host.strip()
+        }
+        frontend = urlsplit(self.frontend_url)
+        if frontend.scheme == "https" and frontend.hostname:
+            hosts.add(frontend.hostname.lower().rstrip("."))
+        return hosts
 
 
 @lru_cache

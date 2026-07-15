@@ -17,6 +17,7 @@ from app.core.adapter import (
     NotFound,
     ProviderCredential,
     ProviderError,
+    PublicPlaylistRef,
 )
 from app.core.models import PlaylistKind, PlaylistRef, Track
 from app.providers.ytmusic.adapter import (
@@ -68,6 +69,30 @@ def test_video_id_parsing() -> None:
     assert _video_id("https://www.youtube.com/watch?v=abc123&list=PL1") == "abc123"
     assert _video_id("ytmusic:video:abc123") == "abc123"
     assert _video_id("abc123") == "abc123"
+
+
+async def test_public_playlist_read_uses_unauthenticated_client() -> None:
+    fake = FakeYTMusic()
+    playlist_id = fake.create_playlist(
+        "Shared playlist",
+        "Public fixture",
+        video_ids=["aaa111", "bbb222"],
+    )
+    adapter = YTMusicAdapter(
+        client_factory=lambda cred: fake,
+        public_client_factory=lambda: fake,
+    )
+
+    playlist = await adapter.read_public_playlist(
+        PublicPlaylistRef(
+            id=playlist_id,
+            canonical_url=f"https://music.youtube.com/playlist?list={playlist_id}",
+        )
+    )
+
+    assert playlist.name == "Shared playlist"
+    assert [track.title for track in playlist.tracks] == ["Song One", "Song Two"]
+    assert [track.position for track in playlist.tracks] == [0, 1]
 
 
 async def test_device_auth_begin_is_default_when_oauth_is_configured(
