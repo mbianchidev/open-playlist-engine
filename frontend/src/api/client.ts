@@ -7,6 +7,7 @@ import type {
   CreateMigrationBody,
   JobItemView,
   JobView,
+  LibraryView,
   MigrationOptionView,
   MigrationStatsView,
   MigrationWarningsView,
@@ -111,6 +112,15 @@ export async function getPlaylist(
 ): Promise<Playlist> {
   const params = playlistParams(provider, accountId, context);
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
+export async function getLibrary(
+  provider: string,
+  accountId: string,
+  context?: PlaylistContext,
+): Promise<LibraryView> {
+  const params = playlistParams(provider, accountId, context);
+  return json<LibraryView>(await fetch(`/api/library?${params}`));
 }
 
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {

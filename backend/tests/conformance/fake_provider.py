@@ -11,6 +11,8 @@ from typing import Any
 
 from app.core.adapter import (
     AddItemResult,
+    AlbumCandidate,
+    ArtistCandidate,
     AuthChallenge,
     AuthKind,
     ChallengeShape,
@@ -21,7 +23,14 @@ from app.core.adapter import (
     TrackCandidate,
 )
 from app.core.capabilities import Capability, CapabilityDescriptor, SearchMode, Stability
-from app.core.models import Playlist, PlaylistRef, Track
+from app.core.models import (
+    Album,
+    Artist,
+    ArtistCollectionSemantics,
+    Playlist,
+    PlaylistRef,
+    Track,
+)
 
 
 def fake_cred(provider: str) -> ProviderCredential:
@@ -68,6 +77,10 @@ class FakeAdapter:
                 capabilities={
                     Capability.READ_PLAYLISTS,
                     Capability.READ_TRACKS,
+                    Capability.READ_SAVED_ALBUMS,
+                    Capability.WRITE_SAVED_ALBUMS,
+                    Capability.READ_FOLLOWED_ARTISTS,
+                    Capability.WRITE_FOLLOWED_ARTISTS,
                     Capability.CREATE_PLAYLIST,
                     Capability.ADD_TRACKS,
                 },
@@ -75,10 +88,14 @@ class FakeAdapter:
                 search_modes=[SearchMode.ISRC, SearchMode.TEXT],
                 stability=Stability.STABLE,
                 max_add_batch=2,
+                max_library_batch=2,
             ),
+            artist_collection_semantics=ArtistCollectionSemantics.FOLLOW,
         )
         self.auth = FakeAuth()
         self._created: dict[str, list[str]] = {}
+        self._saved_albums = {"fake:album:album-1"}
+        self._followed_artists = {"fake:artist:artist-1"}
 
     async def iter_playlists(self, cred: ProviderCredential) -> AsyncIterator[PlaylistRef]:
         for pl in _LIBRARY.values():
@@ -121,6 +138,86 @@ class FakeAdapter:
 
     async def validate_uri(self, cred: ProviderCredential, uri: str) -> bool:
         return uri.startswith("fake:track:")
+
+    async def iter_saved_albums(self, cred: ProviderCredential) -> AsyncIterator[Album]:
+        yield Album(
+            id="album-1",
+            title="Album One",
+            artists=["Artist One"],
+            upc="0123456789012",
+            provider_uris={"fake": "fake:album:album-1"},
+        )
+
+    async def read_saved_album(self, cred: ProviderCredential, album_id: str) -> Album:
+        async for album in self.iter_saved_albums(cred):
+            if album.id == album_id:
+                return album
+        raise NotFound(album_id)
+
+    async def iter_followed_artists(self, cred: ProviderCredential) -> AsyncIterator[Artist]:
+        yield Artist(
+            id="artist-1",
+            name="Artist One",
+            provider_uris={"fake": "fake:artist:artist-1"},
+        )
+
+    async def read_followed_artist(self, cred: ProviderCredential, artist_id: str) -> Artist:
+        async for artist in self.iter_followed_artists(cred):
+            if artist.id == artist_id:
+                return artist
+        raise NotFound(artist_id)
+
+    async def search_albums(
+        self, cred: ProviderCredential, album: Album, *, limit: int = 5
+    ) -> list[AlbumCandidate]:
+        return [
+            AlbumCandidate(
+                provider_album_id="album-1",
+                uri="fake:album:album-1",
+                title="Album One",
+                artists=["Artist One"],
+                upc="0123456789012",
+            )
+        ][:limit]
+
+    async def search_artists(
+        self, cred: ProviderCredential, artist: Artist, *, limit: int = 5
+    ) -> list[ArtistCandidate]:
+        return [
+            ArtistCandidate(
+                provider_artist_id="artist-1",
+                uri="fake:artist:artist-1",
+                name="Artist One",
+            )
+        ][:limit]
+
+    async def validate_album_uri(self, cred: ProviderCredential, uri: str) -> bool:
+        return uri.startswith("fake:album:")
+
+    async def validate_artist_uri(self, cred: ProviderCredential, uri: str) -> bool:
+        return uri.startswith("fake:artist:")
+
+    async def contains_saved_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]:
+        return [uri in self._saved_albums for uri in uris]
+
+    async def contains_followed_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]:
+        return [uri in self._followed_artists for uri in uris]
+
+    async def save_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        self._saved_albums.update(uris)
+        return [AddItemResult(uri=uri, ok=True, position=index) for index, uri in enumerate(uris)]
+
+    async def follow_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        self._followed_artists.update(uris)
+        return [AddItemResult(uri=uri, ok=True, position=index) for index, uri in enumerate(uris)]
 
     async def create_playlist(self, cred: ProviderCredential, spec: CreatePlaylistSpec) -> str:
         pid = f"new-{len(self._created) + 1}"
