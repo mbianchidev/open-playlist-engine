@@ -14,7 +14,7 @@ from app.core.migration_state import keys_from_metadata, track_keys
 from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
-from app.db.account_scope import provider_account_history
+from app.db.account_scope import migration_source_history, provider_account_history
 from app.db.base import get_session
 from app.db.repositories import AccountNotFound, CredentialNotFound, load_fresh_credential
 from app.providers.spotify.adapter import SPOTIFY_SAVED_TRACKS_PLAYLIST_ID
@@ -459,9 +459,11 @@ async def _migration_summaries(
         .where(
             orm.MigrationJob.user_id == user_id,
             orm.MigrationJob.source_provider == source_provider,
-            provider_account_history(
+            migration_source_history(
                 orm.MigrationJob.source_account_id,
+                orm.MigrationJob.source_kind,
                 current_account_id=source_account_id,
+                current_source_kind="provider",
                 user_id=user_id,
                 provider=source_provider,
             ),
@@ -602,9 +604,11 @@ async def _completed_full_playlist_exists(
         .where(
             orm.MigrationJob.user_id == user_id,
             orm.MigrationJob.source_provider == source_provider,
-            provider_account_history(
+            migration_source_history(
                 orm.MigrationJob.source_account_id,
+                orm.MigrationJob.source_kind,
                 current_account_id=source_account_id,
+                current_source_kind="provider",
                 user_id=user_id,
                 provider=source_provider,
             ),
@@ -646,9 +650,11 @@ async def _migrated_track_map(
         .where(
             orm.MigrationJob.user_id == user_id,
             orm.MigrationJob.source_provider == source_provider,
-            provider_account_history(
+            migration_source_history(
                 orm.MigrationJob.source_account_id,
+                orm.MigrationJob.source_kind,
                 current_account_id=source_account_id,
+                current_source_kind="provider",
                 user_id=user_id,
                 provider=source_provider,
             ),

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -50,6 +51,18 @@ class Settings(BaseSettings):
     migration_safe_daily_tracks: int = 250
     migration_safe_min_job_gap_s: int = 120
     migration_worker_job_timeout_s: int = 3600
+
+    # Local library snapshots
+    snapshot_dir: Path = Path("./data/snapshots")
+    snapshot_default_retention_count: int = 10
+    snapshot_default_retention_days: int = 90
+    snapshot_import_max_bytes: int = 1_073_741_824
+    snapshot_max_uncompressed_bytes: int = 4_294_967_296
+    snapshot_max_manifest_bytes: int = 67_108_864
+    snapshot_max_record_bytes: int = 2_097_152
+    snapshot_max_compression_ratio: int = 200
+    snapshot_stale_after_s: int = 86_400
+    snapshot_worker_job_timeout_s: int = 3600
 
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""

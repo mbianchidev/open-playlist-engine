@@ -468,3 +468,32 @@ familiar and task-oriented.
 The implementation keeps the existing API behavior and accessible tab model.
 `frontend/src/index.css` retains the component/state selector vocabulary, while
 `frontend/src/theme.css` supplies tokens and the current visual treatment.
+
+## 18. Local library snapshots
+
+Snapshot profiles persist a set of connected provider accounts and selected current
+library collections (standard playlists and native liked-track collections).
+Creation runs as an arq job and streams provider items directly into a ZIP64 Open
+Playlist bundle, so the whole library is never accumulated in memory. Provider read
+errors are recorded per collection and produce a usable `partial` archive.
+
+The v1 bundle contains only `manifest.json`, `manifest.sha256`, and declared
+`collections/*.jsonl` payloads. The manifest records schema version, snapshot and
+library lineage UUIDs, timestamps, non-secret source labels, counts, partial
+failures, and per-collection payload/item checksums. Track serialization uses the
+universal model but drops audio preview data and unknown opaque metadata; no
+credential, token, auth header, cookie, or audio member is permitted.
+
+All paths are generated below `OPE_SNAPSHOT_DIR`. Verification never extracts ZIP
+members and rejects traversal, duplicates, undeclared binary members, newer schemas,
+excessive compressed/uncompressed sizes, unsafe compression ratios, invalid records,
+and checksum/count mismatches. Docker mounts one named volume into both backend and
+worker. Startup reconciliation fails stale jobs and removes or restores old
+temporary, orphan, and staged-deletion files without leaving the configured root.
+
+Restore creates an ordinary `migration_job` with `source_kind=snapshot` and a
+verified `source_snapshot_id`. The worker branches only for source reads; target
+preflight, matching, review, write batching, duplicate checks, operation ledger,
+SSE, and reports are shared. A stable `snapshot:<library_id>` lineage scopes prior
+review decisions and target-playlist reuse exactly, while live playlist annotations
+exclude snapshot jobs.

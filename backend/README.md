@@ -8,8 +8,11 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
-- `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/jobs/` — arq worker + migration and streamed snapshot jobs.
+- `app/snapshots/` — versioned bundle format, safe filesystem boundary, verification,
+  diffing, retention, and storage reconciliation.
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
+  `/snapshots`).
 
 ## Develop
 ```bash
@@ -62,3 +65,21 @@ tracks/day, and 120 seconds between jobs.
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).
+
+## Local snapshots
+
+`POST /api/snapshots/profiles/{id}/snapshots` queues a streamed snapshot job.
+Profiles can include collections from multiple connected accounts. The worker reads
+each collection with `iter_playlist_items`, writes canonical JSONL directly into a
+ZIP64 Open Playlist bundle, records partial provider failures, verifies checksums,
+and applies deterministic count/age retention. The API owns profile/history CRUD,
+storage usage, verification, diff, download, portable import, deletion, and cleanup.
+
+Snapshot restore uses `source_snapshot_id` on the existing migration endpoints.
+Only source reading changes; target preflight, matching, review, chunked writes,
+duplicate detection, operation ledger, SSE progress, and statistics remain the same.
+Snapshot lineage is isolated from deleted/reconnected live-account history.
+
+Set `OPE_SNAPSHOT_DIR` to a durable directory writable by both API and worker.
+Docker Compose mounts the shared `snapshots` volume at `/data/snapshots`. Full
+format and operations documentation is in [`docs/SNAPSHOTS.md`](../docs/SNAPSHOTS.md).

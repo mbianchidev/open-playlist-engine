@@ -111,9 +111,10 @@ export interface Playlist {
 }
 
 export interface CreateMigrationBody {
-  source_provider: string;
+  source_provider?: string | null;
   target_provider: string;
-  source_account_id: string;
+  source_account_id?: string | null;
+  source_snapshot_id?: string | null;
   target_account_id: string;
   selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
   acknowledge_warnings?: boolean;
@@ -122,7 +123,9 @@ export interface CreateMigrationBody {
 export interface JobView {
   id: string;
   status: string;
+  source_kind: string;
   source_provider: string;
+  source_snapshot_id: string | null;
   target_provider: string;
   total: number;
   done: number;
@@ -214,4 +217,148 @@ export interface ProgressEvent {
   items?: JobItemView[];
   job_id?: string;
   missing?: boolean;
+}
+
+export interface SnapshotProfileSourceInput {
+  provider: string;
+  account_id: string;
+  collection_ids: string[];
+}
+
+export interface CreateSnapshotProfileBody {
+  name: string;
+  sources: SnapshotProfileSourceInput[];
+  retention_count?: number | null;
+  retention_days?: number | null;
+}
+
+export interface SnapshotProfileSourceView {
+  id: string;
+  provider: string;
+  account_id: string | null;
+  account_label: string | null;
+  collection_ids: string[];
+}
+
+export interface SnapshotProfileView {
+  id: string;
+  name: string;
+  retention_count: number | null;
+  retention_days: number | null;
+  sources: SnapshotProfileSourceView[];
+  snapshot_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SnapshotCounts {
+  sources: number;
+  collections: number;
+  items: number;
+  failed_collections: number;
+}
+
+export interface SnapshotSourceManifest {
+  key: string;
+  provider: string;
+  account_label: string | null;
+  selected_collection_count: number;
+}
+
+export interface SnapshotFailure {
+  source_key: string;
+  provider: string;
+  collection_id: string | null;
+  message: string;
+}
+
+export interface SnapshotCollectionManifest {
+  id: string;
+  source_key: string;
+  source_provider: string;
+  source_collection_id: string;
+  entity_type: "playlist";
+  name: string;
+  kind: "standard" | "liked_tracks";
+  path: string;
+  item_count: number;
+  payload_bytes: number;
+  payload_sha256: string;
+  items_sha256: string;
+  complete: boolean;
+  error: string | null;
+}
+
+export interface SnapshotManifest {
+  format: "open-playlist-bundle";
+  schema_version: number;
+  snapshot_id: string;
+  library_id: string;
+  created_at: string;
+  profile_name: string | null;
+  status: "complete" | "partial";
+  sources: SnapshotSourceManifest[];
+  counts: SnapshotCounts;
+  collections: SnapshotCollectionManifest[];
+  failures: SnapshotFailure[];
+}
+
+export interface SnapshotView {
+  id: string;
+  profile_id: string | null;
+  profile_name: string | null;
+  bundle_id: string;
+  library_id: string;
+  source_providers: string[];
+  source_labels: string[];
+  status: string;
+  schema_version: number;
+  size_bytes: number;
+  counts: SnapshotCounts;
+  errors: Record<string, unknown>[];
+  verification_status: string;
+  verification_error: string | null;
+  verified_at: string | null;
+  created_at: string | null;
+}
+
+export interface SnapshotDetailView extends SnapshotView {
+  manifest: SnapshotManifest | null;
+}
+
+export interface SnapshotListView {
+  snapshots: SnapshotView[];
+  total_bytes: number;
+}
+
+export interface SnapshotVerificationView {
+  snapshot_id: string;
+  status: string;
+  archive_sha256: string | null;
+  verified_at: string | null;
+  error: string | null;
+}
+
+export interface SnapshotDiffCollection {
+  id: string;
+  name: string;
+  previous_name: string | null;
+  item_count: number;
+  previous_item_count: number | null;
+}
+
+export interface SnapshotDiffView {
+  base_snapshot_id: string;
+  compare_snapshot_id: string;
+  added: SnapshotDiffCollection[];
+  removed: SnapshotDiffCollection[];
+  renamed: SnapshotDiffCollection[];
+  changed: SnapshotDiffCollection[];
+  items_added: number;
+  items_removed: number;
+}
+
+export interface SnapshotCleanupView {
+  deleted_count: number;
+  deleted_bytes: number;
 }
