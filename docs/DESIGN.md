@@ -41,7 +41,10 @@ supports import → match → write with SSE item progress; low-confidence match
 marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
 batch-denied from the progress panel. The UI also exposes ledger-backed
 single-migration and all-time aggregate statistics with source/target provider
-filters.
+filters. A separate generator workspace uses an administrator-configured local
+OpenAI-compatible model by default, with optional Copilot SDK support. It validates
+structured intents, resolves real provider candidates, and holds an editable private
+draft before any write.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -66,6 +69,17 @@ created.
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
 | 4 | **Write**: create playlists and add tracks, idempotently | arq job + operation ledger |
 | 5 | UI shows live progress | Frontend SSE progress board |
+
+Playlist generation enters the pipeline before matching:
+
+| Generator phase | Step | Component |
+|---|---|---|
+| G0 | Prompt plus explicit music controls | React generator workspace |
+| G1 | Bounded structured search intents | local OpenAI-compatible model or optional Copilot SDK |
+| G2 | Resolve and deduplicate real target tracks | target adapter + `MatchService` |
+| G3 | Rename, reorder, add/remove/replace, approve, regenerate | private generation draft |
+| G4 | Explicit confirmation snapshots approved URIs | `MigrationJob` + `JobItem` |
+| G5 | Create and add through durable write flow | arq worker + operation ledger |
 
 ### Safe migration defaults
 Spotify → YouTube Music conversion is deliberately boring and slow by default:
@@ -110,8 +124,8 @@ Apple   ┘                                  └ Apple
 
 ### Frontend / backend separation
 - **Backend** owns all OAuth/tokens, provider API calls, matching, jobs,
-  orchestration. Emits OpenAPI.
-- **Frontend** owns the source→target wizard, selection, review, progress. It
+  generation model calls, private drafts, and orchestration. Emits OpenAPI.
+- **Frontend** owns the source→target wizard, generator controls, selection, review, progress. It
   consumes a client **generated from the backend OpenAPI**. No business logic, no
   provider secrets.
 
@@ -358,6 +372,8 @@ graph as an open dataset is deferred pending legal review.
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
 | `migration_job`, `job_item` | jobs + per-song status (drives progress) | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
+| `generation_preference` | opt-in bounded local artist/genre summary | private |
+| `generation_draft`, `generation_draft_item` | editable resolved candidates before confirmation | private |
 | `track_identity` | canonical track (UUID pk, ISRC as evidence) | global, no PII |
 | `track_edge` | provider links with confidence/source/scope | global + per-account overlays |
 
@@ -390,6 +406,10 @@ generated OpenAPI client.
 ## 12. Security & privacy
 
 - Encrypt provider credentials at rest via `KeyProvider`; never log/redact tokens.
+- Never persist or log raw generator prompts. Model calls receive only the prompt,
+  explicit controls, and an opt-in capped local preference summary.
+- Generator drafts are private per-user data. Copilot SDK sessions run without tools,
+  file context, memory, skills, config discovery, or session telemetry.
 - PKCE + `state`; refresh ahead of expiry; minimal scopes per capability.
 - Separate the PII-free global graph from private user data and per-account overlays.
 - Unofficial adapters: pace + jitter; surface "may break / ToS-grey" warnings.
@@ -436,6 +456,8 @@ generated OpenAPI client.
 - ✅ **[rev]** idempotency via operation ledger; central rate limiter; replayable SSE.
 - ✅ **[rev]** capability descriptors (constraints); fidelity contract + lossy report.
 - ✅ Self-host single-user v1 with SaaS-ready seams (`DEPLOYMENT_MODE` + `KeyProvider`).
+- ✅ Self-hosted OpenAI-compatible playlist generation with optional Copilot SDK,
+  provider-resolved editable drafts, and confirmation-gated durable writes.
 
 ## 16. Open questions
 

@@ -4,12 +4,14 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 
 ## Layout
 - `app/core/` — provider-agnostic hub: Open Playlist models, capabilities, plugin
-  contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
+  contract (`adapter.py`), registry, matching, generator model adapters, preflight,
+  rate limiting, and security.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
-- `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/jobs/` — arq worker + import/match and confirmed-generator write paths.
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
+  `/generator`).
 
 ## Develop
 ```bash
@@ -60,5 +62,15 @@ match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
 
+The generator keeps raw prompts out of the database. `app/core/generator.py` validates
+bounded structured output from a local OpenAI-compatible endpoint or optional GitHub
+Copilot SDK session, then resolves every suggestion through the target adapter and
+`MatchService`. `app/api/generator.py` owns private preference summaries and editable
+drafts. Confirmation snapshots approved URIs into ordinary `MigrationJob`/`JobItem`
+rows; the worker's early `generator` source fork skips source credentials and never
+rematches a reviewed URI.
+
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).
+Generator setup is documented in
+[`docs/PLAYLIST_GENERATOR.md`](../docs/PLAYLIST_GENERATOR.md).

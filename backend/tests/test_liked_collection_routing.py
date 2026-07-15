@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.migrations import _validate_target_capabilities
 from app.core.adapter import (
     AccessDenied,
     AuthKind,
@@ -13,6 +12,7 @@ from app.core.adapter import (
 )
 from app.core.capabilities import Capability, CapabilityDescriptor
 from app.core.models import Playlist, PlaylistKind
+from app.core.preflight import validate_target_capabilities
 from app.db import models as orm
 from app.jobs.migration import _resolve_target_playlist
 
@@ -90,14 +90,14 @@ def test_preflight_requires_reconnect_for_missing_library_write_scope() -> None:
     target = LibraryTarget()
 
     with pytest.raises(AccessDenied, match="library.write"):
-        _validate_target_capabilities(
+        validate_target_capabilities(
             target,
             _cred("library.read"),
-            {
-                "source:liked": Playlist(
+            [
+                Playlist(
                     id="source:liked",
                     name="Liked Songs",
                     kind=PlaylistKind.LIKED_TRACKS,
                 )
-            },
+            ],
         )

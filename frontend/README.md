@@ -23,7 +23,7 @@ it with a generated client:
 npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/openapi.json
 ```
 
-## Flow (maps to the phased design)
+## Migration flow
 1. Pick source/target providers from `/api/providers`.
 2. Connect accounts through generic auth challenges.
 3. Load source playlists and optional per-playlist track details from `/api/playlists`.
@@ -41,6 +41,22 @@ Native liked-track collections map across Spotify Liked Songs, Tidal My Collecti
 and YouTube Music Liked Songs.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
+
+## Generator flow
+
+The **Generator** workspace reads only the backend OpenAPI surface:
+
+1. Show whether the administrator-configured model is available.
+2. Select a connected target account and enter a prompt plus music controls.
+3. Optionally enable or delete the capped local personalization summary.
+4. Generate a private draft whose items are resolved against real provider tracks.
+5. Approve low-confidence matches, search replacements, add/remove songs, reorder,
+   rename, or regenerate.
+6. Confirm once to create a durable migration job, then switch to the existing
+   progress and statistics surfaces.
+
+Unresolved and unreviewed items disable confirmation. The frontend never receives
+model credentials and never calls provider write APIs directly.
 
 ## Visual system
 
