@@ -5,7 +5,7 @@ info:
     A universal, open, and interoperable playlist API specification.
     Enables seamless migration and playback of playlists across all major
     music platforms—Spotify, Tidal, YouTube Music, Deezer, Apple Music, and beyond.
-  version: 0.1.0
+  version: 0.2.0
   license:
     name: MIT
 
@@ -124,21 +124,78 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /open-playlists/export/file:
+    post:
+      summary: Export playlists to portable local files
+      description: |
+        Serializes one or more provider playlists through the universal Open
+        Playlist model. A single playlist is returned directly. Multiple
+        playlists are returned as a ZIP64 archive with a versioned manifest.
+      operationId: exportPortablePlaylistFiles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortableExportRequest"
+      responses:
+        "200":
+          description: Portable playlist file or ZIP archive.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+            X-Open-Playlist-Schema-Version:
+              schema:
+                type: integer
+                enum: [1]
+            X-Open-Playlist-Warning-Count:
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+                format: binary
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+                format: binary
+            application/xspf+xml:
+              schema:
+                type: string
+                format: binary
+            application/vnd.open-playlist+json:
+              schema:
+                type: string
+                format: binary
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid selection or export limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   schemas:
     Playlist:
       type: object
       required:
-        - id
         - name
         - tracks
-        - owner_id
-        - created_at
-        - updated_at
       properties:
         id:
           type: string
-          format: uuid
+          nullable: true
           description: Provider-agnostic unique playlist identifier.
           example: "550e8400-e29b-41d4-a716-446655440000"
         name:
@@ -147,11 +204,13 @@ components:
           example: "Summer Vibes 2026"
         description:
           type: string
+          nullable: true
           description: A short description of the playlist.
           example: "Upbeat tracks for sunny days."
         photo:
           type: string
           format: uri
+          nullable: true
           description: URI to the playlist cover image.
           example: "https://images.example.com/playlists/summer-vibes.jpg"
         tracks:
@@ -161,29 +220,40 @@ components:
           description: Ordered list of tracks in the playlist.
         owner_id:
           type: string
+          nullable: true
           description: The unique identifier of the playlist owner.
           example: "user-42"
         created_at:
           type: string
           format: date-time
+          nullable: true
           description: Timestamp when the playlist was created.
           example: "2026-01-15T10:30:00Z"
         updated_at:
           type: string
           format: date-time
+          nullable: true
           description: Timestamp when the playlist was last updated.
           example: "2026-02-01T14:00:00Z"
+        snapshot_id:
+          type: string
+          nullable: true
+          description: Provider snapshot/version identifier when available.
+        kind:
+          type: string
+          enum: [standard, liked_tracks]
+          default: standard
+          description: Standard playlist or provider-native liked/saved collection.
 
     Track:
       type: object
       required:
-        - id
         - title
         - artist
       properties:
         id:
           type: string
-          format: uuid
+          nullable: true
           description: Universal unique track identifier.
           example: "6fa459ea-ee8a-3ca4-894e-db77e160355e"
         title:
@@ -196,39 +266,48 @@ components:
           example: "The Weeknd"
         album:
           type: string
+          nullable: true
           description: Album name.
           example: "After Hours"
-        duration:
+        duration_s:
           type: integer
+          nullable: true
           description: Track duration in seconds.
           example: 200
         release_date:
           type: string
           format: date
+          nullable: true
           description: Full release (publication) date of the track, when known.
           example: "2020-03-20"
         release_year:
           type: integer
+          nullable: true
           description: Year of publication. Useful when only the year is known.
           example: 2020
         genre:
           type: string
+          nullable: true
           description: Primary genre of the track.
           example: "Synth-pop"
         track_number:
           type: integer
+          nullable: true
           description: Position of the track within its album or disc.
           example: 9
         disc_number:
           type: integer
+          nullable: true
           description: Disc number for multi-disc albums.
           example: 1
         explicit:
           type: boolean
+          nullable: true
           description: Indicates whether the track contains explicit content.
           example: false
         composer:
           type: string
+          nullable: true
           description: Composer or songwriter credited for the track.
           example: "Abel Tesfaye"
         credits:
@@ -249,15 +328,18 @@ components:
               name: "Savan Kotecha"
         label:
           type: string
+          nullable: true
           description: Record label that published the track.
           example: "XO / Republic Records"
         isrc:
           type: string
+          nullable: true
           description: International Standard Recording Code.
           example: "USUG12000497"
         artwork_uri:
           type: string
           format: uri
+          nullable: true
           description: URI to track or album artwork.
           example: "https://images.example.com/tracks/blinding-lights.jpg"
         provider_uris:
@@ -278,6 +360,42 @@ components:
           example:
             genre: "Synth-pop"
             bpm: 171
+        migration_status:
+          type: string
+          nullable: true
+          description: Optional engine migration annotation.
+        migrated_target_playlist_id:
+          type: string
+          nullable: true
+          description: Optional target playlist annotation.
+        migrated_target_uri:
+          type: string
+          nullable: true
+          description: Optional target item URI annotation.
+        position:
+          type: integer
+          nullable: true
+          description: Provider source position when available.
+        media_type:
+          type: string
+          enum: [track, episode, video, local_file, unknown]
+          default: track
+        is_local:
+          type: boolean
+          default: false
+        source_item_id:
+          type: string
+          nullable: true
+          description: Provider playlist-item identifier.
+        added_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Date the item was added to the playlist.
+        unsupported_reason:
+          type: string
+          nullable: true
+          description: Reason the item cannot be migrated or played when known.
 
     Credit:
       type: object
@@ -299,14 +417,160 @@ components:
           example: "Max Martin"
         instrument:
           type: string
+          nullable: true
           description: |
             Optional instrument or specialization for performer credits.
           example: "guitar"
         uri:
           type: string
           format: uri
+          nullable: true
           description: Optional URI identifying the contributor (e.g. an artist page).
           example: "https://music.example.com/artist/max-martin"
+
+    PortableExportFormat:
+      type: string
+      enum: [csv, txt, m3u8, xspf, json]
+
+    PlaylistSelection:
+      type: object
+      required:
+        - playlist_ids
+      properties:
+        playlist_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Playlist identifiers in output order.
+        tracks:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          default: {}
+          description: Optional selected track/item identifiers by playlist ID.
+
+    PortableExportRequest:
+      type: object
+      required:
+        - source_provider
+        - source_account_id
+        - format
+        - selection
+      properties:
+        source_provider:
+          type: string
+          example: spotify
+        source_account_id:
+          type: string
+        format:
+          $ref: "#/components/schemas/PortableExportFormat"
+        selection:
+          $ref: "#/components/schemas/PlaylistSelection"
+
+    ExportWarning:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        playlist_id:
+          type: string
+          nullable: true
+
+    OpenPlaylistBundle:
+      type: object
+      required:
+        - $schema
+        - schema_version
+        - source_provider
+        - playlists
+        - warnings
+      properties:
+        $schema:
+          type: string
+          enum:
+            - https://openplaylistengine.dev/schemas/export/open-playlist-bundle-v1.json
+        schema_version:
+          type: integer
+          enum: [1]
+        source_provider:
+          type: string
+        playlists:
+          type: array
+          items:
+            $ref: "#/components/schemas/Playlist"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportWarning"
+
+    ExportManifestEntry:
+      type: object
+      required:
+        - playlist_id
+        - playlist_name
+        - filename
+        - status
+        - track_count
+        - warning_codes
+      properties:
+        playlist_id:
+          type: string
+        playlist_name:
+          type: string
+        filename:
+          type: string
+        status:
+          type: string
+          enum: [ok, warning, error]
+        track_count:
+          type: integer
+          minimum: 0
+        warning_codes:
+          type: array
+          items:
+            type: string
+
+    ExportManifest:
+      type: object
+      required:
+        - $schema
+        - schema_version
+        - format
+        - source_provider
+        - playlist_count
+        - entries
+        - warnings
+      properties:
+        $schema:
+          type: string
+          enum:
+            - https://openplaylistengine.dev/schemas/export/open-playlist-export-manifest-v1.json
+        schema_version:
+          type: integer
+          enum: [1]
+        format:
+          $ref: "#/components/schemas/PortableExportFormat"
+        source_provider:
+          type: string
+        playlist_count:
+          type: integer
+          minimum: 1
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportManifestEntry"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportWarning"
 
     ImportRequest:
       type: object

@@ -1,7 +1,7 @@
 # Open Playlist Engine
 
-Any-to-any music **playlist migration** — move playlists between Spotify, YouTube
-Music, Tidal, Deezer, Apple Music and more, in any direction, through a sleek UI.
+Any-to-any music **playlist migration and portable export** — move playlists between
+Spotify, YouTube Music, Tidal, Deezer, Apple Music and more, or download local files.
 
 This is the first reference implementation of the
 [`open-playlist`](https://github.com/mbianchidev/open-playlist) universal
@@ -13,9 +13,9 @@ instantly works with all the others — both as source and target.
 > implemented directions dynamically: Spotify OAuth/read/search/write, Tidal
 > OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
 > official Apple MusicKit library read/search/write. Persisted credentials,
-> playlist/track selection, partial-migration detection, migration jobs, review
-> actions, SSE progress and migration statistics are wired. Other provider
-> directions remain gated until
+> playlist/track selection, CSV/TXT/M3U8/XSPF/JSON exports, partial-migration
+> detection, migration jobs, review actions, SSE progress and migration statistics
+> are wired. Other provider directions remain gated until
 > their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -23,7 +23,8 @@ instantly works with all the others — both as source and target.
 
 ```
 source provider ─ read ─▶ [ Open Playlist hub ] ─ write ─▶ target provider
-                              (identity graph)
+                              │ (identity graph)
+                              └─ export ─▶ local CSV/TXT/M3U8/XSPF/JSON
 ```
 
 Pipeline: **import → match → review → write**, with durable, replayable progress.
@@ -37,7 +38,7 @@ for low-confidence matches.
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
 | `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
-| `docs/` | [`DESIGN.md`](docs/DESIGN.md) and [ADRs](docs/adr). |
+| `docs/` | Design, provider setup, portable export documentation, and ADRs. |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
 the generated OpenAPI client.
@@ -79,7 +80,7 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
-`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+`OPE_EXPORT_MAX_PLAYLISTS`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
 Self-host mode resolves the migration owner server-side as the local user. Hosted
 mode fails closed until a real user-authentication dependency is configured; it
 does not accept a caller-provided user ID.
@@ -87,7 +88,25 @@ Safe migration defaults are intentionally slow and can be overridden only after 
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
-ARQ's 5-minute default timeout.
+ARQ's 5-minute default timeout. Portable exports allow up to 100 playlists per
+download by default (`OPE_EXPORT_MAX_PLAYLISTS`) and do not impose a track cap.
+
+## Portable local exports
+
+Connect a source account, select one or more playlists or individual tracks, choose
+a file format, then use **Download export**. A target provider is not required.
+The **Stats** tab can also download the source snapshot recorded by a completed or
+failed migration.
+
+Single-playlist exports download directly. Multi-playlist exports use a deterministic
+ZIP with `manifest.json`; JSON archives contain one lossless, versioned Open Playlist
+bundle, while CSV, TXT, M3U8, and XSPF archives contain one collision-safe file per
+playlist. Output is generated through temporary files and streamed to the browser,
+then deleted after completion or cancellation.
+
+Format schemas, MIME types, encodings, warning behavior, filenames, limits, and API
+examples are documented in
+[`docs/EXPORTING_PLAYLISTS.md`](docs/EXPORTING_PLAYLISTS.md).
 
 ## Spotify, Tidal, YouTube Music and Apple Music
 
