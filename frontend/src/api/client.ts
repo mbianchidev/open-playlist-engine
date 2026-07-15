@@ -10,6 +10,11 @@ import type {
   MigrationOptionView,
   MigrationStatsView,
   MigrationWarningsView,
+  DuplicateCandidateView,
+  OrganizerJobView,
+  OrganizerPlaylistView,
+  OrganizerPreflightView,
+  OrganizerRequestBody,
   Playlist,
   PlaylistRef,
   ProviderView,
@@ -111,6 +116,71 @@ export async function getPlaylist(
 ): Promise<Playlist> {
   const params = playlistParams(provider, accountId, context);
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
+export async function getOrganizerPlaylists(
+  provider: string,
+  accountId: string,
+  refresh = false,
+): Promise<OrganizerPlaylistView[]> {
+  const params = new URLSearchParams({ provider, account_id: accountId });
+  if (refresh) params.set("refresh", "true");
+  return json<OrganizerPlaylistView[]>(await fetch(`/api/organizer/playlists?${params}`));
+}
+
+export async function preflightOrganizer(
+  body: OrganizerRequestBody,
+): Promise<OrganizerPreflightView> {
+  return json<OrganizerPreflightView>(
+    await fetch("/api/organizer/preflight", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function createOrganizerJob(
+  body: OrganizerRequestBody,
+): Promise<OrganizerJobView> {
+  return json<OrganizerJobView>(
+    await fetch("/api/organizer/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function analyzeOrganizerDuplicates(
+  provider: string,
+  accountId: string,
+): Promise<DuplicateCandidateView[]> {
+  return json<DuplicateCandidateView[]>(
+    await fetch("/api/organizer/duplicates", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider, account_id: accountId }),
+    }),
+  );
+}
+
+export async function listOrganizerJobs(): Promise<OrganizerJobView[]> {
+  return json<OrganizerJobView[]>(await fetch("/api/organizer/jobs"));
+}
+
+export async function getOrganizerJob(jobId: string): Promise<OrganizerJobView> {
+  return json<OrganizerJobView>(
+    await fetch(`/api/organizer/jobs/${encodeURIComponent(jobId)}`),
+  );
+}
+
+export async function retryOrganizerJob(jobId: string): Promise<OrganizerJobView> {
+  return json<OrganizerJobView>(
+    await fetch(`/api/organizer/jobs/${encodeURIComponent(jobId)}/retry`, {
+      method: "POST",
+    }),
+  );
 }
 
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {

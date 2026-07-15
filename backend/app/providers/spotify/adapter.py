@@ -32,12 +32,17 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
     RateLimited,
     RefreshTokenExpired,
+    RemoveItemResult,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
+    Unsupported,
 )
 from app.core.capabilities import (
     Capability,
@@ -69,6 +74,10 @@ _SAVED_TRACKS_SCOPE_MESSAGE = (
 _SAVED_TRACKS_WRITE_SCOPE_MESSAGE = (
     "Spotify saved songs need the user-library-modify scope; reconnect Spotify to "
     "write liked songs."
+)
+_PLAYLIST_UNFOLLOW_SCOPE_MESSAGE = (
+    "Spotify playlist removal needs the user-library-modify scope; reconnect Spotify "
+    "before removing playlists from your library."
 )
 
 _SCOPES = [
@@ -223,6 +232,13 @@ def _spotify_user_id(cred: ProviderCredential) -> str | None:
     return provider_user_id if isinstance(provider_user_id, str) and provider_user_id else None
 
 
+def _ownership(owner_id: str | None, cred: ProviderCredential) -> bool | None:
+    user_id = _spotify_user_id(cred)
+    if not owner_id or not user_id:
+        return None
+    return owner_id == user_id
+
+
 def _saved_tracks_snapshot(total: int | None) -> str | None:
     return f"{SPOTIFY_SAVED_TRACKS_PLAYLIST_ID}:total:{total}" if total is not None else None
 
@@ -235,6 +251,8 @@ def _saved_tracks_ref(
         name=_SAVED_TRACKS_NAME,
         track_count=track_count,
         owner_id=_spotify_user_id(cred),
+        is_owned=True,
+        is_followed=False,
         collaborative=False,
         snapshot_id=_saved_tracks_snapshot(track_count),
         tracks_href=_SAVED_TRACKS_HREF,
@@ -357,7 +375,11 @@ async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> Async
         page = next_page
 
 
-async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _SavedPlaylist | None:
+async def _saved_playlist_ref(
+    client: httpx.AsyncClient,
+    cred: ProviderCredential,
+    playlist_id: str,
+) -> _SavedPlaylist | None:
     offset = 0
     while True:
         resp = _raise_for_status(
@@ -374,7 +396,10 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _S
                         id=pl["id"],
                         name=pl.get("name") or "",
                         track_count=tracks.get("total"),
-                        owner_id=(pl.get("owner") or {}).get("id"),
+                        owner_id=(owner := pl.get("owner") or {}).get("id"),
+                        owner_name=owner.get("display_name"),
+                        is_owned=(owned := _ownership(owner.get("id"), cred)),
+                        is_followed=None if owned is None else not owned,
                         collaborative=pl.get("collaborative"),
                         snapshot_id=pl.get("snapshot_id"),
                         tracks_href=_href_from_page(tracks),
@@ -654,6 +679,8 @@ class SpotifyAdapter:
                 Capability.WRITE_LIBRARY,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
+                Capability.REMOVE_TRACKS,
+                Capability.UNFOLLOW_PLAYLIST,
                 Capability.SET_DESCRIPTION,
             },
             has_isrc=True,
@@ -698,11 +725,17 @@ class SpotifyAdapter:
                 data = resp.json()
                 for pl in data.get("items", []):
                     items = _playlist_items_summary(pl)
+                    owner = pl.get("owner") or {}
+                    owner_id = owner.get("id")
+                    owned = _ownership(owner_id, cred)
                     yield PlaylistRef(
                         id=pl["id"],
                         name=pl.get("name") or "",
                         track_count=items.get("total"),
-                        owner_id=(pl.get("owner") or {}).get("id"),
+                        owner_id=owner_id,
+                        owner_name=owner.get("display_name"),
+                        is_owned=owned,
+                        is_followed=None if owned is None else not owned,
                         collaborative=pl.get("collaborative"),
                         snapshot_id=pl.get("snapshot_id"),
                         tracks_href=_href_from_page(items),
@@ -754,7 +787,7 @@ class SpotifyAdapter:
                 )
             resp = await _spotify_request(client, "GET", f"/playlists/{ref.id}")
             if resp.status_code in {400, 403, 404}:
-                fallback = await self._read_saved_playlist(client, resp, ref)
+                fallback = await self._read_saved_playlist(client, cred, resp, ref)
                 if fallback is not None:
                     return fallback
             meta = _raise_for_status(resp).json()
@@ -771,15 +804,23 @@ class SpotifyAdapter:
             id=meta.get("id") or ref.id,
             name=meta.get("name") or ref.name,
             description=meta.get("description"),
-            owner_id=(meta.get("owner") or {}).get("id"),
+            owner_id=(owner := meta.get("owner") or {}).get("id"),
+            owner_name=owner.get("display_name"),
+            is_owned=(owned := _ownership(owner.get("id"), cred)),
+            is_followed=None if owned is None else not owned,
+            collaborative=meta.get("collaborative"),
             snapshot_id=meta.get("snapshot_id") or ref.snapshot_id,
             tracks=tracks,
         )
 
     async def _read_saved_playlist(
-        self, client: httpx.AsyncClient, original_resp: httpx.Response, ref: PlaylistRef
+        self,
+        client: httpx.AsyncClient,
+        cred: ProviderCredential,
+        original_resp: httpx.Response,
+        ref: PlaylistRef,
     ) -> Playlist | None:
-        saved = await _saved_playlist_ref(client, ref.id)
+        saved = await _saved_playlist_ref(client, cred, ref.id)
         if saved is None:
             if original_resp.status_code == 403:
                 _raise_playlist_tracks_forbidden()
@@ -795,6 +836,10 @@ class SpotifyAdapter:
             id=saved.ref.id,
             name=saved.ref.name,
             owner_id=saved.ref.owner_id,
+            owner_name=saved.ref.owner_name,
+            is_owned=saved.ref.is_owned,
+            is_followed=saved.ref.is_followed,
+            collaborative=saved.ref.collaborative,
             snapshot_id=saved.ref.snapshot_id,
             tracks=tracks,
         )
@@ -932,6 +977,89 @@ class SpotifyAdapter:
         if playlist_id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
             return await self._save_library_tracks(cred, uris)
         return await self._add_playlist_tracks(cred, playlist_id, uris)
+
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("Spotify Liked Songs cannot be removed as a playlist")
+        if _SAVED_TRACKS_WRITE_SCOPE not in cred.scopes:
+            raise AccessDenied(_PLAYLIST_UNFOLLOW_SCOPE_MESSAGE)
+        async with self._client(cred) as client:
+            _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "DELETE",
+                    "/me/library",
+                    params={"uris": f"spotify:playlist:{ref.id}"},
+                )
+            )
+        return PlaylistMutationResult()
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported(
+            "Spotify does not expose destructive playlist deletion; remove it from "
+            "your library instead"
+        )
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("Removing songs from Spotify Liked Songs is not a playlist edit")
+        if ref.is_owned is False and ref.collaborative is not True:
+            raise AccessDenied("Spotify track removal requires an owned or collaborative playlist")
+        if not ref.snapshot_id:
+            raise ProviderError("Spotify track removal requires a current playlist snapshot")
+        removals = list(items)
+        if len(removals) > self.info.capabilities.max_remove_batch:
+            raise ProviderError(
+                "Spotify can remove at most "
+                f"{self.info.capabilities.max_remove_batch} selected songs per job"
+            )
+
+        grouped: dict[str, list[int]] = {}
+        for item in removals:
+            track_id = _track_id(item.provider_uri)
+            if not track_id:
+                raise ProviderError(f"invalid Spotify track URI: {item.provider_uri}")
+            uri = f"spotify:track:{track_id}"
+            grouped.setdefault(uri, []).append(item.position)
+        payload = {
+            "items": [
+                {"uri": uri, "positions": positions}
+                for uri, positions in grouped.items()
+            ],
+            "snapshot_id": ref.snapshot_id,
+        }
+        async with self._client(cred) as client:
+            response = _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "DELETE",
+                    f"/playlists/{ref.id}/items",
+                    json=payload,
+                )
+            )
+        data = response.json() if response.content else {}
+        snapshot_id = data.get("snapshot_id")
+        return RemoveTracksResult(
+            items=[
+                RemoveItemResult(
+                    source_item_id=item.source_item_id,
+                    provider_uri=item.provider_uri,
+                    position=item.position,
+                    ok=True,
+                )
+                for item in removals
+            ],
+            snapshot_id=snapshot_id if isinstance(snapshot_id, str) else None,
+        )
 
     async def _save_library_tracks(
         self, cred: ProviderCredential, uris: Sequence[str]

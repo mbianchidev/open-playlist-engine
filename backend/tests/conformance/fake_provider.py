@@ -16,9 +16,13 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderInfo,
+    RemoveItemResult,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
 )
 from app.core.capabilities import Capability, CapabilityDescriptor, SearchMode, Stability
 from app.core.models import Playlist, PlaylistRef, Track
@@ -138,3 +142,33 @@ class FakeAdapter:
             pos = len(self._created[playlist_id]) - 1
             out.append(AddItemResult(uri=uri, ok=True, position=pos))
         return out
+
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        _LIBRARY.pop(ref.id, None)
+        return PlaylistMutationResult()
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        _LIBRARY.pop(ref.id, None)
+        return PlaylistMutationResult()
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        return RemoveTracksResult(
+            items=[
+                RemoveItemResult(
+                    source_item_id=item.source_item_id,
+                    provider_uri=item.provider_uri,
+                    position=item.position,
+                    ok=True,
+                )
+                for item in items
+            ]
+        )

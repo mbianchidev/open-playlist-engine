@@ -24,6 +24,10 @@ class ProviderView(BaseModel):
     has_isrc: bool
     can_source: bool
     can_target: bool
+    can_unfollow_playlist: bool
+    can_delete_playlist: bool
+    can_remove_tracks: bool
+    max_remove_batch: int
     warning: str | None = None
 
 
@@ -42,6 +46,10 @@ async def list_providers() -> list[ProviderView]:
                 has_isrc=caps.has_isrc,
                 can_source=caps.can(Capability.READ_TRACKS),
                 can_target=caps.can(Capability.CREATE_PLAYLIST) and caps.can(Capability.ADD_TRACKS),
+                can_unfollow_playlist=caps.can(Capability.UNFOLLOW_PLAYLIST),
+                can_delete_playlist=caps.can(Capability.DELETE_PLAYLIST),
+                can_remove_tracks=caps.can(Capability.REMOVE_TRACKS),
+                max_remove_batch=caps.max_remove_batch,
                 warning=caps.warning,
             )
         )

@@ -88,9 +88,18 @@ class CachedPlaylistRef(Base):
     name: Mapped[str] = mapped_column(String)
     track_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     owner_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    owner_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_owned: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_followed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     collaborative: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
     tracks_href: Mapped[str | None] = mapped_column(String, nullable=True)
+    provider_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    provider_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -193,6 +202,58 @@ class OperationLedger(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# Organizer idempotency is stored on these rows. OperationLedger remains migration-only.
+class OrganizerJob(Base):
+    __tablename__ = "organizer_job"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    provider: Mapped[str] = mapped_column(String, index=True)
+    account_id: Mapped[str] = mapped_column(String, index=True)
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    items: Mapped[list[OrganizerItem]] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class OrganizerItem(Base):
+    __tablename__ = "organizer_item"
+    __table_args__ = (UniqueConstraint("job_id", "playlist_id", "action"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("organizer_job.id", ondelete="CASCADE"), index=True
+    )
+    playlist_id: Mapped[str] = mapped_column(String, index=True)
+    playlist_name: Mapped[str] = mapped_column(String)
+    action: Mapped[str] = mapped_column(String)
+    destructive: Mapped[bool] = mapped_column(Boolean, default=False)
+    ownership: Mapped[str] = mapped_column(String, default="unknown")
+    collaborative: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    job: Mapped[OrganizerJob] = relationship(back_populates="items")
 
 
 # --------------------------------------------------------------------------- #

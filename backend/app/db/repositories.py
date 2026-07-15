@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import ProviderAdapter, RefreshTokenExpired
@@ -174,3 +174,26 @@ async def load_fresh_credential(
             update={"account_id": account.id, "provider": account.provider}
         )
     return credential, account
+
+
+async def invalidate_playlist_cache(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    provider: str,
+    account_id: str,
+) -> None:
+    conditions = (
+        orm.CachedPlaylistRef.user_id == user_id,
+        orm.CachedPlaylistRef.provider == provider,
+        orm.CachedPlaylistRef.account_id == account_id,
+    )
+    await session.execute(
+        delete(orm.CachedPlaylistTracks).where(
+            orm.CachedPlaylistTracks.user_id == user_id,
+            orm.CachedPlaylistTracks.provider == provider,
+            orm.CachedPlaylistTracks.account_id == account_id,
+        )
+    )
+    await session.execute(delete(orm.CachedPlaylistRef).where(*conditions))
+    await session.flush()

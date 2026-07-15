@@ -63,6 +63,19 @@ snapshot IDs. Use **Refresh songs** inside a playlist only when you need to forc
 track refresh; otherwise cached songs are reused until the playlist snapshot
 changes.
 
+### Spotify organizer behavior
+
+The Organizer's default **Remove from library** action uses Spotify's generic
+library removal endpoint and is non-destructive: the playlist can be followed again
+while it remains available. Spotify does not expose permanent playlist deletion, so
+that mode is never offered.
+
+**Remove songs** is available only for owned or collaborative playlists. It sends
+the exact selected positions with the current `snapshot_id` and is limited to 100
+entries per job. The limit prevents position drift across multiple Spotify
+snapshots. If the playlist changes after preflight, the job fails that playlist and
+asks for a refresh instead of removing a different occurrence.
+
 ## Tidal app setup
 
 Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
@@ -115,6 +128,11 @@ explicitly asks for a public playlist. The adapter writes tracks in batches of 5
 the maximum accepted by Tidal's playlist-items and My Collection endpoints. Tidal
 **My Collection** is exposed as a liked-tracks collection.
 
+The Organizer can permanently delete playlists returned by Tidal's owner-filtered
+listing after typed confirmation. Tidal has no verified safe unfollow operation in
+this adapter. Song removal stays disabled because the public duplicate-occurrence
+semantics cannot yet be guaranteed.
+
 ## Apple MusicKit setup
 
 Apple Music does not provide an OAuth client ID/client secret flow. The official
@@ -165,6 +183,10 @@ The adapter retries a not-yet-visible playlist only immediately after creating i
 later writes fail normally instead of masking a bad playlist ID. New playlists or
 tracks may still take time to appear in the Apple Music app.
 
+Apple Music remains read-only in the Organizer. MusicKit supports playlist creation
+and additions but does not expose library playlist deletion or removal of selected
+playlist songs.
+
 ## YouTube Music device-code auth
 
 YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device
@@ -199,6 +221,13 @@ can reuse the same YouTube Music account row by email when Google returns it.
 
 YouTube Music **Liked Songs** is backed by the native `LM` playlist. Writing into
 it uses YouTube Music's like action rather than creating a normal playlist.
+
+The Organizer verifies `owned=true` with a live playlist read before showing
+permanent deletion or song removal. Song removal preserves each `setVideoId`, so
+selecting one duplicate occurrence does not remove the others. The pinned
+`ytmusicapi` surface has no verified safe playlist-unsubscribe operation, so
+followed or ownership-unknown playlists remain unsupported. These destructive
+operations require typed confirmation and have no recovery guarantee.
 
 ## Liked-track collection mapping
 

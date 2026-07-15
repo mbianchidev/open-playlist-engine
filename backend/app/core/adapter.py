@@ -145,6 +145,30 @@ class AddItemResult(BaseModel):
     error: str | None = None
 
 
+class PlaylistMutationResult(BaseModel):
+    ok: bool = True
+    already_absent: bool = False
+
+
+class TrackRemoval(BaseModel):
+    source_item_id: str | None = None
+    provider_uri: str
+    position: int
+
+
+class RemoveItemResult(BaseModel):
+    source_item_id: str | None = None
+    provider_uri: str
+    position: int
+    ok: bool
+    error: str | None = None
+
+
+class RemoveTracksResult(BaseModel):
+    items: list[RemoveItemResult] = Field(default_factory=list)
+    snapshot_id: str | None = None
+
+
 class ProviderInfo(BaseModel):
     name: str
     display_name: str
@@ -201,3 +225,18 @@ class ProviderAdapter(Protocol):
     async def add_tracks(
         self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
     ) -> list[AddItemResult]: ...
+
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult: ...
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult: ...
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult: ...
