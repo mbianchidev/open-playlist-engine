@@ -17,7 +17,8 @@ npm run build
 ```
 
 ## API types
-`src/api/types.ts` is hand-written for now. Once the backend is running, replace
+`src/api/types.ts` is hand-written from the backend OpenAPI surface for now. Once
+the backend is running, replace
 it with a generated client:
 ```bash
 npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/openapi.json
@@ -33,6 +34,12 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 6. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
+
+The owner-only **Sharing** tab publishes and manages immutable snapshots. Public
+`/share/:token` metadata pages redirect to the SPA `/shared/:token` route, where
+recipients can inspect tracks, download portable formats, connect only their own
+target account, and reuse the same progress/review component through the isolated
+public API client.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised

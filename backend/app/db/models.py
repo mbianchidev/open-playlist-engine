@@ -47,6 +47,9 @@ class ProviderAccount(Base):
     provider: Mapped[str] = mapped_column(String, index=True)
     provider_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    ephemeral_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     credentials: Mapped[list[ProviderCredential]] = relationship(
@@ -130,6 +133,10 @@ class MigrationJob(Base):
     target_provider: Mapped[str] = mapped_column(String)
     source_account_id: Mapped[str] = mapped_column(String)
     target_account_id: Mapped[str] = mapped_column(String)
+    source_share_id: Mapped[str | None] = mapped_column(
+        ForeignKey("playlist_share.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     selection: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String, default="pending", index=True)
     total: Mapped[int] = mapped_column(Integer, default=0)
@@ -141,6 +148,41 @@ class MigrationJob(Base):
     items: Mapped[list[JobItem]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Immutable public playlist shares
+# --------------------------------------------------------------------------- #
+class PlaylistShare(Base):
+    __tablename__ = "playlist_share"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    owner_user_id: Mapped[str] = mapped_column(String, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    enc_token: Mapped[bytes] = mapped_column(LargeBinary)
+    visibility: Mapped[str] = mapped_column(String, default="unlisted")
+    snapshot_schema_version: Mapped[str] = mapped_column(String, default="1.0")
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ShareRecipientAuthState(Base):
+    __tablename__ = "share_recipient_auth_state"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    share_id: Mapped[str] = mapped_column(
+        ForeignKey("playlist_share.id", ondelete="CASCADE"), index=True
+    )
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    recipient_user_id: Mapped[str] = mapped_column(String, index=True)
+    provider: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class JobItem(Base):

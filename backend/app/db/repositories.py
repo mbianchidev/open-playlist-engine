@@ -69,6 +69,7 @@ async def save_credential(
     provider_user_id: str | None,
     display_name: str | None,
     credential: RuntimeCredential,
+    ephemeral_expires_at: datetime | None = None,
 ) -> orm.ProviderAccount:
     stmt = select(orm.ProviderAccount).where(
         orm.ProviderAccount.user_id == user_id,
@@ -82,11 +83,13 @@ async def save_credential(
             provider=provider,
             provider_user_id=provider_user_id,
             display_name=display_name,
+            ephemeral_expires_at=ephemeral_expires_at,
         )
         session.add(account)
         await session.flush()
     else:
         account.display_name = display_name or account.display_name
+        account.ephemeral_expires_at = ephemeral_expires_at
 
     persisted = credential.model_copy(update={"account_id": account.id, "provider": provider})
     blob = json.dumps(persisted.model_dump(mode="json"))
@@ -104,12 +107,41 @@ async def save_credential(
     return account
 
 
+async def delete_expired_ephemeral_accounts(
+    session: AsyncSession,
+    *,
+    now: datetime | None = None,
+) -> int:
+    cutoff = now or datetime.now(UTC)
+    rows = list(
+        (
+            await session.execute(
+                select(orm.ProviderAccount).where(
+                    orm.ProviderAccount.ephemeral_expires_at.is_not(None),
+                    orm.ProviderAccount.ephemeral_expires_at <= cutoff,
+                )
+            )
+        ).scalars()
+    )
+    for account in rows:
+        await session.delete(account)
+    if rows:
+        await session.flush()
+    return len(rows)
+
+
 async def load_credential(
-    session: AsyncSession, *, account_id: str, provider: str | None = None
+    session: AsyncSession,
+    *,
+    account_id: str,
+    provider: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[RuntimeCredential, orm.ProviderAccount]:
     stmt = select(orm.ProviderAccount).where(orm.ProviderAccount.id == account_id)
     if provider:
         stmt = stmt.where(orm.ProviderAccount.provider == provider)
+    if user_id:
+        stmt = stmt.where(orm.ProviderAccount.user_id == user_id)
     account = (await session.execute(stmt)).scalar_one_or_none()
     if account is None:
         raise AccountNotFound(account_id)
@@ -147,8 +179,14 @@ async def load_fresh_credential(
     account_id: str,
     adapter: ProviderAdapter,
     provider: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[RuntimeCredential, orm.ProviderAccount]:
-    credential, account = await load_credential(session, account_id=account_id, provider=provider)
+    credential, account = await load_credential(
+        session,
+        account_id=account_id,
+        provider=provider,
+        user_id=user_id,
+    )
     if credential.expires_at and credential.expires_at <= time.time() + 60:
         try:
             refreshed = await adapter.auth.refresh(credential)
@@ -169,6 +207,7 @@ async def load_fresh_credential(
             provider_user_id=account.provider_user_id,
             display_name=account.display_name,
             credential=refreshed,
+            ephemeral_expires_at=account.ephemeral_expires_at,
         )
         credential = refreshed.model_copy(
             update={"account_id": account.id, "provider": account.provider}

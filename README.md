@@ -14,7 +14,8 @@ instantly works with all the others — both as source and target.
 > OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
 > official Apple MusicKit library read/search/write. Persisted credentials,
 > playlist/track selection, partial-migration detection, migration jobs, review
-> actions, SSE progress and migration statistics are wired. Other provider
+> actions, SSE progress, migration statistics, and opt-in immutable public
+> playlist shares are wired. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -60,7 +61,7 @@ docker compose up
 cd backend && python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 alembic upgrade head
-uvicorn app.main:app --reload          # :8000
+uvicorn app.main:app --reload --no-access-log  # :8000
 arq app.jobs.worker.WorkerSettings     # background worker
 pytest && ruff check .
 
@@ -79,7 +80,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
-`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`. Public playlist sharing additionally uses
+`OPE_PUBLIC_BASE_URL` and `OPE_OWNER_ACCESS_TOKEN`; it remains disabled while the
+public URL is empty.
 Self-host mode resolves the migration owner server-side as the local user. Hosted
 mode fails closed until a real user-authentication dependency is configured; it
 does not accept a caller-provided user ID.
@@ -88,6 +91,23 @@ warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 second
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
 ARQ's 5-minute default timeout.
+
+## Self-hosted playlist sharing
+
+The **Sharing** workspace publishes an immutable, metadata-only playlist snapshot
+behind a 256-bit revocable token. Recipients can view it, download Open Playlist
+JSON, CSV, TXT, M3U8, or XSPF, then connect their own target account and use the
+existing match/review/write flow. Public visitors never see or write through the
+owner's connected accounts.
+
+Sharing is off by default. To enable it, configure a public HTTPS URL, a separate
+strong owner access token, and public Spotify/Tidal callback URLs when those
+recipient targets are needed. Public and unlisted links differ in search-engine
+indexing; both require the unguessable URL. Snapshots do not follow later source
+changes. Owners can change visibility, expire, or revoke a link at any time.
+
+See [`docs/PLAYLIST_SHARING.md`](docs/PLAYLIST_SHARING.md) for setup, reverse
+proxy, security, recipient credential retention, and usage details.
 
 ## Spotify, Tidal, YouTube Music and Apple Music
 
