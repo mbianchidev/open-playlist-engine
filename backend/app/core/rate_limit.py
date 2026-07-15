@@ -31,6 +31,40 @@ class RateLimiter:
     def configure(self, key: str, *, capacity: float, refill_per_s: float) -> None:
         self._buckets[key] = _Bucket(capacity, refill_per_s, capacity)
 
+    async def try_consume(
+        self,
+        key: str,
+        *,
+        capacity: float,
+        refill_per_s: float,
+        cost: float = 1.0,
+    ) -> float | None:
+        """Consume immediately, returning retry seconds instead of sleeping."""
+        if capacity <= 0 or refill_per_s <= 0 or cost <= 0:
+            raise ValueError("rate limit values must be positive")
+        async with self._lock:
+            bucket = self._buckets.get(key)
+            if (
+                bucket is None
+                or bucket.capacity != capacity
+                or bucket.refill_per_s != refill_per_s
+            ):
+                bucket = _Bucket(capacity, refill_per_s, capacity)
+                self._buckets[key] = bucket
+            now = time.monotonic()
+            bucket.tokens = min(
+                bucket.capacity, bucket.tokens + (now - bucket.updated) * bucket.refill_per_s
+            )
+            bucket.updated = now
+            if bucket.tokens >= cost:
+                bucket.tokens -= cost
+                return None
+            return (cost - bucket.tokens) / bucket.refill_per_s
+
+    async def clear(self) -> None:
+        async with self._lock:
+            self._buckets.clear()
+
     async def acquire(self, key: str, cost: float = 1.0) -> None:
         """Block until ``cost`` tokens are available for ``key``."""
         async with self._lock:

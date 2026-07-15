@@ -9,13 +9,14 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`,
+  `/migrations`, owner `/shares`, and isolated `/public/shares`).
 
 ## Develop
 ```bash
 pip install -e ".[dev]"
 alembic upgrade head
-uvicorn app.main:app --reload      # http://localhost:8000  (/docs, /health)
+uvicorn app.main:app --reload --no-access-log # http://localhost:8000
 arq app.jobs.worker.WorkerSettings # background worker
 pytest
 ruff check .
@@ -62,3 +63,6 @@ tracks/day, and 120 seconds between jobs.
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).
+Public snapshot models, hashed/encrypted share tokens, owner sessions, recipient
+account isolation, portable downloads, and share-backed migration jobs are
+documented in [`docs/PLAYLIST_SHARING.md`](../docs/PLAYLIST_SHARING.md).

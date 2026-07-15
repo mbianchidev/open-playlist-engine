@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.migration_state import keys_from_metadata, track_keys
 from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
@@ -48,15 +49,19 @@ async def list_playlists(
     provider: str,
     account_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
     target_provider: str | None = None,
     target_account_id: str | None = None,
     refresh: bool = False,
-    user_id: str = "local",
 ) -> list[PlaylistRef]:
     try:
         adapter = get(provider)
         credential, _ = await load_fresh_credential(
-            session, account_id=account_id, adapter=adapter, provider=provider
+            session,
+            account_id=account_id,
+            adapter=adapter,
+            provider=provider,
+            user_id=user_id,
         )
         playlists = await _playlist_refs(
             session,
@@ -104,15 +109,19 @@ async def get_playlist(
     provider: str,
     account_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
     target_provider: str | None = None,
     target_account_id: str | None = None,
     refresh: bool = False,
-    user_id: str = "local",
 ) -> Playlist:
     try:
         adapter = get(provider)
         credential, _ = await load_fresh_credential(
-            session, account_id=account_id, adapter=adapter, provider=provider
+            session,
+            account_id=account_id,
+            adapter=adapter,
+            provider=provider,
+            user_id=user_id,
         )
         playlist = await _playlist_detail(
             session,

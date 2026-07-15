@@ -42,6 +42,10 @@ marked `needs_review` and can be approved, batch-approved, corrected, skipped, o
 batch-denied from the progress panel. The UI also exposes ledger-backed
 single-migration and all-time aggregate statistics with source/target provider
 filters.
+Self-hosted operators can also opt into immutable metadata-only playlist shares.
+The public page/download boundary is token-scoped, while recipient provider
+accounts and migration jobs use a signed share-recipient identity that cannot
+resolve the owner's local accounts.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -125,6 +129,9 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
 - migration ownership is resolved by a server-side dependency. Self-host returns
   the local user; hosted mode rejects migration requests until real authentication
   is wired, rather than trusting a query-string user ID.
+- configuring a public base URL turns on an owner-session gate for every private
+  self-host API. Public share reads are separate, and recipient writes require a
+  provider account connected under that recipient's signed share session.
 
 ---
 

@@ -3,6 +3,7 @@ import type {
   AggregateMigrationStatsView,
   AuthChallenge,
   ConnectionView,
+  CreateShareBody,
   ConnectionTestView,
   CreateMigrationBody,
   JobItemView,
@@ -10,9 +11,14 @@ import type {
   MigrationOptionView,
   MigrationStatsView,
   MigrationWarningsView,
+  OwnerSessionView,
+  PortableFormat,
   Playlist,
   PlaylistRef,
   ProviderView,
+  PublicShareView,
+  ShareConfigView,
+  ShareDetailView,
 } from "./types";
 
 export class ApiError extends Error {
@@ -76,6 +82,24 @@ export async function testAccountConnection(accountId: string): Promise<Connecti
   return json<ConnectionTestView>(
     await fetch(`/api/auth/accounts/${encodeURIComponent(accountId)}/test`, { method: "POST" }),
   );
+}
+
+export async function getOwnerSession(): Promise<OwnerSessionView> {
+  return json<OwnerSessionView>(await fetch("/api/session"));
+}
+
+export async function loginOwner(accessToken: string): Promise<OwnerSessionView> {
+  return json<OwnerSessionView>(
+    await fetch("/api/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ access_token: accessToken }),
+    }),
+  );
+}
+
+export async function logoutOwner(): Promise<OwnerSessionView> {
+  return json<OwnerSessionView>(await fetch("/api/session", { method: "DELETE" }));
 }
 
 export interface PlaylistContext {
@@ -196,4 +220,163 @@ export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) =>
   const source = new EventSource(`/api/migrations/${jobId}/events`);
   source.addEventListener("progress", onMessage as EventListener);
   return () => source.close();
+}
+
+export interface MigrationProgressApi {
+  getItems(jobId: string): Promise<JobItemView[]>;
+  reviewItem(
+    jobId: string,
+    itemId: string,
+    body: { action: "approve" | "skip"; target_uri?: string | null },
+  ): Promise<JobItemView>;
+  reviewItems(
+    jobId: string,
+    body: { action: "approve" | "skip"; item_ids: string[] },
+  ): Promise<JobItemView[]>;
+  subscribe(jobId: string, onMessage: (event: MessageEvent) => void): () => void;
+}
+
+export const ownerMigrationProgressApi: MigrationProgressApi = {
+  getItems: getMigrationItems,
+  reviewItem: reviewMigrationItem,
+  reviewItems: reviewMigrationItems,
+  subscribe: subscribeProgress,
+};
+
+export async function getShareConfig(): Promise<ShareConfigView> {
+  return json<ShareConfigView>(await fetch("/api/shares/config"));
+}
+
+export async function listShares(): Promise<ShareDetailView[]> {
+  return json<ShareDetailView[]>(await fetch("/api/shares"));
+}
+
+export async function createShare(body: CreateShareBody): Promise<ShareDetailView> {
+  return json<ShareDetailView>(
+    await fetch("/api/shares", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function updateShare(
+  shareId: string,
+  body: { visibility?: "public" | "unlisted"; expires_at?: string | null },
+): Promise<ShareDetailView> {
+  return json<ShareDetailView>(
+    await fetch(`/api/shares/${encodeURIComponent(shareId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function expireShare(shareId: string): Promise<ShareDetailView> {
+  return json<ShareDetailView>(
+    await fetch(`/api/shares/${encodeURIComponent(shareId)}/expire`, { method: "POST" }),
+  );
+}
+
+export async function revokeShare(shareId: string): Promise<ShareDetailView> {
+  return json<ShareDetailView>(
+    await fetch(`/api/shares/${encodeURIComponent(shareId)}/revoke`, { method: "POST" }),
+  );
+}
+
+export async function getPublicShare(token: string): Promise<PublicShareView> {
+  return json<PublicShareView>(
+    await fetch(`/api/public/shares/${encodeURIComponent(token)}`),
+  );
+}
+
+export function publicShareDownloadUrl(token: string, format: PortableFormat): string {
+  const params = new URLSearchParams({ format });
+  return `/api/public/shares/${encodeURIComponent(token)}/download?${params}`;
+}
+
+export async function getRecipientAccounts(token: string): Promise<AccountView[]> {
+  return json<AccountView[]>(
+    await fetch(`/api/public/shares/${encodeURIComponent(token)}/accounts`),
+  );
+}
+
+export async function beginRecipientAuth(
+  token: string,
+  provider: string,
+): Promise<AuthChallenge> {
+  return json<AuthChallenge>(
+    await fetch(
+      `/api/public/shares/${encodeURIComponent(token)}/auth/${encodeURIComponent(provider)}/begin`,
+      { method: "POST" },
+    ),
+  );
+}
+
+export async function completeRecipientAuth(
+  token: string,
+  provider: string,
+  callback: Record<string, unknown>,
+): Promise<ConnectionView> {
+  return json<ConnectionView>(
+    await fetch(
+      `/api/public/shares/${encodeURIComponent(token)}/auth/${encodeURIComponent(provider)}/complete`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(callback),
+      },
+    ),
+  );
+}
+
+export async function importPublicShare(
+  token: string,
+  body: {
+    target_provider: string;
+    target_account_id: string;
+    acknowledge_warnings?: boolean;
+  },
+): Promise<JobView> {
+  return json<JobView>(
+    await fetch(`/api/public/shares/${encodeURIComponent(token)}/imports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export function recipientMigrationProgressApi(token: string): MigrationProgressApi {
+  const prefix = `/api/public/shares/${encodeURIComponent(token)}/imports`;
+  return {
+    getItems: async (jobId) =>
+      json<JobItemView[]>(await fetch(`${prefix}/${encodeURIComponent(jobId)}/items`)),
+    reviewItem: async (jobId, itemId, body) =>
+      json<JobItemView>(
+        await fetch(
+          `${prefix}/${encodeURIComponent(jobId)}/items/${encodeURIComponent(itemId)}/review`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        ),
+      ),
+    reviewItems: async (jobId, body) =>
+      json<JobItemView[]>(
+        await fetch(`${prefix}/${encodeURIComponent(jobId)}/items/review`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      ),
+    subscribe: (jobId, onMessage) => {
+      const source = new EventSource(`${prefix}/${encodeURIComponent(jobId)}/events`);
+      source.addEventListener("progress", onMessage as EventListener);
+      return () => source.close();
+    },
+  };
 }

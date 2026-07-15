@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from "lucide-react";
 import {
-  getMigrationItems,
-  reviewMigrationItem,
-  reviewMigrationItems,
-  subscribeProgress,
+  ownerMigrationProgressApi,
+  type MigrationProgressApi,
 } from "../api/client";
 import type { JobItemView, JobView, ProgressEvent } from "../api/types";
 import { providerLabel } from "../utils/providers";
@@ -12,6 +10,7 @@ import { providerLabel } from "../utils/providers";
 interface Props {
   jobId: string;
   className?: string;
+  api?: MigrationProgressApi;
   onMigrationChanged?: () => void | Promise<void>;
   onReconnectProvider?: (provider: string) => void | Promise<void>;
 }
@@ -21,6 +20,7 @@ interface Props {
 export default function ProgressBoard({
   jobId,
   className,
+  api = ownerMigrationProgressApi,
   onMigrationChanged,
   onReconnectProvider,
 }: Props) {
@@ -61,8 +61,8 @@ export default function ProgressBoard({
   useEffect(() => {
     locallyReviewedItems.current.clear();
     setReviewCollapsed(false);
-    getMigrationItems(jobId).then(updateItemsFromServer).catch(() => setItems([]));
-    const dispose = subscribeProgress(jobId, (e) => {
+    api.getItems(jobId).then(updateItemsFromServer).catch(() => setItems([]));
+    const dispose = api.subscribe(jobId, (e) => {
       const payload = JSON.parse(e.data) as ProgressEvent;
       if (payload.job) {
         setJob(payload.job);
@@ -77,7 +77,7 @@ export default function ProgressBoard({
       if (payload.items) updateItemsFromServer(payload.items);
     });
     return dispose;
-  }, [jobId, onMigrationChanged]);
+  }, [api, jobId, onMigrationChanged]);
 
   return (
     <section className={["card", className].filter(Boolean).join(" ")}>
@@ -256,7 +256,7 @@ export default function ProgressBoard({
   async function review(item: JobItemView, action: "approve" | "skip") {
     setError(null);
     try {
-      const updated = await reviewMigrationItem(jobId, item.id, {
+      const updated = await api.reviewItem(jobId, item.id, {
         action,
         target_uri: action === "approve" ? reviewInputs[item.id] ?? item.target_uri : null,
       });
@@ -274,7 +274,7 @@ export default function ProgressBoard({
     if (reviewItems.length === 0) return;
     setError(null);
     try {
-      const updated = await reviewMigrationItems(jobId, {
+      const updated = await api.reviewItems(jobId, {
         action,
         item_ids: reviewItems.map((item) => item.id),
       });
@@ -378,7 +378,7 @@ export default function ProgressBoard({
 
   async function refreshItemsAfterReview(): Promise<string | null> {
     try {
-      const latest = await getMigrationItems(jobId);
+      const latest = await api.getItems(jobId);
       updateItemsFromServer(latest);
       return null;
     } catch (e: unknown) {

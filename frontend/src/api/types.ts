@@ -45,6 +45,13 @@ export interface ConnectionView {
   account: AccountView;
 }
 
+export interface OwnerSessionView {
+  required: boolean;
+  authenticated: boolean;
+  sharing_enabled: boolean;
+  sharing_disabled_reason: string;
+}
+
 export interface PlaylistRef {
   id: string;
   name: string;
@@ -214,4 +221,74 @@ export interface ProgressEvent {
   items?: JobItemView[];
   job_id?: string;
   missing?: boolean;
+}
+
+export type ShareVisibility = "public" | "unlisted";
+export type PortableFormat = "json" | "csv" | "txt" | "m3u8" | "xspf";
+
+export interface SharedSource {
+  provider: string;
+  url: string | null;
+}
+
+export interface SharedTrack {
+  position: number;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_s: number | null;
+  release_year: number | null;
+  explicit: boolean | null;
+  isrc: string | null;
+  artwork_url: string | null;
+  source_url: string | null;
+  media_type: string;
+  unsupported_reason: string | null;
+}
+
+export interface SharedPlaylistSnapshot {
+  schema_version: string;
+  name: string;
+  description: string | null;
+  cover_url: string | null;
+  attribution: string | null;
+  source: SharedSource;
+  tracks: SharedTrack[];
+}
+
+export interface ShareConfigView {
+  enabled: boolean;
+  disabled_reason: string;
+  public_base_url: string | null;
+  max_tracks: number;
+  max_expiry_days: number;
+  supported_download_formats: PortableFormat[];
+}
+
+export interface ShareDetailView {
+  id: string;
+  url: string;
+  status: "active" | "expired" | "revoked";
+  visibility: ShareVisibility;
+  snapshot: SharedPlaylistSnapshot;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PublicShareView {
+  visibility: ShareVisibility;
+  snapshot: SharedPlaylistSnapshot;
+  expires_at: string | null;
+  download_formats: PortableFormat[];
+}
+
+export interface CreateShareBody {
+  provider: string;
+  account_id: string;
+  playlist_id: string;
+  attribution?: string | null;
+  visibility: ShareVisibility;
+  expires_at?: string | null;
 }

@@ -1066,7 +1066,779 @@ textarea {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
 
+/* Public sharing and owner session */
+  .workspace-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: min(100%, 38rem);
+  }
+
+  .owner-gate,
+  .public-share-loading,
+  .public-share-unavailable {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 1.5rem;
+  }
+
+  .owner-gate-card,
+  .public-unavailable-card {
+    display: grid;
+    gap: 1rem;
+    width: min(100%, 31rem);
+    padding: clamp(1.5rem, 5vw, 2.5rem);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .owner-gate-card form {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .owner-gate-card input,
+  .share-form-grid input,
+  .share-form-grid select,
+  .import-deck select,
+  .recipient-challenge textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-soft);
+    color: var(--ink);
+  }
+
+  .owner-gate-card input,
+  .share-form-grid input,
+  .share-form-grid select,
+  .import-deck select {
+    min-height: 2.75rem;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .owner-gate-mark,
+  .public-unavailable-card > svg {
+    display: grid;
+    width: 3.25rem;
+    height: 3.25rem;
+    place-items: center;
+    border: 1px solid oklch(0.55 0.12 275 / 0.55);
+    border-radius: 1rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .owner-gate-mark svg,
+  .public-unavailable-card > svg {
+    width: 1.45rem;
+    height: 1.45rem;
+  }
+
+  .owner-lock-button {
+    position: fixed;
+    z-index: 20;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: oklch(0.17 0.013 270 / 0.9);
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+  }
+
+  .owner-lock-button svg {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .sharing-workspace,
+  .sharing-library {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .share-publisher {
+    overflow: hidden;
+    background:
+      linear-gradient(120deg, oklch(0.28 0.07 275 / 0.35), transparent 38%),
+      var(--bg-raised);
+  }
+
+  .share-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1.25rem;
+  }
+
+  .share-form-grid label,
+  .import-deck label {
+    display: grid;
+    gap: 0.45rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .share-playlist-field {
+    grid-column: 1 / -1;
+  }
+
+  .select-with-icon {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .select-with-icon .provider-icon {
+    position: absolute;
+    z-index: 1;
+    left: 0.7rem;
+  }
+
+  .select-with-icon select {
+    padding-left: 3.25rem;
+  }
+
+  .share-publish-actions,
+  .share-card-actions,
+  .passport-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .share-publish-actions {
+    justify-content: space-between;
+    margin-top: 1.2rem;
+  }
+
+  .share-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .share-card {
+    position: relative;
+    display: grid;
+    gap: 0.8rem;
+    overflow: hidden;
+  }
+
+  .share-card::before {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0.22rem;
+    background: var(--success);
+    content: "";
+  }
+
+  .share-status-expired::before {
+    background: var(--warning);
+  }
+
+  .share-status-revoked::before {
+    background: var(--danger);
+  }
+
+  .share-card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .share-card-heading h3 {
+    margin: 0.3rem 0 0;
+  }
+
+  .share-card-heading > svg {
+    width: 1rem;
+    color: var(--ink-muted);
+  }
+
+  .share-status {
+    color: var(--ink-muted);
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .share-url {
+    margin: 0;
+    overflow: hidden;
+    color: var(--info);
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: 0.72rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .share-card-actions a.button-link.compact {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.8rem;
+  }
+
+  .danger-action {
+    border-color: oklch(0.55 0.13 27 / 0.6) !important;
+    color: oklch(0.82 0.1 27) !important;
+  }
+
+  .share-inspector {
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+  }
+
+  .share-inspector summary {
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .share-inspector ol {
+    display: grid;
+    gap: 0.35rem;
+    max-height: 15rem;
+    margin: 0.75rem 0 0;
+    padding: 0 0 0 1.25rem;
+    overflow: auto;
+  }
+
+  .share-inspector li span,
+  .share-inspector li small {
+    display: block;
+  }
+
+  .share-inspector li small {
+    color: var(--ink-muted);
+  }
+
+  .sharing-empty {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .sharing-empty > svg {
+    width: 1.3rem;
+    color: var(--ink-muted);
+  }
+
+  .public-share-page {
+    width: min(100%, 86rem);
+    margin: 0 auto;
+    padding: 1.25rem clamp(1rem, 3vw, 2rem) 5rem;
+  }
+
+  .public-share-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 4.5rem;
+  }
+
+  .public-share-brand .brand-lockup {
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .public-share-brand .brand-lockup > span:last-child {
+    display: grid;
+    gap: 0.12rem;
+  }
+
+  .public-share-brand small {
+    color: var(--ink-muted);
+    font-size: 0.68rem;
+  }
+
+  .public-trust-mark {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--ink-muted);
+    font-size: 0.72rem;
+  }
+
+  .public-trust-mark svg {
+    width: 1rem;
+    color: var(--success);
+  }
+
+  .playlist-passport {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(15rem, 21rem) minmax(0, 1fr);
+    gap: clamp(1.4rem, 4vw, 3.5rem);
+    align-items: center;
+    margin-top: 1.25rem;
+    padding: clamp(1.2rem, 4vw, 2.5rem);
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 1.6rem;
+    background:
+      linear-gradient(135deg, oklch(0.34 0.1 275 / 0.35), transparent 48%),
+      var(--bg-raised);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .playlist-passport::after {
+    position: absolute;
+    top: 0;
+    right: 14%;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(transparent, var(--accent), transparent);
+    opacity: 0.45;
+    content: "";
+    transform: rotate(17deg);
+  }
+
+  .share-vinyl {
+    position: relative;
+    display: grid;
+    aspect-ratio: 1;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid oklch(0.5 0.08 275 / 0.65);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, var(--accent) 0 4%, #07080b 4.5% 12%, transparent 12.5%),
+      repeating-radial-gradient(circle, #171a20 0 2px, #090a0d 3px 6px);
+    box-shadow:
+      inset 0 0 0 0.65rem oklch(0.08 0.01 270 / 0.65),
+      0 1.4rem 3rem rgb(0 0 0 / 0.38);
+  }
+
+  .share-vinyl::after {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(125deg, transparent 35%, rgb(255 255 255 / 0.15), transparent 55%);
+    content: "";
+    pointer-events: none;
+  }
+
+  .share-vinyl[data-has-cover="true"] {
+    border-radius: 1rem;
+    background: var(--surface);
+  }
+
+  .share-vinyl img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .share-vinyl > svg {
+    width: 23%;
+    height: 23%;
+    color: var(--accent);
+  }
+
+  .passport-copy {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .passport-copy h1 {
+    max-width: 15ch;
+    font-size: clamp(2.2rem, 7vw, 5.4rem);
+    line-height: 0.92;
+    letter-spacing: -0.055em;
+  }
+
+  .passport-stamps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .passport-stamps > span {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: oklch(0.16 0.014 270 / 0.8);
+    color: var(--ink-soft);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .passport-stamps svg,
+  .passport-stamps .provider-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .passport-attribution,
+  .passport-description {
+    max-width: 45rem;
+    margin: 0;
+  }
+
+  .passport-attribution {
+    color: var(--accent);
+    font-weight: 750;
+  }
+
+  .passport-description {
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .passport-actions {
+    margin-top: 0.4rem;
+    color: var(--ink-muted);
+    font-size: 0.75rem;
+  }
+
+  .public-share-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 25rem);
+    gap: 1rem;
+    align-items: start;
+    margin-top: 1rem;
+  }
+
+  .public-track-manifest {
+    overflow: hidden;
+  }
+
+  .manifest-count {
+    display: grid;
+    width: 2.6rem;
+    height: 2.6rem;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--accent);
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+
+  .public-track-manifest ol {
+    display: grid;
+    gap: 0;
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .public-track-manifest li {
+    display: grid;
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto auto;
+    gap: 0.75rem;
+    align-items: center;
+    min-height: 4.25rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .track-index {
+    color: var(--ink-muted);
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: 0.7rem;
+  }
+
+  .track-copy {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .track-copy strong,
+  .track-copy span,
+  .track-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .track-copy span,
+  .track-copy small,
+  .public-track-manifest time {
+    color: var(--ink-muted);
+    font-size: 0.72rem;
+  }
+
+  .track-source-link {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--ink-muted);
+  }
+
+  .track-source-link:hover {
+    background: var(--surface-strong);
+    color: var(--accent);
+  }
+
+  .track-source-link svg {
+    width: 0.9rem;
+  }
+
+  .public-action-stack {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .download-deck,
+  .import-deck {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .download-format-grid {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .download-format {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.7rem;
+    align-items: center;
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-soft);
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .download-format:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .download-format > svg {
+    width: 1rem;
+    color: var(--accent);
+  }
+
+  .download-format span {
+    display: grid;
+    gap: 0.1rem;
+  }
+
+  .download-format small {
+    color: var(--ink-muted);
+  }
+
+  .recipient-account {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.7rem;
+    border: 1px solid oklch(0.5 0.1 155 / 0.55);
+    border-radius: var(--radius-sm);
+    background: var(--success-soft);
+  }
+
+  .recipient-account > svg {
+    width: 1rem;
+    color: var(--success);
+  }
+
+  .recipient-account span {
+    display: grid;
+  }
+
+  .recipient-account small {
+    color: var(--ink-muted);
+  }
+
+  .recipient-connect {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .recipient-challenge {
+    display: grid;
+    gap: 0.65rem;
+    padding: 0.8rem;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-soft);
+  }
+
+  .recipient-challenge p,
+  .recipient-challenge small {
+    margin: 0;
+  }
+
+  .recipient-challenge code {
+    color: var(--accent);
+    font-size: 1.2rem;
+    letter-spacing: 0.08em;
+  }
+
+  .recipient-challenge a {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--info);
+  }
+
+  .recipient-challenge a svg {
+    width: 0.85rem;
+  }
+
+  .recipient-challenge textarea {
+    min-height: 8rem;
+    padding: 0.7rem;
+    resize: vertical;
+  }
+
+  .recipient-import {
+    display: flex;
+    justify-content: center;
+    gap: 0.45rem;
+  }
+
+  .public-progress {
+    margin-top: 1rem;
+  }
+
+  .public-share-loading {
+    color: var(--ink-muted);
+  }
+
+  .public-share-loading > svg {
+    width: 3rem;
+    height: 3rem;
+    color: var(--accent);
+    animation: share-record-spin 2.4s linear infinite;
+  }
+
+  @keyframes share-record-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (max-width: 940px) {
+    .playlist-passport {
+      grid-template-columns: minmax(12rem, 17rem) minmax(0, 1fr);
+    }
+
+    .public-share-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .public-action-stack {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 720px) {
+    .workspace-tabs {
+      width: 100%;
+    }
+
+    .workspace-tab small {
+      display: none;
+    }
+
+    .share-form-grid,
+    .share-card-grid,
+    .public-action-stack {
+      grid-template-columns: 1fr;
+    }
+
+    .share-playlist-field {
+      grid-column: auto;
+    }
+
+    .playlist-passport {
+      grid-template-columns: 1fr;
+    }
+
+    .share-vinyl {
+      width: min(18rem, 80vw);
+      justify-self: center;
+    }
+
+    .passport-copy h1 {
+      max-width: none;
+    }
+
+    .playlist-passport::after {
+      display: none;
+    }
+
+    .public-share-brand {
+      align-items: flex-start;
+    }
+
+    .public-trust-mark {
+      max-width: 10rem;
+      text-align: right;
+    }
+  }
+
+  @media (max-width: 460px) {
+    .public-share-page {
+      padding-inline: 0.75rem;
+    }
+
+    .playlist-passport {
+      padding: 1rem;
+      border-radius: 1.1rem;
+    }
+
+    .passport-copy h1 {
+      font-size: clamp(2rem, 14vw, 3.4rem);
+    }
+
+    .public-track-manifest li {
+      grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+    }
+
+    .track-source-link {
+      display: none;
+    }
+
+    .owner-lock-button {
+      position: static;
+      margin: 0.75rem 0.75rem 0 auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .public-share-loading > svg {
+      animation: none;
+    }
+  }
+
+@media (prefers-reduced-motion: reduce) {
   .provider:hover:not(:disabled),
   button.primary:hover:not(:disabled),
   button.secondary:hover:not(:disabled),

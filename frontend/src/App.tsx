@@ -9,6 +9,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Share2,
   ShieldCheck,
   Wifi,
 } from "lucide-react";
@@ -37,6 +38,7 @@ import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
+import ShareManager from "./components/ShareManager";
 import { providerLabel } from "./utils/providers";
 
 export default function App() {
@@ -72,6 +74,7 @@ export default function App() {
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
+  const sharingTabRef = useRef<HTMLButtonElement>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
@@ -797,16 +800,23 @@ export default function App() {
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const nextTab =
+    const tabs: WorkspaceTab[] = ["migration", "stats", "sharing"];
+    const currentIndex = tabs.indexOf(activeTab);
+    const nextTab: WorkspaceTab =
       event.key === "Home"
         ? "migration"
         : event.key === "End"
-          ? "stats"
-          : activeTab === "migration"
-            ? "stats"
-            : "migration";
+          ? "sharing"
+          : (tabs[
+              (currentIndex + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length
+            ] ?? "migration");
     setActiveTab(nextTab);
-    (nextTab === "migration" ? migrationTabRef : statsTabRef).current?.focus();
+    const tabRefs = {
+      migration: migrationTabRef,
+      stats: statsTabRef,
+      sharing: sharingTabRef,
+    };
+    tabRefs[nextTab].current?.focus();
   }
 
   return (
@@ -872,6 +882,24 @@ export default function App() {
             Stats
           </span>
           <small>Review history</small>
+        </button>
+        <button
+          ref={sharingTabRef}
+          id="sharing-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Sharing"
+          aria-selected={activeTab === "sharing"}
+          aria-controls="sharing-panel"
+          tabIndex={activeTab === "sharing" ? 0 : -1}
+          onClick={() => setActiveTab("sharing")}
+        >
+          <span>
+            <Share2 aria-hidden="true" />
+            Sharing
+          </span>
+          <small>Publish snapshots</small>
         </button>
       </div>
 
@@ -1289,7 +1317,7 @@ export default function App() {
             </section>
           ) : null}
         </div>
-      ) : (
+      ) : activeTab === "stats" ? (
         <div
           id="stats-panel"
           className="workspace-panel"
@@ -1297,6 +1325,15 @@ export default function App() {
           aria-labelledby="stats-tab"
         >
           <MigrationStatsPanel providers={providers} refreshKey={statsRefreshKey} />
+        </div>
+      ) : (
+        <div
+          id="sharing-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="sharing-tab"
+        >
+          <ShareManager providers={providers} accounts={accounts} />
         </div>
       )}
     </div>
@@ -1352,7 +1389,7 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "stats";
+type WorkspaceTab = "migration" | "stats" | "sharing";
 
 interface AppleMusicChallenge {
   developerToken: string;
