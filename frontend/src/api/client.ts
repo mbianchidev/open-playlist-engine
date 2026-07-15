@@ -5,6 +5,7 @@ import type {
   ConnectionView,
   ConnectionTestView,
   CreateMigrationBody,
+  CreateSyncRuleBody,
   JobItemView,
   JobView,
   MigrationOptionView,
@@ -13,6 +14,9 @@ import type {
   Playlist,
   PlaylistRef,
   ProviderView,
+  SyncRuleView,
+  SyncRunView,
+  UpdateSyncRuleBody,
 } from "./types";
 
 export class ApiError extends Error {
@@ -189,6 +193,58 @@ export async function reviewMigrationItems(
       body: JSON.stringify(body),
     }),
   );
+}
+
+export async function listSyncRules(): Promise<SyncRuleView[]> {
+  return json<SyncRuleView[]>(await fetch("/api/syncs"));
+}
+
+export async function createSyncRule(body: CreateSyncRuleBody): Promise<SyncRuleView> {
+  return json<SyncRuleView>(
+    await fetch("/api/syncs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function updateSyncRule(
+  ruleId: string,
+  body: UpdateSyncRuleBody,
+): Promise<SyncRuleView> {
+  return json<SyncRuleView>(
+    await fetch(`/api/syncs/${encodeURIComponent(ruleId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function pauseSyncRule(ruleId: string): Promise<SyncRuleView> {
+  return json<SyncRuleView>(
+    await fetch(`/api/syncs/${encodeURIComponent(ruleId)}/pause`, { method: "POST" }),
+  );
+}
+
+export async function resumeSyncRule(ruleId: string): Promise<SyncRuleView> {
+  return json<SyncRuleView>(
+    await fetch(`/api/syncs/${encodeURIComponent(ruleId)}/resume`, { method: "POST" }),
+  );
+}
+
+export async function runSyncRule(ruleId: string): Promise<SyncRunView> {
+  return json<SyncRunView>(
+    await fetch(`/api/syncs/${encodeURIComponent(ruleId)}/run`, { method: "POST" }),
+  );
+}
+
+export async function deleteSyncRule(ruleId: string): Promise<void> {
+  const response = await fetch(`/api/syncs/${encodeURIComponent(ruleId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) await json<never>(response);
 }
 
 // SSE stream of migration progress. Returns a disposer.

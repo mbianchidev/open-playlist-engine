@@ -38,6 +38,7 @@ from app.core.adapter import (
     RateLimited,
     RefreshTokenExpired,
     TrackCandidate,
+    Unsupported,
 )
 from app.core.capabilities import (
     Capability,
@@ -654,6 +655,8 @@ class SpotifyAdapter:
                 Capability.WRITE_LIBRARY,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
+                Capability.REMOVE_TRACKS,
+                Capability.REORDER,
                 Capability.SET_DESCRIPTION,
             },
             has_isrc=True,
@@ -932,6 +935,38 @@ class SpotifyAdapter:
         if playlist_id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
             return await self._save_library_tracks(cred, uris)
         return await self._add_playlist_tracks(cred, playlist_id, uris)
+
+    async def replace_playlist_tracks(
+        self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
+    ) -> None:
+        if playlist_id == SPOTIFY_SAVED_TRACKS_PLAYLIST_ID:
+            raise Unsupported("Spotify Liked Songs cannot be reordered")
+        normalized = [
+            f"spotify:track:{track_id}" if (track_id := _track_id(uri)) else None for uri in uris
+        ]
+        if any(uri is None for uri in normalized):
+            raise ProviderError("mirror contains an invalid Spotify track URI")
+        ordered = [uri for uri in normalized if uri is not None]
+        batch_size = self.info.capabilities.max_add_batch
+        async with self._client(cred) as client:
+            first = ordered[:batch_size]
+            _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "PUT",
+                    f"/playlists/{playlist_id}/items",
+                    json={"uris": first},
+                )
+            )
+            for start in range(batch_size, len(ordered), batch_size):
+                _raise_for_status(
+                    await _spotify_request(
+                        client,
+                        "POST",
+                        f"/playlists/{playlist_id}/items",
+                        json={"uris": ordered[start : start + batch_size]},
+                    )
+                )
 
     async def _save_library_tracks(
         self, cred: ProviderCredential, uris: Sequence[str]

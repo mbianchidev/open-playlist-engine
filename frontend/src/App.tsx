@@ -8,6 +8,7 @@ import {
   Music2,
   Play,
   RefreshCw,
+  Repeat2,
   RotateCcw,
   ShieldCheck,
   Wifi,
@@ -37,6 +38,7 @@ import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
+import SyncPanel from "./components/SyncPanel";
 import { providerLabel } from "./utils/providers";
 
 export default function App() {
@@ -71,6 +73,7 @@ export default function App() {
   const playlistLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const syncTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
@@ -797,16 +800,20 @@ export default function App() {
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const nextTab =
+    const tabs: WorkspaceTab[] = ["migration", "sync", "stats"];
+    const currentIndex = tabs.indexOf(activeTab);
+    const nextIndex =
       event.key === "Home"
-        ? "migration"
+        ? 0
         : event.key === "End"
-          ? "stats"
-          : activeTab === "migration"
-            ? "stats"
-            : "migration";
+          ? tabs.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+            tabs.length;
+    const nextTab = tabs[nextIndex];
     setActiveTab(nextTab);
-    (nextTab === "migration" ? migrationTabRef : statsTabRef).current?.focus();
+    const nextRef =
+      nextTab === "migration" ? migrationTabRef : nextTab === "sync" ? syncTabRef : statsTabRef;
+    nextRef.current?.focus();
   }
 
   return (
@@ -854,6 +861,24 @@ export default function App() {
             Migration
           </span>
           <small>Move playlists</small>
+        </button>
+        <button
+          ref={syncTabRef}
+          id="sync-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Sync"
+          aria-selected={activeTab === "sync"}
+          aria-controls="sync-panel"
+          tabIndex={activeTab === "sync" ? 0 : -1}
+          onClick={() => setActiveTab("sync")}
+        >
+          <span>
+            <Repeat2 aria-hidden="true" />
+            Sync
+          </span>
+          <small>Keep playlists aligned</small>
         </button>
         <button
           ref={statsTabRef}
@@ -1289,6 +1314,21 @@ export default function App() {
             </section>
           ) : null}
         </div>
+      ) : activeTab === "sync" ? (
+        <div
+          id="sync-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="sync-tab"
+        >
+          <SyncPanel
+            providers={providers}
+            onReconnectProvider={(provider) => {
+              setActiveTab("migration");
+              return connect(provider);
+            }}
+          />
+        </div>
       ) : (
         <div
           id="stats-panel"
@@ -1352,7 +1392,7 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "stats";
+type WorkspaceTab = "migration" | "sync" | "stats";
 
 interface AppleMusicChallenge {
   developerToken: string;

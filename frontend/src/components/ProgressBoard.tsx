@@ -40,11 +40,14 @@ export default function ProgressBoard({
   const counts = countStatuses(items);
   const total = job?.total ?? items.length;
   const migratedCount = counts.written ?? 0;
+  const matchedCount = counts.matched ?? 0;
   const reviewCount = counts.needs_review ?? 0;
+  const syncMatchOnly = job?.origin === "sync" && job.match_only;
   const processedCount =
-    migratedCount + (counts.skipped ?? 0) + reviewCount + (counts.failed ?? 0);
+    migratedCount + matchedCount + (counts.skipped ?? 0) + reviewCount + (counts.failed ?? 0);
   const waitingCount = Math.max(total - processedCount, 0);
-  const progressPct = total > 0 ? Math.min(100, Math.round((migratedCount / total) * 100)) : 0;
+  const primaryCount = syncMatchOnly ? matchedCount : migratedCount;
+  const progressPct = total > 0 ? Math.min(100, Math.round((primaryCount / total) * 100)) : 0;
   const playlistLabel = summarizePlaylists(items);
   const uncertainItems = items.filter((item) => item.status === "needs_review");
   const reviewableItems = items.filter(isReviewableItem).sort(compareReviewItems);
@@ -52,9 +55,11 @@ export default function ProgressBoard({
   const thresholdApprovableItems = uncertainItems.filter(
     (item) => item.target_uri && confidenceAtOrAboveThreshold(item.confidence, approveThresholdPct),
   );
-  const thresholdSkippableItems = uncertainItems.filter((item) =>
-    confidenceAtOrBelowThreshold(item.confidence, skipThresholdPct),
-  );
+  const thresholdSkippableItems = syncMatchOnly
+    ? []
+    : uncertainItems.filter((item) =>
+        confidenceAtOrBelowThreshold(item.confidence, skipThresholdPct),
+      );
   const reconnectProvider =
     job?.error && shouldPromptReconnect(job.error) ? providerForReconnect(job, job.error) : null;
 
@@ -107,14 +112,14 @@ export default function ProgressBoard({
         <span style={{ transform: `scaleX(${progressPct / 100})` }} />
       </div>
       <p className="progress-summary">
-        {migratedCount}/{total || "?"} migrated
+        {primaryCount}/{total || "?"} {syncMatchOnly ? "matched" : "migrated"}
         {reviewCount ? ` · ${reviewCount} need review` : ""}
         {waitingCount ? ` · ${waitingCount} waiting` : ""}
         {job?.failed ? ` · ${job.failed} failed` : ""}
       </p>
       {!collapsed ? (
         <div className="progress-panel-body">
-          {job?.status === "done" ? (
+          {job?.status === "done" && !syncMatchOnly && !reviewCount && !counts.failed ? (
             <div className="notice migration-success">
               <strong>
                 <CheckCircle2 aria-hidden="true" />
@@ -140,6 +145,18 @@ export default function ProgressBoard({
                     ),
                   )}
                 </div>
+              ) : null}
+              {job?.status === "done" && syncMatchOnly && !reviewCount && !counts.failed ? (
+                <div className="notice migration-success">
+                  <strong>
+                    <CheckCircle2 aria-hidden="true" />
+                    Sync matching completed.
+                  </strong>
+                  <span>The sync rule applies and verifies the ordered mirror write.</span>
+                </div>
+              ) : null}
+              {job?.status === "done" && (reviewCount > 0 || Boolean(counts.failed)) ? (
+                <p className="warn">Resolve these tracks before the sync schedule can continue.</p>
               ) : null}
             </div>
           ) : null}
@@ -222,13 +239,15 @@ export default function ProgressBoard({
                           }
                         />
                         <span>%</span>
-                        <button
-                          className="secondary compact"
-                          disabled={thresholdSkippableItems.length === 0}
-                          onClick={() => reviewMany(thresholdSkippableItems, "skip")}
-                        >
-                          Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
-                        </button>
+                        {!syncMatchOnly ? (
+                          <button
+                            className="secondary compact"
+                            disabled={thresholdSkippableItems.length === 0}
+                            onClick={() => reviewMany(thresholdSkippableItems, "skip")}
+                          >
+                            Skip below {skipThresholdPct}% ({thresholdSkippableItems.length})
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
@@ -336,9 +355,11 @@ export default function ProgressBoard({
             <button className="secondary compact" onClick={() => review(item, "approve")}>
               Approve
             </button>
-            <button className="secondary compact" onClick={() => review(item, "skip")}>
-              Skip
-            </button>
+            {!syncMatchOnly ? (
+              <button className="secondary compact" onClick={() => review(item, "skip")}>
+                Skip
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

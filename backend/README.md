@@ -8,8 +8,9 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
-- `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/jobs/` — arq worker, import→match→review→write pipeline, and persisted sync scheduler.
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
+  `/syncs`).
 
 ## Develop
 ```bash
@@ -59,6 +60,13 @@ partial-migration labels, duplicate skips, batch review actions, and low-confide
 match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+The worker also runs the playlist sync scheduler at startup and every minute.
+`sync_rule`, `sync_run`, and `sync_checkpoint` persist schedules, active-run leases,
+source/target snapshots, target mappings, results and errors. Sync-created migration
+jobs are hidden from normal migration history/statistics but remain available through
+their progress/review endpoints. See
+[`docs/SYNCHRONIZATION.md`](../docs/SYNCHRONIZATION.md).
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

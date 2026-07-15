@@ -33,6 +33,10 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 6. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
+7. Create and manage recurring rules from completed full-playlist migrations in the
+   Sync workspace. The UI exposes add-only/mirror capability gating, cadence/timezone
+   editing, run now, pause/resume, delete, changed-track counts, errors and the latest
+   migration review panel.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised
@@ -47,4 +51,5 @@ official MusicKit JS v3 browser authorization flow.
 `src/index.css` retains the established component and state selectors.
 `src/theme.css` owns the product tokens, provider-aware presentation, responsive
 layout, and motion overrides. Keep dynamic status classes and the ARIA tab
-relationships intact when changing presentation.
+relationships intact when changing presentation. The accessible workspace tab order
+is Migration, Sync, Stats.

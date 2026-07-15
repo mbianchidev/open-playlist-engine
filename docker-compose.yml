@@ -3,6 +3,7 @@ name: open-playlist-engine
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ope
       POSTGRES_PASSWORD: ope
@@ -17,6 +18,7 @@ services:
 
   valkey:
     image: valkey/valkey:8-alpine
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
@@ -25,6 +27,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     env_file: .env
     environment:
@@ -40,6 +43,7 @@ services:
 
   worker:
     build: ./backend
+    restart: unless-stopped
     command: ["sh", "-c", "alembic upgrade head && arq app.jobs.worker.WorkerSettings"]
     env_file: .env
     environment:
@@ -53,6 +57,7 @@ services:
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     ports:
       - "8080:80"
     depends_on:

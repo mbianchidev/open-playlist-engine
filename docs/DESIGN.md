@@ -41,7 +41,9 @@ supports import → match → write with SSE item progress; low-confidence match
 marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
 batch-denied from the progress panel. The UI also exposes ledger-backed
 single-migration and all-time aggregate statistics with source/target provider
-filters.
+filters. Persistent one-way sync rules reuse migration jobs for new-track matching
+and writes, store source/target checkpoints, catch up missed schedules in the
+self-hosted worker, and expose add-only plus capability-gated mirror controls.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -91,6 +93,21 @@ review, rerun detection and duplicate handling also provide status buckets
 (`written`, `skipped`, `needs_review`, `failed`, `matched`, `pending`) for one
 selected migration and all-time totals. Aggregate queries can be filtered by source
 provider, target provider, or both.
+
+### Scheduled synchronization
+
+A rule starts from one completed full-playlist migration, so the source/target account
+and playlist relationship is already proven. The worker evaluates due rules at startup
+and every minute. Each run stores deterministic source/target snapshots and creates a
+normal migration job for newly added tracks; add-only uses the existing duplicate
+reconciliation, while mirror uses a match-only job followed by one ordered target
+replacement. Review-required rules stop scheduling until the migration review is
+resolved and the sync finalizer commits the checkpoint.
+
+Only one queued/running run may exist per rule. A database partial unique index,
+transactional row locks and run lease tokens prevent overlaps and stale workers from
+committing. Transient failures receive a shorter retry schedule, expired credentials
+auto-pause the rule, and inverse endpoint rules are rejected to prevent feedback loops.
 
 ---
 
@@ -177,6 +194,11 @@ class ProviderAdapter(Protocol):
     async def create_playlist(self, cred, spec) -> str: ...
     async def add_tracks(self, cred, playlist_id, uris) -> list[AddItemResult]: ...
 ```
+
+Adapters that advertise both `REMOVE_TRACKS` and `REORDER` may also implement the
+optional `MirrorProviderAdapter.replace_playlist_tracks(...)` contract. The scheduler
+checks both the capability descriptor and structural protocol before exposing mirror.
+Spotify is the initial mirror target; saved/liked collections remain add-only.
 
 ### Registration & trust boundary — **[rev]**
 - Adapters self-register via `app.core.registry.register(...)`; third parties can
@@ -273,7 +295,7 @@ scheduler need **constraints**, not just "can write":
 ### Honest matrix (verify per provider)
 | Provider | Read | Write | ISRC | Target lookup | Auth | Notes |
 |---|---|---|---|---|---|---|
-| Spotify | ✓ | ✓ | ✓ | ISRC + text | OAuth PKCE | official, solid |
+| Spotify | ✓ | ✓ + mirror | ✓ | ISRC + text | OAuth PKCE | official, solid |
 | YT Music (`ytmusicapi`) | ✓ | ✓ | ✗ | text only | device/header | unofficial, no quota, no ISRC |
 | YouTube (Data API) | ✓ | ✓ | ✗ | text (quota) | OAuth | official, ~66 songs/day |
 | Tidal | ✓ | ✓ | ✓ | ISRC + text | OAuth PKCE | official dev portal |
@@ -286,6 +308,8 @@ scheduler need **constraints**, not just "can write":
 inline warnings dynamically, so new plugins appear automatically. Core gate before
 a job: source `READ_TRACKS` ∧ target `CREATE_PLAYLIST` + `ADD_TRACKS`. Missing
 optional caps → skip + warn, never hard-fail.
+`GET /providers` also returns `can_mirror` and an actionable reason when mirror is
+unavailable.
 
 ---
 
@@ -347,6 +371,13 @@ graph as an open dataset is deferred pending legal review.
 - **[rev] Durable, replayable progress.** Progress is derived from persisted
   `job_item` rows and streamed over **SSE**; a reconnecting client resumes via
   `Last-Event-ID`, so no events are lost on a dropped connection.
+- Sync-generated jobs carry `origin=sync` and a `sync_run_id`: they reuse matching,
+  review, duplicate handling and the operation ledger without cluttering manual
+  migration history/statistics.
+- Mirror replacements write an intended ledger row before the provider call, verify
+  the final ordered URI sequence, and leave ambiguous state retryable. Multi-batch
+  Spotify replacement restarts from the first `PUT` on every retry and attempts to
+  restore the previous sequence after a partial failure.
 
 ---
 
@@ -358,6 +389,9 @@ graph as an open dataset is deferred pending legal review.
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
 | `migration_job`, `job_item` | jobs + per-song status (drives progress) | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
+| `sync_rule` | endpoints, mode, cadence/timezone, enabled and last/next metadata | private |
+| `sync_run` | trigger, lease, snapshots, changed counts, status and error | private |
+| `sync_checkpoint` | latest applied snapshots, mappings and unresolved review items | private |
 | `track_identity` | canonical track (UUID pk, ISRC as evidence) | global, no PII |
 | `track_edge` | provider links with confidence/source/scope | global + per-account overlays |
 
@@ -373,8 +407,8 @@ open-playlist-engine/
                    # match_service, rate_limit, security  (provider-agnostic hub)
       providers/   # spotify/, ytmusic/  (self-registering adapters)
       db/          # SQLAlchemy models (private data + identity graph)
-      jobs/        # arq worker + import→match→review→write pipeline
-      api/         # FastAPI routers: /providers /auth /playlists /migrations
+      jobs/        # arq worker + migration pipeline + persistent sync scheduler
+      api/         # FastAPI routers: /providers /auth /playlists /migrations /syncs
     tests/conformance/   # fake provider + contract suite
     migrations/          # Alembic
   frontend/        # Vite + React + TS SPA (consumes generated OpenAPI client)
@@ -406,6 +440,9 @@ generated OpenAPI client.
 | Awkward auth (ytmusic, Apple) | 3 challenge shapes + per-provider lifecycle hooks |
 | Fuzzy mismatches | ISRC-first; review step; confirmations as overlays, promoted only on evidence |
 | Partial writes on retry | operation ledger: reconcile by reading target state |
+| Overlapping or orphaned sync runs | partial unique index + row lock + lease token + stale recovery |
+| Sync feedback loops | one-way endpoint identity and inverse-rule rejection |
+| Mirror replacement fails mid-batch | verify, retry from first replace call, and attempt rollback |
 | Provider API/ToS changes | capability descriptors + conformance suite catch regressions |
 | Lossy migrations | fidelity contract + per-job lossy report (`unsupported_reason`) |
 
@@ -436,6 +473,8 @@ generated OpenAPI client.
 - ✅ **[rev]** idempotency via operation ledger; central rate limiter; replayable SSE.
 - ✅ **[rev]** capability descriptors (constraints); fidelity contract + lossy report.
 - ✅ Self-host single-user v1 with SaaS-ready seams (`DEPLOYMENT_MODE` + `KeyProvider`).
+- ✅ Persistent worker-local playlist sync with restart catch-up, review finalization,
+  add-only mode and capability-gated Spotify mirror.
 
 ## 16. Open questions
 

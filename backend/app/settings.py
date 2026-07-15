@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     migration_safe_daily_tracks: int = 250
     migration_safe_min_job_gap_s: int = 120
     migration_worker_job_timeout_s: int = 3600
+    sync_min_cadence_minutes: int = 5
+    sync_max_cadence_minutes: int = 10_080
+    sync_retry_delay_s: int = 300
+    sync_stale_run_after_s: int = 3900
+    sync_scheduler_batch_size: int = 20
 
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
