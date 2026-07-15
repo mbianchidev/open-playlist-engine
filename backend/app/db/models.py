@@ -119,6 +119,76 @@ class CachedPlaylistTracks(Base):
 
 
 # --------------------------------------------------------------------------- #
+# Playlist generator preferences and private review drafts
+# --------------------------------------------------------------------------- #
+class GenerationPreference(Base):
+    __tablename__ = "generation_preference"
+
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class GenerationDraft(Base):
+    __tablename__ = "generation_draft"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    target_provider: Mapped[str] = mapped_column(String)
+    target_account_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_account.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    model_backend: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="draft", index=True)
+    confirmed_job_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    items: Mapped[list[GenerationDraftItem]] = relationship(
+        back_populates="draft", cascade="all, delete-orphan"
+    )
+
+
+class GenerationDraftItem(Base):
+    __tablename__ = "generation_draft_item"
+    __table_args__ = (UniqueConstraint("draft_id", "position"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    draft_id: Mapped[str] = mapped_column(
+        ForeignKey("generation_draft.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    intent_title: Mapped[str] = mapped_column(String)
+    intent_artist: Mapped[str] = mapped_column(String)
+    intent_album: Mapped[str | None] = mapped_column(String, nullable=True)
+    intent_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    provider_track_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_uri: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_artist: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_album: Mapped[str | None] = mapped_column(String, nullable=True)
+    duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    isrc: Mapped[str | None] = mapped_column(String, nullable=True)
+    explicit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String, index=True)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    draft: Mapped[GenerationDraft] = relationship(back_populates="items")
+
+
+# --------------------------------------------------------------------------- #
 # Jobs & operation ledger (private)
 # --------------------------------------------------------------------------- #
 class MigrationJob(Base):

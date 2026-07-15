@@ -215,3 +215,117 @@ export interface ProgressEvent {
   job_id?: string;
   missing?: boolean;
 }
+
+export type GeneratorBackend = "openai_compatible" | "copilot_sdk";
+
+export interface GeneratorLimitsView {
+  max_prompt_chars: number;
+  max_output_chars: number;
+  max_tracks: number;
+}
+
+export interface GeneratorConfigView {
+  available: boolean;
+  backend: GeneratorBackend;
+  model: string;
+  message: string;
+  limits: GeneratorLimitsView;
+}
+
+export interface GeneratorPreferenceSummary {
+  top_artists: string[];
+  top_genres: string[];
+  source_track_count: number;
+}
+
+export interface GeneratorPreferenceView {
+  enabled: boolean;
+  summary: GeneratorPreferenceSummary;
+}
+
+export type ExplicitPreference = "allow" | "exclude" | "only";
+
+export interface GeneratorControls {
+  genres: string[];
+  moods: string[];
+  eras: string[];
+  energy: number | null;
+  track_count: number;
+  duration_minutes: number | null;
+  seed_artists: string[];
+  seed_tracks: string[];
+  explicit: ExplicitPreference;
+  familiarity: number;
+  discovery: number;
+}
+
+export interface GenerationSpec {
+  prompt: string;
+  controls: GeneratorControls;
+}
+
+export interface CreateGenerationDraftBody {
+  target_provider: string;
+  target_account_id: string;
+  generation: GenerationSpec;
+  use_personalization: boolean;
+}
+
+export interface GeneratedTrackIntent {
+  title: string;
+  artist: string;
+  album: string | null;
+  release_year: number | null;
+  explicit: boolean | null;
+  reason: string | null;
+}
+
+export interface GeneratorCandidateView {
+  provider_track_id: string;
+  uri: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_s: number | null;
+  isrc: string | null;
+  explicit: boolean | null;
+  market: string | null;
+}
+
+export interface GenerationDraftItemView {
+  id: string;
+  position: number;
+  intent: GeneratedTrackIntent;
+  candidate: GeneratorCandidateView | null;
+  confidence: number | null;
+  status: "resolved" | "needs_review" | "unresolved";
+  reason: string | null;
+}
+
+export interface GenerationDraftView {
+  id: string;
+  status: string;
+  target_provider: string;
+  target_account_id: string;
+  name: string;
+  description: string | null;
+  model_backend: GeneratorBackend;
+  confirmed_job_id: string | null;
+  items: GenerationDraftItemView[];
+  playlist: Playlist;
+}
+
+export interface GeneratorTrackSearchBody {
+  target_provider: string;
+  target_account_id: string;
+  title: string;
+  artist: string;
+  album?: string | null;
+  limit?: number;
+}
+
+export interface GeneratorWarningView {
+  code: "generation_warnings";
+  message: string;
+  warnings: { code: string; message: string }[];
+}

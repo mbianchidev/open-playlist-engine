@@ -19,6 +19,7 @@ dependencies = [
     "alembic>=1.14",
     "arq>=0.26",
     "httpx>=0.27",
+    "github-copilot-sdk>=1.0.6",
     "cryptography>=43",
     "PyJWT>=2.10",
     "ytmusicapi>=1.12.1",

@@ -11,15 +11,12 @@ import json
 import logging
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Annotated, Literal
 
-from arq import create_pool
-from arq.connections import RedisSettings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,13 +24,13 @@ from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
 from app.core.migration_state import (
-    has_track_overlap,
     keys_from_metadata,
     track_keys,
     track_selected,
     uri_keys,
 )
-from app.core.models import Playlist, PlaylistKind, PlaylistRef
+from app.core.models import Playlist, PlaylistRef
+from app.core.preflight import write_preflight_warnings
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
@@ -43,7 +40,8 @@ from app.db.repositories import (
     load_credential,
     load_fresh_credential,
 )
-from app.jobs.migration import commit_job_counts, run_migration
+from app.jobs.enqueue import enqueue_migration
+from app.jobs.migration import commit_job_counts
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -472,20 +470,6 @@ def _aggregate_item_counts_stmt(job_ids: list[str]):
     )
 
 
-async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> None:
-    try:
-        redis = await create_pool(RedisSettings.from_dsn(get_settings().valkey_url))
-        try:
-            await redis.enqueue_job("run_migration", job_id)
-        finally:
-            await redis.close(close_connection_pool=True)
-    except (ConnectionError, OSError, RedisError, TimeoutError) as exc:
-        logger.warning(
-            "queue unavailable; running migration inline job_id=%s error=%s", job_id, exc
-        )
-        background_tasks.add_task(run_migration, {}, job_id)
-
-
 @router.get("", response_model=list[MigrationOptionView])
 async def list_migrations(
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -548,7 +532,7 @@ async def create_migration(
     )
     session.add(job)
     await session.commit()
-    await _enqueue_or_inline(background_tasks, job.id)
+    await enqueue_migration(background_tasks, job.id)
     return _job_view(job)
 
 
@@ -624,60 +608,16 @@ async def _preflight_warnings(
     )
 
     selected = await _selected_playlists(source, source_cred, body.selection)
-    _validate_target_capabilities(target, target_cred, selected)
-    total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
-    warnings: list[dict[str, str]] = []
-    if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
-        warnings.append(
-            _warning(
-                "playlist_count",
-                "Safe default is 1 playlist per job. Start a single playlist unless "
-                "you accept the extra account-risk.",
-            )
-        )
-    if total_tracks > settings.migration_safe_max_tracks_per_job:
-        warnings.append(
-            _warning(
-                "track_count",
-                f"Safe default is {settings.migration_safe_max_tracks_per_job} tracks "
-                f"per job; this job has {total_tracks}.",
-            )
-        )
-
-    migrated_today = await _tracks_migrated_today(
+    return await write_preflight_warnings(
         session,
+        settings=settings,
         user_id=user_id,
         target_provider=body.target_provider,
         target_account_id=body.target_account_id,
+        target=target,
+        target_credential=target_cred,
+        playlists=list(selected.values()),
     )
-    if migrated_today + total_tracks > settings.migration_safe_daily_tracks:
-        warnings.append(
-            _warning(
-                "daily_limit",
-                f"Safe default is {settings.migration_safe_daily_tracks} tracks/day; "
-                f"today would reach {migrated_today + total_tracks}.",
-            )
-        )
-
-    wait_remaining = await _job_wait_remaining(
-        session,
-        user_id=user_id,
-        target_provider=body.target_provider,
-        target_account_id=body.target_account_id,
-        min_gap_s=settings.migration_safe_min_job_gap_s,
-    )
-    if wait_remaining > 0:
-        warnings.append(
-            _warning(
-                "job_spacing",
-                "Safe default is waiting at least "
-                f"{settings.migration_safe_min_job_gap_s // 60} minutes between jobs; "
-                f"wait about {wait_remaining} seconds.",
-            )
-        )
-
-    warnings.extend(await _same_name_warnings(target, target_cred, selected))
-    return warnings
 
 
 async def _selected_playlists(
@@ -693,113 +633,6 @@ async def _selected_playlists(
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         selected[playlist_id] = playlist.model_copy(update={"tracks": tracks})
     return selected
-
-
-async def _same_name_warnings(
-    target, target_cred, selected: dict[str, Playlist]
-) -> list[dict[str, str]]:
-    target_refs = [ref async for ref in target.iter_playlists(target_cred)]
-    warnings: list[dict[str, str]] = []
-    for source_playlist in selected.values():
-        if source_playlist.kind is PlaylistKind.LIKED_TRACKS:
-            continue
-        same_name = [
-            ref
-            for ref in target_refs
-            if ref.kind is PlaylistKind.STANDARD
-            and ref.name.strip() == source_playlist.name.strip()
-        ]
-        for ref in same_name:
-            try:
-                target_playlist = await target.read_playlist(target_cred, ref)
-            except NotFound:
-                logger.warning(
-                    "skipping unreadable same-name target playlist playlist_id=%s", ref.id
-                )
-                continue
-            if target_playlist.tracks and not has_track_overlap(
-                source_playlist.tracks, target_playlist.tracks
-            ):
-                warnings.append(
-                    _warning(
-                        "same_name_different_tracks",
-                        f'Target already has a playlist named "{source_playlist.name}" '
-                        "with different songs.",
-                    )
-                )
-                break
-    return warnings
-
-
-def _validate_target_capabilities(
-    target, target_cred, selected: dict[str, Playlist]
-) -> None:
-    kinds = {playlist.kind for playlist in selected.values()}
-    if PlaylistKind.STANDARD in kinds:
-        caps = target.info.capabilities
-        if not (
-            caps.can(Capability.CREATE_PLAYLIST) and caps.can(Capability.ADD_TRACKS)
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{target.info.display_name} cannot write playlists",
-            )
-    if PlaylistKind.LIKED_TRACKS in kinds:
-        target.info.require_liked_tracks_target(target_cred)
-
-
-async def _tracks_migrated_today(
-    session: AsyncSession,
-    *,
-    user_id: str,
-    target_provider: str,
-    target_account_id: str,
-) -> int:
-    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    count = await session.scalar(
-        select(func.count())
-        .select_from(orm.JobItem)
-        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
-        .where(
-            orm.MigrationJob.user_id == user_id,
-            orm.MigrationJob.target_provider == target_provider,
-            orm.MigrationJob.target_account_id == target_account_id,
-            orm.MigrationJob.created_at >= today,
-        )
-    )
-    return int(count or 0)
-
-
-async def _job_wait_remaining(
-    session: AsyncSession,
-    *,
-    user_id: str,
-    target_provider: str,
-    target_account_id: str,
-    min_gap_s: int,
-) -> int:
-    job = await session.scalar(
-        select(orm.MigrationJob)
-        .where(
-            orm.MigrationJob.user_id == user_id,
-            orm.MigrationJob.target_provider == target_provider,
-            orm.MigrationJob.target_account_id == target_account_id,
-        )
-        .order_by(orm.MigrationJob.created_at.desc())
-        .limit(1)
-    )
-    if job is None or job.created_at is None:
-        return 0
-    created_at = job.created_at
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=UTC)
-    elapsed = datetime.now(UTC) - created_at
-    remaining = timedelta(seconds=min_gap_s) - elapsed
-    return max(0, int(remaining.total_seconds()))
-
-
-def _warning(code: str, message: str) -> dict[str, str]:
-    return {"code": code, "message": message}
 
 
 @router.get("/stats", response_model=AggregateMigrationStatsView)

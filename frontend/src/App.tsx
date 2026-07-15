@@ -10,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  WandSparkles,
   Wifi,
 } from "lucide-react";
 import {
@@ -33,6 +34,7 @@ import type {
   ProviderView,
   Track,
 } from "./api/types";
+import GeneratorWorkspace from "./components/GeneratorWorkspace";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
@@ -71,6 +73,7 @@ export default function App() {
   const playlistLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const generatorTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
@@ -797,16 +800,35 @@ export default function App() {
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
+    const tabs: WorkspaceTab[] = ["migration", "generator", "stats"];
+    const currentIndex = tabs.indexOf(activeTab);
     const nextTab =
       event.key === "Home"
-        ? "migration"
+        ? tabs[0]
         : event.key === "End"
-          ? "stats"
-          : activeTab === "migration"
-            ? "stats"
-            : "migration";
+          ? tabs[tabs.length - 1]
+          : event.key === "ArrowRight"
+            ? tabs[(currentIndex + 1) % tabs.length]
+            : tabs[(currentIndex - 1 + tabs.length) % tabs.length];
     setActiveTab(nextTab);
-    (nextTab === "migration" ? migrationTabRef : statsTabRef).current?.focus();
+    const refs = {
+      migration: migrationTabRef,
+      generator: generatorTabRef,
+      stats: statsTabRef,
+    };
+    refs[nextTab].current?.focus();
+  }
+
+  function openMigrationConnections() {
+    setActiveTab("migration");
+    migrationTabRef.current?.focus();
+  }
+
+  function handleGeneratedJob(jobId: string) {
+    setJobId(jobId);
+    setStatsRefreshKey((value) => value + 1);
+    setActiveTab("migration");
+    migrationTabRef.current?.focus();
   }
 
   return (
@@ -827,7 +849,7 @@ export default function App() {
         </div>
         <div className="product-promise">
           <ShieldCheck aria-hidden="true" />
-          <span>Local-first migration</span>
+          <span>Local-first playlists</span>
         </div>
       </header>
 
@@ -854,6 +876,24 @@ export default function App() {
             Migration
           </span>
           <small>Move playlists</small>
+        </button>
+        <button
+          ref={generatorTabRef}
+          id="generator-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Generator"
+          aria-selected={activeTab === "generator"}
+          aria-controls="generator-panel"
+          tabIndex={activeTab === "generator" ? 0 : -1}
+          onClick={() => setActiveTab("generator")}
+        >
+          <span>
+            <WandSparkles aria-hidden="true" />
+            Generator
+          </span>
+          <small>Build and review</small>
         </button>
         <button
           ref={statsTabRef}
@@ -1289,6 +1329,20 @@ export default function App() {
             </section>
           ) : null}
         </div>
+      ) : activeTab === "generator" ? (
+        <div
+          id="generator-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="generator-tab"
+        >
+          <GeneratorWorkspace
+            providers={providers}
+            accounts={accounts}
+            onOpenConnections={openMigrationConnections}
+            onJobCreated={handleGeneratedJob}
+          />
+        </div>
       ) : (
         <div
           id="stats-panel"
@@ -1352,7 +1406,7 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "stats";
+type WorkspaceTab = "migration" | "generator" | "stats";
 
 interface AppleMusicChallenge {
   developerToken: string;

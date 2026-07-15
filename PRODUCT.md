@@ -6,11 +6,16 @@ product
 
 ## Users
 
-Music listeners and self-hosters moving personal playlists and saved-track libraries between streaming services. They use the app in a focused migration workflow and need to understand provider compatibility, account state, selection scope, progress, and exceptions.
+Music listeners and self-hosters moving or creating personal playlists across streaming
+services. They need to understand provider compatibility, account state, selection
+scope, generated-track evidence, progress, and exceptions.
 
 ## Product Purpose
 
-Open Playlist Engine makes any supported source-to-target playlist migration understandable and trustworthy. Success means a user can connect two services, choose exactly what moves, monitor matching and writing, resolve uncertain tracks, and verify the result without learning provider-specific internals.
+Open Playlist Engine makes playlist migration and local-first generation understandable
+and trustworthy. Success means a user can connect services, choose what moves or
+describe what to build, review real provider matches before writing, monitor progress,
+and verify the result without learning provider-specific internals.
 
 ## Brand Personality
 
@@ -23,6 +28,7 @@ Avoid generic SaaS dashboards, crypto-style neon gradients, glass-heavy streamin
 ## Design Principles
 
 - Make the source-to-target route unmistakable.
+- Keep generated suggestions visibly separate from provider-resolved tracks.
 - Use provider identity where it improves recognition and confidence.
 - Keep system state visible before, during, and after migration.
 - Turn errors and empty states into clear next actions.

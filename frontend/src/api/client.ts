@@ -5,6 +5,12 @@ import type {
   ConnectionView,
   ConnectionTestView,
   CreateMigrationBody,
+  CreateGenerationDraftBody,
+  GenerationDraftView,
+  GeneratorCandidateView,
+  GeneratorConfigView,
+  GeneratorPreferenceView,
+  GeneratorTrackSearchBody,
   JobItemView,
   JobView,
   MigrationOptionView,
@@ -196,4 +202,155 @@ export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) =>
   const source = new EventSource(`/api/migrations/${jobId}/events`);
   source.addEventListener("progress", onMessage as EventListener);
   return () => source.close();
+}
+
+export async function getGeneratorConfig(): Promise<GeneratorConfigView> {
+  return json<GeneratorConfigView>(await fetch("/api/generator/config"));
+}
+
+export async function getGeneratorPreferences(): Promise<GeneratorPreferenceView> {
+  return json<GeneratorPreferenceView>(await fetch("/api/generator/preferences"));
+}
+
+export async function updateGeneratorPreferences(enabled: boolean): Promise<GeneratorPreferenceView> {
+  return json<GeneratorPreferenceView>(
+    await fetch("/api/generator/preferences", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }),
+  );
+}
+
+export async function deleteGeneratorPreferences(): Promise<GeneratorPreferenceView> {
+  return json<GeneratorPreferenceView>(
+    await fetch("/api/generator/preferences", { method: "DELETE" }),
+  );
+}
+
+export async function createGenerationDraft(
+  body: CreateGenerationDraftBody,
+): Promise<GenerationDraftView> {
+  return json<GenerationDraftView>(
+    await fetch("/api/generator/drafts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function updateGenerationDraft(
+  draftId: string,
+  body: { name?: string; description?: string | null },
+): Promise<GenerationDraftView> {
+  return json<GenerationDraftView>(
+    await fetch(`/api/generator/drafts/${encodeURIComponent(draftId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function deleteGenerationDraft(draftId: string): Promise<void> {
+  const response = await fetch(`/api/generator/drafts/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) await json<never>(response);
+}
+
+export async function searchGeneratorTracks(
+  body: GeneratorTrackSearchBody,
+): Promise<GeneratorCandidateView[]> {
+  return json<GeneratorCandidateView[]>(
+    await fetch("/api/generator/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function addGenerationDraftItem(
+  draftId: string,
+  candidate: GeneratorCandidateView,
+): Promise<GenerationDraftView> {
+  return json<GenerationDraftView>(
+    await fetch(`/api/generator/drafts/${encodeURIComponent(draftId)}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ candidate: candidateSelection(candidate) }),
+    }),
+  );
+}
+
+export async function updateGenerationDraftItem(
+  draftId: string,
+  itemId: string,
+  body:
+    | { action: "approve" }
+    | { action: "replace"; candidate: GeneratorCandidateView },
+): Promise<GenerationDraftView> {
+  const payload =
+    body.action === "approve"
+      ? body
+      : { action: body.action, candidate: candidateSelection(body.candidate) };
+  return json<GenerationDraftView>(
+    await fetch(
+      `/api/generator/drafts/${encodeURIComponent(draftId)}/items/${encodeURIComponent(itemId)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ),
+  );
+}
+
+export async function deleteGenerationDraftItem(
+  draftId: string,
+  itemId: string,
+): Promise<GenerationDraftView> {
+  return json<GenerationDraftView>(
+    await fetch(
+      `/api/generator/drafts/${encodeURIComponent(draftId)}/items/${encodeURIComponent(itemId)}`,
+      { method: "DELETE" },
+    ),
+  );
+}
+
+export async function reorderGenerationDraftItems(
+  draftId: string,
+  itemIds: string[],
+): Promise<GenerationDraftView> {
+  return json<GenerationDraftView>(
+    await fetch(`/api/generator/drafts/${encodeURIComponent(draftId)}/reorder`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ item_ids: itemIds }),
+    }),
+  );
+}
+
+export async function confirmGenerationDraft(
+  draftId: string,
+  acknowledgeWarnings = false,
+): Promise<JobView> {
+  return json<JobView>(
+    await fetch(`/api/generator/drafts/${encodeURIComponent(draftId)}/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ acknowledge_warnings: acknowledgeWarnings }),
+    }),
+  );
+}
+
+function candidateSelection(candidate: GeneratorCandidateView) {
+  return {
+    uri: candidate.uri,
+    title: candidate.title,
+    artist: candidate.artist,
+    album: candidate.album,
+  };
 }
