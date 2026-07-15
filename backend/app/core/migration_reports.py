@@ -192,4 +192,3 @@ def _iso(value: datetime | None) -> str | None:
 
 def _string_or_none(value: Any) -> str | None:
     return str(value) if value is not None and str(value) else None
-

@@ -120,4 +120,3 @@ def test_empty_json_report_is_valid_and_contains_no_items() -> None:
     payload = json_report_prefix(metadata) + json_report_suffix()
 
     assert json.loads(payload) == {**metadata, "items": []}
-
