@@ -58,14 +58,36 @@ created.
 
 | Phase | Step | Component |
 |---|---|---|
-| 0 | Get access to **source** | Backend auth (per-provider strategy) |
-| 1 | **Import**: fetch playlists from source (names + tracks, capture ISRC) | Source adapter → Open Playlist model |
+| 0 | Get access to **source**, only when required | Backend auth (per-provider strategy) |
+| 1 | **Import**: fetch account playlists, resolve a public URL, or parse pasted text | Source adapter/import resolver → Open Playlist model |
 | 2 | UI: select/deselect playlists and songs | Frontend selection tree |
 | 3 | Get access to **target** | Backend auth |
 | 3.5 | **Match**: resolve each track on the target | `MatchService` (graph → search → score) |
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
 | 4 | **Write**: create playlists and add tracks, idempotently | arq job + operation ledger |
 | 5 | UI shows live progress | Frontend SSE progress board |
+
+### Public URL and pasted-text sources
+
+`POST /api/imports/preview` normalizes external input before a migration exists.
+Provider URLs pass through an exact host/path resolver registry and delegate public
+reads to adapter hooks. YouTube Music supports an unauthenticated public client and
+Apple Music uses the configured catalog developer token. Spotify and TIDAL reuse
+their authenticated adapter reads and return a structured source-connection action
+when no matching account exists. Open Playlist Engine share JSON is the only URL
+body fetched directly.
+
+Text parsing is deterministic and bounded: comments/blanks are ignored, common
+`artist - title` and tabular forms are recognized, duplicates and Unicode are
+preserved, and malformed rows produce line-level issues without discarding valid
+neighbors.
+
+Successful previews are stored in the private `imported_playlist` table with a
+stable source fingerprint. Migration jobs store the snapshot ID, source name, and
+stable `import:{provider}` account key. Preflight and workers reload the exact
+owner-scoped snapshot, so queue delays, retries, or later source changes cannot
+invalidate the migration. After that read seam, imported tracks use the unchanged
+matching, review, progress, duplicate, and write paths.
 
 ### Safe migration defaults
 Spotify → YouTube Music conversion is deliberately boring and slow by default:
@@ -394,6 +416,14 @@ generated OpenAPI client.
 - Separate the PII-free global graph from private user data and per-account overlays.
 - Unofficial adapters: pace + jitter; surface "may break / ToS-grey" warnings.
 - Header-paste auth disabled in hosted mode; plugin allow-list in hosted mode.
+- Public import URLs require HTTPS, exact allowed hosts and paths, no embedded
+  credentials or non-default ports, bounded length, and no IP-literal host.
+- Open Playlist Engine remote JSON uses a pinned-address HTTPS client: every DNS
+  answer must be globally routable, redirects stay on configured hosts, localhost/
+  private/link-local/reserved destinations are rejected, compression is disabled,
+  and redirect, timeout, header, and response-byte caps are enforced.
+- Provider web pages are never scraped; unsupported hosts fail before any network
+  request, and provider authentication/access controls are not bypassed.
 
 ---
 
@@ -408,6 +438,7 @@ generated OpenAPI client.
 | Partial writes on retry | operation ledger: reconcile by reading target state |
 | Provider API/ToS changes | capability descriptors + conformance suite catch regressions |
 | Lossy migrations | fidelity contract + per-job lossy report (`unsupported_reason`) |
+| URL import SSRF or DNS rebinding | exact host registry, public-address validation, pinned TLS socket, redirect/size/time limits |
 
 ---
 

@@ -315,6 +315,43 @@ h3 {
   gap: 0;
 }
 
+.source-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  padding: 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.source-mode-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.6rem;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.source-mode-switch button[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--accent) 50%, var(--border));
+  background: var(--accent-soft);
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.source-mode-switch svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 .card {
   border-color: var(--border);
   border-radius: var(--radius-lg);
@@ -349,6 +386,104 @@ h3 {
 
 .provider-picker-heading p {
   margin: 0.2rem 0 0;
+}
+
+.import-source-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.import-fields {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.import-fields label {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.import-fields input,
+.import-fields textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.import-fields input {
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.import-fields textarea {
+  min-height: 9rem;
+  padding: 0.7rem 0.75rem;
+}
+
+.import-security-note {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.import-preview-button {
+  width: 100%;
+  margin-top: 0.85rem;
+}
+
+.import-preview-summary {
+  display: grid;
+  gap: 0.18rem;
+  margin-top: 0.8rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--success) 35%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.import-preview-summary strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.import-access-status {
+  display: grid;
+  align-content: center;
+  gap: 0.35rem;
+  min-height: 10rem;
+}
+
+.import-access-status p {
+  margin: 0;
+}
+
+.import-preview-details {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.import-issues {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in oklch, var(--warning) 38%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--ink-soft);
+}
+
+.import-issues strong {
+  color: var(--ink);
+}
+
+.import-issues ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.6rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
 }
 
 .step-number {
@@ -990,6 +1125,10 @@ textarea {
   .migration-route .card + .card {
     border-top: 1px solid var(--border);
     border-left: 0;
+  }
+
+  .source-mode-switch {
+    grid-template-columns: 1fr;
   }
 
   .section-heading,

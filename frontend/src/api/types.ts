@@ -110,10 +110,38 @@ export interface Playlist {
   kind: "standard" | "liked_tracks";
 }
 
+export interface ImportIssue {
+  line: number | null;
+  code: string;
+  message: string;
+  severity: "warning" | "error";
+  raw: string | null;
+}
+
+export interface ImportSourceView {
+  provider: string;
+  label: string;
+  locator: string;
+}
+
+export interface ImportPreview {
+  import_id: string;
+  source: ImportSourceView;
+  playlist: Playlist;
+  issues: ImportIssue[];
+  track_count: number;
+  unsupported_count: number;
+}
+
+export type ImportPreviewBody =
+  | { kind: "url"; url: string; source_account_id?: string | null }
+  | { kind: "text"; text: string; name?: string | null };
+
 export interface CreateMigrationBody {
-  source_provider: string;
+  source_provider?: string;
   target_provider: string;
-  source_account_id: string;
+  source_account_id?: string;
+  source_import_id?: string;
   target_account_id: string;
   selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
   acknowledge_warnings?: boolean;

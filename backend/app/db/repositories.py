@@ -105,11 +105,17 @@ async def save_credential(
 
 
 async def load_credential(
-    session: AsyncSession, *, account_id: str, provider: str | None = None
+    session: AsyncSession,
+    *,
+    account_id: str,
+    provider: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[RuntimeCredential, orm.ProviderAccount]:
     stmt = select(orm.ProviderAccount).where(orm.ProviderAccount.id == account_id)
     if provider:
         stmt = stmt.where(orm.ProviderAccount.provider == provider)
+    if user_id:
+        stmt = stmt.where(orm.ProviderAccount.user_id == user_id)
     account = (await session.execute(stmt)).scalar_one_or_none()
     if account is None:
         raise AccountNotFound(account_id)
@@ -147,8 +153,14 @@ async def load_fresh_credential(
     account_id: str,
     adapter: ProviderAdapter,
     provider: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[RuntimeCredential, orm.ProviderAccount]:
-    credential, account = await load_credential(session, account_id=account_id, provider=provider)
+    credential, account = await load_credential(
+        session,
+        account_id=account_id,
+        provider=provider,
+        user_id=user_id,
+    )
     if credential.expires_at and credential.expires_at <= time.time() + 60:
         try:
             refreshed = await adapter.auth.refresh(credential)

@@ -5,6 +5,8 @@ import type {
   ConnectionView,
   ConnectionTestView,
   CreateMigrationBody,
+  ImportPreview,
+  ImportPreviewBody,
   JobItemView,
   JobView,
   MigrationOptionView,
@@ -111,6 +113,16 @@ export async function getPlaylist(
 ): Promise<Playlist> {
   const params = playlistParams(provider, accountId, context);
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
+export async function previewImport(body: ImportPreviewBody): Promise<ImportPreview> {
+  return json<ImportPreview>(
+    await fetch("/api/imports/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {

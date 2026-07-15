@@ -11,6 +11,7 @@ import json
 import logging
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
@@ -18,7 +19,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,9 +41,14 @@ from app.db.base import get_session, get_sessionmaker
 from app.db.repositories import (
     AccountNotFound,
     CredentialNotFound,
-    load_credential,
     load_fresh_credential,
 )
+from app.imports.migration import (
+    ImportSelectionError,
+    load_import_source,
+    selected_import_playlists,
+)
+from app.imports.repository import ImportedPlaylistNotFound
 from app.jobs.migration import commit_job_counts, run_migration
 from app.settings import get_settings
 
@@ -57,12 +63,27 @@ class Selection(BaseModel):
 
 
 class CreateMigration(BaseModel):
-    source_provider: str
+    source_provider: str | None = None
     target_provider: str
-    source_account_id: str
+    source_account_id: str | None = None
+    source_import_id: str | None = None
     target_account_id: str
     selection: Selection
     acknowledge_warnings: bool = False
+
+    @model_validator(mode="after")
+    def validate_source(self) -> CreateMigration:
+        connected = bool(self.source_provider and self.source_account_id)
+        imported = bool(self.source_import_id)
+        if connected == imported:
+            raise ValueError(
+                "Provide either a connected source account or source_import_id."
+            )
+        if imported and (self.source_provider or self.source_account_id):
+            raise ValueError(
+                "Imported migrations cannot include source_provider or source_account_id."
+            )
+        return self
 
 
 class JobView(BaseModel):
@@ -165,6 +186,14 @@ class MigrationWarningsView(BaseModel):
     warnings: list[dict[str, str]] = []
 
 
+@dataclass(frozen=True)
+class _ValidatedMigration:
+    warnings: list[dict[str, str]]
+    source_provider: str
+    source_account_id: str
+    selection: dict
+
+
 def _job_view(job: orm.MigrationJob) -> JobView:
     return JobView(
         id=job.id,
@@ -254,6 +283,14 @@ def _selected_playlist_ids(job: orm.MigrationJob) -> list[str]:
     return [str(playlist_id) for playlist_id in raw_ids if str(playlist_id).strip()]
 
 
+def _imported_playlist_name(job: orm.MigrationJob) -> str | None:
+    selection = job.selection if isinstance(job.selection, dict) else {}
+    if not selection.get("source_import_id"):
+        return None
+    value = selection.get("source_name")
+    return value if isinstance(value, str) and value.strip() else None
+
+
 def _migration_label(job: orm.MigrationJob, playlist_names: list[str]) -> str:
     if len(playlist_names) == 1:
         return playlist_names[0]
@@ -291,6 +328,8 @@ async def _playlist_names_by_job(
     for job_id, playlist_id, playlist_name in rows.all():
         _append_unique(source_ids_by_job[job_id], playlist_id)
         _append_unique(names_by_job[job_id], playlist_name)
+    for job in jobs:
+        _append_unique(names_by_job[job.id], _imported_playlist_name(job))
 
     missing_name_jobs = [job for job in jobs if not names_by_job[job.id]]
     if not missing_name_jobs:
@@ -514,11 +553,13 @@ async def create_migration(
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
     try:
-        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        validated = await _validated_preflight_migration(session, body, user_id=user_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (AccountNotFound, CredentialNotFound) as exc:
+    except (AccountNotFound, CredentialNotFound, ImportedPlaylistNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ImportSelectionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AuthExpired as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
@@ -530,20 +571,20 @@ async def create_migration(
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if warnings and not body.acknowledge_warnings:
+    if validated.warnings and not body.acknowledge_warnings:
         await session.commit()
         raise HTTPException(
             status_code=409,
-            detail=MigrationWarningsView(warnings=warnings).model_dump(),
+            detail=MigrationWarningsView(warnings=validated.warnings).model_dump(),
         )
 
     job = orm.MigrationJob(
         user_id=user_id,
-        source_provider=body.source_provider,
+        source_provider=validated.source_provider,
         target_provider=body.target_provider,
-        source_account_id=body.source_account_id,
+        source_account_id=validated.source_account_id,
         target_account_id=body.target_account_id,
-        selection=body.selection.model_dump(),
+        selection=validated.selection,
         status="pending",
     )
     session.add(job)
@@ -561,13 +602,15 @@ async def preflight_migration(
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
     try:
-        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        validated = await _validated_preflight_migration(session, body, user_id=user_id)
         await session.commit()
-        return MigrationWarningsView(warnings=warnings)
+        return MigrationWarningsView(warnings=validated.warnings)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (AccountNotFound, CredentialNotFound) as exc:
+    except (AccountNotFound, CredentialNotFound, ImportedPlaylistNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ImportSelectionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AuthExpired as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RateLimited as exc:
@@ -580,25 +623,72 @@ async def preflight_migration(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-async def _validated_preflight_warnings(
+async def _validated_preflight_migration(
     session: AsyncSession,
     body: CreateMigration,
     *,
     user_id: str,
-) -> list[dict[str, str]]:
-    source = get(body.source_provider)
-    get(body.target_provider)
-
-    source_caps = source.info.capabilities
-    if not source_caps.can(Capability.READ_TRACKS):
-        raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
-    await load_credential(
-        session, account_id=body.source_account_id, provider=body.source_provider
+) -> _ValidatedMigration:
+    target = get(body.target_provider)
+    target_cred, _ = await load_fresh_credential(
+        session,
+        account_id=body.target_account_id,
+        adapter=target,
+        provider=body.target_provider,
+        user_id=user_id,
     )
-    await load_credential(
-        session, account_id=body.target_account_id, provider=body.target_provider
+    selection = body.selection.model_dump()
+    if body.source_import_id:
+        imported = await load_import_source(
+            session,
+            import_id=body.source_import_id,
+            user_id=user_id,
+        )
+        selected = selected_import_playlists(
+            imported,
+            playlist_ids=body.selection.playlist_ids,
+            track_filters=body.selection.tracks or {},
+        )
+        source_provider = imported.provider
+        source_account_id = imported.account_id
+        selection.update(
+            {
+                "source_import_id": imported.import_id,
+                "source_name": imported.playlist.name,
+            }
+        )
+    else:
+        source_provider = body.source_provider or ""
+        source_account_id = body.source_account_id or ""
+        source = get(source_provider)
+        if not source.info.capabilities.can(Capability.READ_TRACKS):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{source_provider} cannot read tracks",
+            )
+        source_cred, _ = await load_fresh_credential(
+            session,
+            account_id=source_account_id,
+            adapter=source,
+            provider=source_provider,
+            user_id=user_id,
+        )
+        selected = await _selected_playlists(source, source_cred, body.selection)
+    _validate_target_capabilities(target, target_cred, selected)
+    warnings = await _preflight_warnings(
+        session,
+        body,
+        user_id=user_id,
+        target=target,
+        target_cred=target_cred,
+        selected=selected,
     )
-    return await _preflight_warnings(session, body, user_id=user_id)
+    return _ValidatedMigration(
+        warnings=warnings,
+        source_provider=source_provider,
+        source_account_id=source_account_id,
+        selection=selection,
+    )
 
 
 async def _preflight_warnings(
@@ -606,25 +696,11 @@ async def _preflight_warnings(
     body: CreateMigration,
     *,
     user_id: str,
+    target,
+    target_cred,
+    selected: dict[str, Playlist],
 ) -> list[dict[str, str]]:
     settings = get_settings()
-    source = get(body.source_provider)
-    target = get(body.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session,
-        account_id=body.source_account_id,
-        adapter=source,
-        provider=body.source_provider,
-    )
-    target_cred, _ = await load_fresh_credential(
-        session,
-        account_id=body.target_account_id,
-        adapter=target,
-        provider=body.target_provider,
-    )
-
-    selected = await _selected_playlists(source, source_cred, body.selection)
-    _validate_target_capabilities(target, target_cred, selected)
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     warnings: list[dict[str, str]] = []
     if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
@@ -971,6 +1047,7 @@ async def _apply_review(
             account_id=job.target_account_id,
             adapter=target,
             provider=job.target_provider,
+            user_id=job.user_id,
         )
         if not await target.validate_uri(target_cred, target_uri):
             raise HTTPException(

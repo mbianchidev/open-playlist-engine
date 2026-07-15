@@ -38,6 +38,7 @@ from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
 from app.db.repositories import load_fresh_credential
+from app.imports.migration import load_import_source
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -87,19 +88,40 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
-    source = get(job.source_provider)
     target = get(job.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session, account_id=job.source_account_id, adapter=source, provider=job.source_provider
-    )
     target_cred, _ = await load_fresh_credential(
-        session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
+        session,
+        account_id=job.target_account_id,
+        adapter=target,
+        provider=job.target_provider,
+        user_id=job.user_id,
     )
+    selection = job.selection or {}
+    source_import_id = selection.get("source_import_id")
+    if isinstance(source_import_id, str) and source_import_id:
+        imported_source = await load_import_source(
+            session,
+            import_id=source_import_id,
+            user_id=job.user_id,
+        )
+        source = None
+        source_cred = None
+        source_display_name = imported_source.label
+    else:
+        imported_source = None
+        source = get(job.source_provider)
+        source_cred, _ = await load_fresh_credential(
+            session,
+            account_id=job.source_account_id,
+            adapter=source,
+            provider=job.source_provider,
+            user_id=job.user_id,
+        )
+        source_display_name = source.info.display_name
     job.status = "running"
     job.error = None
     await session.commit()
 
-    selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
     if not playlist_ids:
         raise ValueError("migration has no selected playlists")
@@ -120,9 +142,16 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         logger.info(
             "migration job_id=%s reading source playlist playlist_id=%s", job.id, playlist_id
         )
-        playlist = await source.read_playlist(
-            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-        )
+        if imported_source is not None:
+            if imported_source.playlist.id != playlist_id:
+                raise ValueError("migration import snapshot does not match selected playlist")
+            playlist = imported_source.playlist
+        else:
+            if source is None or source_cred is None:
+                raise ValueError("migration source is unavailable")
+            playlist = await source.read_playlist(
+                source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+            )
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         logger.info(
@@ -143,7 +172,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             playlist_id=playlist_id,
             playlist_name=playlist.name,
             description=playlist.description
-            or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            or f"Migrated from {source_display_name} by Open Playlist Engine.",
             playlist_kind=playlist.kind,
             source_tracks=tracks,
         )
