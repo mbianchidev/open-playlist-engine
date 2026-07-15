@@ -38,7 +38,8 @@ session tokens.
     the requested scopes.
 11. Spotify **Liked Songs** is shown as an owned playlist and uses Spotify's
     saved library. Reconnect accounts created before library writes so the app can
-    request both `user-library-read` and `user-library-modify`.
+    request `user-library-read`, `user-library-modify`, `user-follow-read`, and
+    `user-follow-modify`.
 12. Use **Test connection** after connecting. Spotify refresh tokens expire after
     six months; when Spotify returns `invalid_grant`, the app discards the stale
     account before asking you to reconnect. **Refresh accounts** also removes stale
@@ -113,7 +114,9 @@ Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
 Tidal playlist writes create `UNLISTED` playlists by default unless a migration
 explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
 the maximum accepted by Tidal's playlist-items and My Collection endpoints. Tidal
-**My Collection** is exposed as a liked-tracks collection.
+**My Collection** is exposed as a liked-tracks collection. Saved albums and favorite
+artists use the official `userCollectionAlbums` and `userCollectionArtists`
+relationships with `collection.read`/`collection.write`.
 
 ## Apple MusicKit setup
 
@@ -213,6 +216,25 @@ These sources always map to the target provider's native library:
 The migration never creates a normal playlist as a fallback for these collections.
 If an older OAuth connection lacks a required library scope, preflight asks you to
 reconnect before creating the job.
+
+## Saved albums and artist-library mapping
+
+Spotify and Tidal expose these entities through official APIs:
+
+| Source concept | Spotify target | Tidal target |
+|---|---|---|
+| Saved album | Saved album | Favorite album |
+| Followed artist | Followed artist | Favorite artist |
+| Favorite artist | Followed artist (preflight warning) | Favorite artist |
+
+The UI labels follow versus favorite semantics and warns when they differ. Albums
+use provider identifiers and UPC evidence first. Artists have no stable
+cross-provider identifier, so name-only matches always enter review. Reruns check
+the native target library before writing and report already-present entities.
+
+YouTube Music and Apple Music do not advertise album/artist migration in this
+implementation. Their controls remain disabled, and unsupported entities are never
+converted into playlists.
 
 ## YouTube Music header-paste fallback
 

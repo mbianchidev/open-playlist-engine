@@ -1,0 +1,7 @@
+{
+  "id": "artist-1",
+  "name": "Artist One",
+  "uri": "spotify:artist:artist-1",
+  "genres": ["rock"],
+  "images": [{"url": "https://img.example.com/artist-one.jpg"}]
+}

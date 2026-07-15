@@ -53,6 +53,11 @@ class Case:
     create_spec: CreatePlaylistSpec | None = None
     add_uris: list[str] = field(default_factory=list)
 
+    # SAVED ALBUMS + FOLLOWED/FAVORITE ARTISTS
+    library: bool = False
+    album_uri_prefix: str = ""
+    artist_uri_prefix: str = ""
+
 
 def _fake_case() -> Case:
     return Case(
@@ -66,6 +71,9 @@ def _fake_case() -> Case:
         writes=True,
         create_spec=CreatePlaylistSpec(name="Mirror"),
         add_uris=["fake:track:Song One", "fake:track:Song Two"],
+        library=True,
+        album_uri_prefix="fake:album:",
+        artist_uri_prefix="fake:artist:",
     )
 
 
@@ -78,6 +86,12 @@ def _spotify_case() -> Case:
             provider="spotify",
             auth_kind=AuthKind.OAUTH_PKCE,
             access_token="fixture-token",
+            scopes=[
+                "user-library-read",
+                "user-library-modify",
+                "user-follow-read",
+                "user-follow-modify",
+            ],
         ),
         reads=True,
         searches=True,
@@ -87,6 +101,9 @@ def _spotify_case() -> Case:
         writes=True,
         create_spec=CreatePlaylistSpec(name="Mirror"),
         add_uris=["spotify:track:t1", "https://open.spotify.com/track/t2"],
+        library=True,
+        album_uri_prefix="spotify:album:",
+        artist_uri_prefix="spotify:artist:",
     )
 
 
@@ -122,6 +139,7 @@ def _tidal_case() -> Case:
             provider="tidal",
             auth_kind=AuthKind.OAUTH_PKCE,
             access_token="fixture-token",
+            scopes=["collection.read", "collection.write"],
             extra={"country": "US"},
         ),
         reads=True,
@@ -132,6 +150,9 @@ def _tidal_case() -> Case:
         search_uri_prefix="tidal:track:",
         create_spec=CreatePlaylistSpec(name="Mirror"),
         add_uris=["tidal:track:t1", "https://tidal.com/browse/track/t2"],
+        library=True,
+        album_uri_prefix="tidal:album:",
+        artist_uri_prefix="tidal:artist:",
     )
 
 

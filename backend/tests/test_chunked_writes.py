@@ -9,7 +9,7 @@ from app.core.adapter import (
 )
 from app.core.capabilities import Capability, CapabilityDescriptor
 from app.core.match_service import MatchResult
-from app.core.models import Track
+from app.core.models import MigrationEntityType, Track
 from app.db import models as orm
 from app.jobs import migration as migration_job
 
@@ -187,3 +187,39 @@ def test_prior_edited_review_match_can_clear_review_after_confidence_boost() -> 
     assert result.candidate.uri == "ytmusic:video:edited"
     assert result.confidence == 0.86
     assert result.needs_review is False
+
+
+def test_album_review_history_never_replaces_track_candidate() -> None:
+    prior = orm.JobItem(
+        id="album-prior",
+        job_id="old-job",
+        entity_type=MigrationEntityType.ALBUM,
+        source_entity_id="album",
+        position=0,
+        title="Shared Name",
+        artist="Shared Artist",
+        source_metadata={"title": "Shared Name", "artist": "Shared Artist"},
+        target_uri="spotify:album:wrong",
+        confidence=0.7,
+        status="written",
+    )
+    current = MatchResult(
+        candidate=TrackCandidate(
+            provider_track_id="right",
+            uri="spotify:track:right",
+            title="Shared Name",
+            artist="Shared Artist",
+        ),
+        confidence=0.79,
+        source="fuzzy",
+        needs_review=True,
+    )
+
+    result = migration_job._apply_review_history_bonus(
+        [prior],
+        track=Track(title="Shared Name", artist="Shared Artist"),
+        result=current,
+        review_threshold=0.8,
+    )
+
+    assert result == current

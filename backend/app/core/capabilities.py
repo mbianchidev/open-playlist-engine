@@ -17,6 +17,10 @@ class Capability(StrEnum):
     READ_TRACKS = "read_tracks"
     READ_LIBRARY = "read_library"
     WRITE_LIBRARY = "write_library"
+    READ_SAVED_ALBUMS = "read_saved_albums"
+    WRITE_SAVED_ALBUMS = "write_saved_albums"
+    READ_FOLLOWED_ARTISTS = "read_followed_artists"
+    WRITE_FOLLOWED_ARTISTS = "write_followed_artists"
     CREATE_PLAYLIST = "create_playlist"
     ADD_TRACKS = "add_tracks"
     REMOVE_TRACKS = "remove_tracks"
@@ -52,6 +56,7 @@ class CapabilityDescriptor(BaseModel):
 
     # Write constraints
     max_add_batch: int = 100
+    max_library_batch: int = 50
     max_playlist_size: int | None = None
     supports_duplicates: bool = True
     ordering: OrderingGuarantee = OrderingGuarantee.PRESERVED

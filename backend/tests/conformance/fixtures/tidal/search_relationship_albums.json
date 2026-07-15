@@ -1,0 +1,22 @@
+{
+  "data": [{"type": "albums", "id": "album-1"}],
+  "included": [
+    {
+      "type": "albums",
+      "id": "album-1",
+      "attributes": {
+        "title": "Album One",
+        "barcodeId": "0123456789012",
+        "releaseDate": "2020-01-02"
+      },
+      "relationships": {
+        "artists": {"data": [{"type": "artists", "id": "artist-1"}]}
+      }
+    },
+    {
+      "type": "artists",
+      "id": "artist-1",
+      "attributes": {"name": "Artist One", "popularity": 0.8}
+    }
+  ]
+}

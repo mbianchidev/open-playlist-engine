@@ -45,7 +45,7 @@ export default function ProgressBoard({
     migratedCount + (counts.skipped ?? 0) + reviewCount + (counts.failed ?? 0);
   const waitingCount = Math.max(total - processedCount, 0);
   const progressPct = total > 0 ? Math.min(100, Math.round((migratedCount / total) * 100)) : 0;
-  const playlistLabel = summarizePlaylists(items);
+  const migrationLabel = summarizeMigration(items);
   const uncertainItems = items.filter((item) => item.status === "needs_review");
   const reviewableItems = items.filter(isReviewableItem).sort(compareReviewItems);
   const migrationItems = items.filter((item) => !isReviewableItem(item));
@@ -88,7 +88,7 @@ export default function ProgressBoard({
         onClick={() => setCollapsed((value) => !value)}
       >
         <span>
-          <strong>{playlistLabel}</strong>
+          <strong>{migrationLabel}</strong>
           <span className="muted">Migration {shortJobId(jobId)}</span>
         </span>
         <span className="collapse-label">
@@ -99,7 +99,7 @@ export default function ProgressBoard({
       <div
         className="migration-progress-meter"
         role="progressbar"
-        aria-label="Migrated songs"
+        aria-label="Migrated items"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progressPct}
@@ -167,7 +167,7 @@ export default function ProgressBoard({
                 onClick={() => setReviewCollapsed((value) => !value)}
               >
                 <span>
-                  <strong>Review uncertain songs</strong>
+                  <strong>Review uncertain items</strong>
                   <span className="muted">
                     {uncertainItems.length} uncertain
                     {counts.failed ? ` · ${counts.failed} failed` : ""}
@@ -242,7 +242,7 @@ export default function ProgressBoard({
           <div className="progress-list">
             {items.length === 0 ? (
               <p className="muted">
-                {job?.status === "failed" ? "No tracks were created." : "Waiting for tracks…"}
+                {job?.status === "failed" ? "No items were created." : "Waiting for items…"}
               </p>
             ) : (
               migrationItems.map(renderProgressRow)
@@ -290,13 +290,13 @@ export default function ProgressBoard({
 
   function renderProgressRow(item: JobItemView) {
     const targetUri = reviewInputs[item.id] ?? item.target_uri ?? "";
-    const verifyUrl = youtubeMusicWatchUrl(targetUri);
+    const verifyUrl = targetItemUrl(targetUri, job?.target_provider, item.entity_type);
     const sourceLink = lowConfidenceSourceLink(item, job?.source_provider);
     return (
       <div key={item.id} className={`progress-row ${isReviewableItem(item) ? "review-row" : ""}`}>
         <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
         <span className="progress-track-title">
-          <span>{formatTrack(item)}</span>
+          <span>{formatItem(item)}</span>
           {sourceLink ? (
             <a
               className="source-check-link"
@@ -320,7 +320,7 @@ export default function ProgressBoard({
               onChange={(e) =>
                 setReviewInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
               }
-              placeholder="ytmusic:video:id or YouTube Music URL"
+              placeholder="Target item URI or URL"
             />
             {verifyUrl ? (
               <a
@@ -387,7 +387,15 @@ export default function ProgressBoard({
   }
 }
 
-function formatTrack(item: JobItemView): string {
+function formatItem(item: JobItemView): string {
+  if (item.entity_type === "artist") {
+    return `${item.title} · artist`;
+  }
+  if (item.entity_type === "album") {
+    const bits = [`${item.title} — ${item.artist}`, "album"];
+    if (item.release_year) bits.push(String(item.release_year));
+    return bits.join(" · ");
+  }
   const bits = [`${item.title} — ${item.artist}`];
   if (item.album) bits.push(item.album);
   if (item.release_year) bits.push(String(item.release_year));
@@ -427,7 +435,9 @@ function compareReviewItems(a: JobItemView, b: JobItemView): number {
   );
   if (confidenceDelta !== 0) return confidenceDelta;
   if (a.source_playlist_id !== b.source_playlist_id) {
-    return a.source_playlist_id.localeCompare(b.source_playlist_id);
+    return (a.source_playlist_id ?? a.source_entity_id ?? "").localeCompare(
+      b.source_playlist_id ?? b.source_entity_id ?? "",
+    );
   }
   return a.position - b.position;
 }
@@ -448,10 +458,17 @@ function reviewErrorMessage(error: unknown, refreshError: string | null): string
   return refreshError ? `${message}. Refresh failed too: ${refreshError}` : message;
 }
 
-function youtubeMusicWatchUrl(targetUri: string): string | null {
-  const match = targetUri.trim().match(/^ytmusic:video:([^/?#&\s]+)$/);
-  if (!match) return null;
-  return `https://music.youtube.com/watch?v=${encodeURIComponent(match[1])}`;
+function targetItemUrl(
+  targetUri: string,
+  provider: string | undefined,
+  entityType: JobItemView["entity_type"],
+): string | null {
+  if (!provider) return null;
+  if (provider === "ytmusic") {
+    const match = targetUri.trim().match(/^ytmusic:video:([^/?#&\s]+)$/);
+    return match ? `https://music.youtube.com/watch?v=${encodeURIComponent(match[1])}` : null;
+  }
+  return providerUriToWebUrl(provider, targetUri, entityType);
 }
 
 interface SourceLink {
@@ -477,9 +494,9 @@ function lowConfidenceSourceLink(
 
 function sourceTrackUrl(item: JobItemView, provider: string): string | null {
   const metadataUri = sourceProviderUri(item.source_metadata, provider);
-  if (metadataUri) return providerUriToWebUrl(provider, metadataUri);
+  if (metadataUri) return providerUriToWebUrl(provider, metadataUri, item.entity_type);
   if (provider === "spotify" && item.source_metadata.id) {
-    return providerUriToWebUrl(provider, String(item.source_metadata.id));
+    return providerUriToWebUrl(provider, String(item.source_metadata.id), item.entity_type);
   }
   return null;
 }
@@ -491,22 +508,44 @@ function sourceProviderUri(metadata: Record<string, unknown>, provider: string):
   return typeof uri === "string" && uri.trim() ? uri.trim() : null;
 }
 
-function providerUriToWebUrl(provider: string, uri: string): string | null {
+function providerUriToWebUrl(
+  provider: string,
+  uri: string,
+  entityType: JobItemView["entity_type"],
+): string | null {
   if (provider === "spotify") {
-    const trackId = spotifyTrackId(uri);
-    return trackId ? `https://open.spotify.com/track/${encodeURIComponent(trackId)}` : null;
+    const itemId = spotifyItemId(uri, entityType);
+    return itemId
+      ? `https://open.spotify.com/${entityType}/${encodeURIComponent(itemId)}`
+      : null;
+  }
+  if (provider === "tidal") {
+    const itemId = providerItemId(uri, entityType);
+    return itemId
+      ? `https://tidal.com/browse/${entityType}/${encodeURIComponent(itemId)}`
+      : null;
   }
   if (/^https?:\/\//.test(uri)) return uri;
   return null;
 }
 
-function spotifyTrackId(uri: string): string | null {
+function spotifyItemId(uri: string, entityType: JobItemView["entity_type"]): string | null {
   const trimmed = uri.trim();
-  const uriMatch = trimmed.match(/^spotify:track:([^/?#&\s]+)$/);
+  const uriMatch = trimmed.match(new RegExp(`^spotify:${entityType}:([^/?#&\\s]+)$`));
   if (uriMatch) return uriMatch[1];
-  const urlMatch = trimmed.match(/^https?:\/\/open\.spotify\.com\/track\/([^/?#&\s]+)/);
+  const urlMatch = trimmed.match(
+    new RegExp(`^https?://open\\.spotify\\.com/${entityType}/([^/?#&\\s]+)`),
+  );
   if (urlMatch) return urlMatch[1];
   return /^[A-Za-z0-9]{10,}$/.test(trimmed) ? trimmed : null;
+}
+
+function providerItemId(uri: string, entityType: JobItemView["entity_type"]): string | null {
+  const trimmed = uri.trim();
+  const uriMatch = trimmed.match(new RegExp(`^[^:]+:${entityType}:([^/?#&\\s]+)$`));
+  if (uriMatch) return uriMatch[1];
+  const urlMatch = trimmed.match(new RegExp(`/${entityType}/([^/?#&\\s]+)`));
+  return urlMatch?.[1] ?? null;
 }
 
 function countStatuses(items: JobItemView[]): Record<string, number> {
@@ -516,7 +555,7 @@ function countStatuses(items: JobItemView[]): Record<string, number> {
   }, {});
 }
 
-function summarizePlaylists(items: JobItemView[]): string {
+function summarizeMigration(items: JobItemView[]): string {
   const names = [
     ...new Set(
       items
@@ -524,11 +563,18 @@ function summarizePlaylists(items: JobItemView[]): string {
         .filter((name): name is string => Boolean(name)),
     ),
   ];
-  if (names.length === 0) return "Preparing migration";
-  if (names.length === 1) return names[0] ?? "Migration";
-  return `${names.slice(0, 2).join(", ")}${
+  const albumCount = items.filter((item) => item.entity_type === "album").length;
+  const artistCount = items.filter((item) => item.entity_type === "artist").length;
+  const libraryParts = [
+    albumCount ? `${albumCount} album${albumCount === 1 ? "" : "s"}` : null,
+    artistCount ? `${artistCount} artist${artistCount === 1 ? "" : "s"}` : null,
+  ].filter((part): part is string => Boolean(part));
+  if (names.length === 0) return libraryParts.join(", ") || "Preparing migration";
+  if (names.length === 1) return [names[0] ?? "Migration", ...libraryParts].join(", ");
+  const playlistPart = `${names.slice(0, 2).join(", ")}${
     names.length > 2 ? ` + ${names.length - 2} more` : ""
   }`;
+  return [playlistPart, ...libraryParts].join(", ");
 }
 
 function shortJobId(jobId: string): string {
@@ -572,7 +618,11 @@ interface TargetPlaylist {
 function getTargetPlaylists(items: JobItemView[], provider: string): TargetPlaylist[] {
   const byId = new Map<string, TargetPlaylist>();
   for (const item of items) {
-    if (!item.target_playlist_id || byId.has(item.target_playlist_id)) {
+    if (
+      item.entity_type !== "track" ||
+      !item.target_playlist_id ||
+      byId.has(item.target_playlist_id)
+    ) {
       continue;
     }
     byId.set(item.target_playlist_id, {

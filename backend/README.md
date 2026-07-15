@@ -9,7 +9,8 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/library`,
+  `/migrations`).
 
 ## Develop
 ```bash
@@ -33,11 +34,15 @@ declare a `CapabilityDescriptor`, call `register(...)`, and pass the conformance
 suite in `tests/conformance/`. Adapters never touch the match graph — they only
 read/search/write; `MatchService` owns matching.
 
+Album/artist support is independently structural: implement only the advertised
+`SavedAlbumReader`/`SavedAlbumWriter` and
+`FollowedArtistReader`/`FollowedArtistWriter` contracts.
+
 ## Provider status
 | Provider | Read / Search | Write | Test seam |
 |---|---|---|---|
-| Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
-| Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
+| Spotify | ✅ playlists, liked tracks, saved albums, followed artists | ✅ native playlist/library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Tidal | ✅ playlists, liked tracks, saved albums, favorite artists | ✅ native playlist/collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
 | YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 | Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
 
@@ -56,7 +61,8 @@ applies Alembic migrations before starting the backend and worker. For local
 development, run `alembic upgrade head` before `uvicorn` and `arq`. Playlist
 detail and migration item review endpoints support track-level selection,
 partial-migration labels, duplicate skips, batch review actions, and low-confidence
-match correction in the UI. Migration creation performs a preflight that warns
+match correction in the UI. migration creation supports explicit album/artist job items, conservative matching,
+native contains checks, review, and entity-specific statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
 

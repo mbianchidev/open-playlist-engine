@@ -1,0 +1,11 @@
+{
+  "data": [{"type": "artists", "id": "artist-1"}],
+  "included": [
+    {
+      "type": "artists",
+      "id": "artist-1",
+      "attributes": {"name": "Artist One", "popularity": 0.8}
+    }
+  ],
+  "links": {"self": "/userCollectionArtists/me/relationships/items"}
+}

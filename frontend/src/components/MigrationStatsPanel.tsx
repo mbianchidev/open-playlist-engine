@@ -230,13 +230,15 @@ function SingleMigrationStats({ stats }: { stats: MigrationStatsView }) {
   return (
     <div className="stats-detail">
       {stats.empty ? (
-        <p className="empty-guidance">{stats.message ?? "No track stats are available yet."}</p>
+        <p className="empty-guidance">{stats.message ?? "No item stats are available yet."}</p>
       ) : null}
       <StatsGrid
         counts={stats.counts}
         leading={[
           ["Playlists", stats.playlist_count],
-          ["Tracks", stats.counts.total],
+          ["Tracks", stats.entity_counts.track.total],
+          ["Albums", stats.saved_album_count],
+          ["Artists", stats.followed_artist_count],
         ]}
       />
       {stats.playlists.length > 0 ? (
@@ -270,7 +272,9 @@ function AggregateStats({ stats }: { stats: AggregateMigrationStatsView }) {
         leading={[
           ["Migrations", stats.total_migrations],
           ["Playlists", stats.total_playlists],
-          ["Tracks", stats.counts.total],
+          ["Tracks", stats.entity_counts.track.total],
+          ["Albums", stats.total_saved_albums],
+          ["Artists", stats.total_followed_artists],
         ]}
       />
     </div>
@@ -333,7 +337,7 @@ function compactCounts(counts: StatusCounts): string {
     countLabel(counts.failed, "failed"),
     countLabel(counts.pending, "pending"),
   ].filter((part): part is string => Boolean(part));
-  return parts.length ? parts.join(", ") : "No tracks yet";
+  return parts.length ? parts.join(", ") : "No items yet";
 }
 
 function countLabel(value: number, label: string): string | null {

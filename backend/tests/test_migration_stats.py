@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api import migrations
 from app.api.dependencies import get_current_user_id
+from app.core.models import MigrationEntityType
 from app.db import models as orm
 from app.db.base import Base
 from app.main import app
@@ -55,6 +56,29 @@ def _item(
         artist="Artist",
         status=status,
         target_playlist_id=f"target-{playlist_id}",
+        entity_type=MigrationEntityType.TRACK,
+    )
+
+
+def _library_item(
+    job_id: str,
+    entity_type: MigrationEntityType,
+    *,
+    item_id: str,
+    name: str,
+    status: str,
+) -> orm.JobItem:
+    return orm.JobItem(
+        id=f"{job_id}-{entity_type}-{item_id}",
+        job_id=job_id,
+        entity_type=entity_type,
+        source_entity_id=item_id,
+        source_entity_name=name,
+        position=0,
+        title=name,
+        artist=name,
+        status=status,
+        target_entity_id=f"target-{item_id}",
     )
 
 
@@ -81,7 +105,7 @@ def test_pending_migration_without_names_uses_non_id_empty_state() -> None:
     assert "opaque-id" not in option.label
     assert stats.empty is True
     assert stats.playlist_count == 1
-    assert stats.message == "No track items were recorded for this migration yet."
+    assert stats.message == "No migration items were recorded for this migration yet."
 
 
 def test_migration_routes_do_not_expose_user_id_query_parameter() -> None:
@@ -170,6 +194,46 @@ def test_single_migration_groups_partial_items_by_source_playlist() -> None:
     assert stats.playlists[0].counts.total == 2
 
 
+def test_mixed_migration_stats_distinguish_tracks_albums_and_artists() -> None:
+    job = _job(
+        "job",
+        total=3,
+        selection={
+            "playlist_ids": ["playlist-a"],
+            "tracks": {},
+            "saved_album_ids": ["album-a"],
+            "followed_artist_ids": ["artist-a"],
+        },
+    )
+    items = [
+        _item("job", "playlist-a", name="Chill", status="written"),
+        _library_item(
+            "job",
+            MigrationEntityType.ALBUM,
+            item_id="album-a",
+            name="Album A",
+            status="skipped",
+        ),
+        _library_item(
+            "job",
+            MigrationEntityType.ARTIST,
+            item_id="artist-a",
+            name="Artist A",
+            status="needs_review",
+        ),
+    ]
+
+    stats = migrations._build_migration_stats(job, items, ["Chill"])
+
+    assert stats.playlist_count == 1
+    assert len(stats.playlists) == 1
+    assert stats.entity_counts["track"].written == 1
+    assert stats.entity_counts["album"].skipped == 1
+    assert stats.entity_counts["artist"].needs_review == 1
+    assert stats.saved_album_count == 1
+    assert stats.followed_artist_count == 1
+
+
 def test_aggregate_stats_respect_source_and_target_filters() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -207,15 +271,21 @@ def test_aggregate_stats_respect_source_and_target_filters() -> None:
         rows = session.execute(migrations._aggregate_item_counts_stmt(job_ids)).all()
 
     status_counts_by_job: dict[str, Counter[str]] = defaultdict(Counter)
+    entity_counts_by_job: dict[str, dict[str, Counter[str]]] = defaultdict(
+        lambda: defaultdict(Counter)
+    )
     playlist_keys: set[tuple[str, str]] = set()
-    for job_id, playlist_id, status, count in rows:
+    for job_id, entity_type, playlist_id, status, count in rows:
         status_counts_by_job[job_id][status] += int(count)
-        playlist_keys.add((job_id, playlist_id))
+        entity_counts_by_job[job_id][entity_type][status] += int(count)
+        if entity_type == MigrationEntityType.TRACK and playlist_id:
+            playlist_keys.add((job_id, playlist_id))
 
     stats = migrations._build_aggregate_stats(
         jobs,
         status_counts_by_job,
         playlist_keys,
+        entity_counts_by_job,
         source_provider="spotify",
         target_provider="ytmusic",
     )

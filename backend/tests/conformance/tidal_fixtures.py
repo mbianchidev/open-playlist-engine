@@ -53,6 +53,14 @@ def _handler(request: httpx.Request) -> httpx.Response:
         if request.url.params.get("page[cursor]") == "next":
             return httpx.Response(200, json=_load("collection_items_page2.json"))
         return httpx.Response(200, json=_load("collection_items.json"))
+    if path == "/v2/userCollectionAlbums/me/relationships/items":
+        if request.method == "POST":
+            return httpx.Response(200, json={"data": [], "links": {"self": path}})
+        return httpx.Response(200, json=_load("collection_albums.json"))
+    if path == "/v2/userCollectionArtists/me/relationships/items":
+        if request.method == "POST":
+            return httpx.Response(200, json={"data": [], "links": {"self": path}})
+        return httpx.Response(200, json=_load("collection_artists.json"))
     if path == "/v2/playlists" and request.method == "GET":
         return httpx.Response(200, json=_load("playlists.json"))
     if path == "/v2/playlists" and request.method == "POST":
@@ -76,6 +84,18 @@ def _handler(request: httpx.Request) -> httpx.Response:
     if path.startswith("/v2/tracks/"):
         payload = _track_document(path.rsplit("/", 1)[-1])
         return httpx.Response(200, json=payload) if payload is not None else _not_found(path)
+    if path.startswith("/v2/albums/"):
+        if path.endswith("/missing"):
+            return _not_found(path)
+        return httpx.Response(200, json=_load("album.json"))
+    if path.startswith("/v2/artists/"):
+        if path.endswith("/missing"):
+            return _not_found(path)
+        return httpx.Response(200, json=_load("artist.json"))
+    if path.startswith("/v2/searchResults/") and path.endswith("/relationships/albums"):
+        return httpx.Response(200, json=_load("search_relationship_albums.json"))
+    if path.startswith("/v2/searchResults/") and path.endswith("/relationships/artists"):
+        return httpx.Response(200, json=_load("search_relationship_artists.json"))
     if path.startswith("/v2/searchResults/") and path.endswith("/relationships/tracks"):
         query = unquote(path.split("/searchResults/", 1)[1].split("/relationships/tracks", 1)[0])
         if "Nope" in query:

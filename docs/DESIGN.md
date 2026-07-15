@@ -19,7 +19,8 @@ ISRC-first matching strategy.
 **This repo** is the concrete engine that implements that spec for many providers
 and lets a user migrate playlists from any source to any target through a UI.
 
-- Internal interchange model = the spec's `Playlist`/`Track` (`app/core/models.py`).
+- Internal interchange model = explicit `Playlist`, `Track`, `Album`, and `Artist`
+  entities (`app/core/models.py`).
 - Frontend and backend are **hard-separated**: no shared code. The backend is the
   single source of truth and publishes OpenAPI; the frontend consumes a generated
   typed client.
@@ -42,6 +43,8 @@ marked `needs_review` and can be approved, batch-approved, corrected, skipped, o
 batch-denied from the progress panel. The UI also exposes ledger-backed
 single-migration and all-time aggregate statistics with source/target provider
 filters.
+Spotify and Tidal also expose saved albums and followed/favorite artists as
+explicit library entities. Album/artist jobs never create synthetic playlists.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -59,10 +62,10 @@ created.
 | Phase | Step | Component |
 |---|---|---|
 | 0 | Get access to **source** | Backend auth (per-provider strategy) |
-| 1 | **Import**: fetch playlists from source (names + tracks, capture ISRC) | Source adapter → Open Playlist model |
-| 2 | UI: select/deselect playlists and songs | Frontend selection tree |
+| 1 | **Import**: fetch playlists, tracks, saved albums, and artists | Source adapter → universal model |
+| 2 | UI: select supported playlists, songs, albums, and artists | Frontend selection tree |
 | 3 | Get access to **target** | Backend auth |
-| 3.5 | **Match**: resolve each track on the target | `MatchService` (graph → search → score) |
+| 3.5 | **Match**: resolve tracks, albums, and artists on the target | Core match services |
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
 | 4 | **Write**: create playlists and add tracks, idempotently | arq job + operation ledger |
 | 5 | UI shows live progress | Frontend SSE progress board |
@@ -178,6 +181,12 @@ class ProviderAdapter(Protocol):
     async def add_tracks(self, cred, playlist_id, uris) -> list[AddItemResult]: ...
 ```
 
+Album and artist capabilities use four optional contracts:
+`SavedAlbumReader`/`SavedAlbumWriter` and
+`FollowedArtistReader`/`FollowedArtistWriter`. This keeps each entity and direction
+independently gateable. The core verifies both the capability and the exact
+operation-specific protocol before calling it.
+
 ### Registration & trust boundary — **[rev]**
 - Adapters self-register via `app.core.registry.register(...)`; third parties can
   ship adapters as `importlib.metadata` entry points (group `ope.providers`).
@@ -262,7 +271,9 @@ tokens; redact in errors; PKCE + `state`; minimal scopes per capability.
 Adapters advertise a structured `CapabilityDescriptor`, because the UI and the
 scheduler need **constraints**, not just "can write":
 
-- capability set: `READ_PLAYLISTS/TRACKS/LIBRARY`, `CREATE_PLAYLIST`, `ADD_TRACKS`,
+- capability set: `READ_PLAYLISTS/TRACKS/LIBRARY`, independent
+  `READ/WRITE_SAVED_ALBUMS` and `READ/WRITE_FOLLOWED_ARTISTS`,
+  `CREATE_PLAYLIST`, `ADD_TRACKS`,
   `REMOVE_TRACKS`, `REORDER`, `SET_COVER`, `SET_DESCRIPTION`
 - `has_isrc`, `search_modes` (`isrc`/`text`), `official`, `stability`
 - write constraints: `max_add_batch`, `max_playlist_size`, `supports_duplicates`,
@@ -271,21 +282,21 @@ scheduler need **constraints**, not just "can write":
 - `warning` (free-form caveat surfaced in the UI)
 
 ### Honest matrix (verify per provider)
-| Provider | Read | Write | ISRC | Target lookup | Auth | Notes |
-|---|---|---|---|---|---|---|
-| Spotify | ✓ | ✓ | ✓ | ISRC + text | OAuth PKCE | official, solid |
-| YT Music (`ytmusicapi`) | ✓ | ✓ | ✗ | text only | device/header | unofficial, no quota, no ISRC |
-| YouTube (Data API) | ✓ | ✓ | ✗ | text (quota) | OAuth | official, ~66 songs/day |
-| Tidal | ✓ | ✓ | ✓ | ISRC + text | OAuth PKCE | official dev portal |
-| Deezer | ✓ | ~ | ✓ | ISRC + text | OAuth | write needs approval |
-| Apple Music | ✓ | ✓ | ✓ | ISRC + text | MusicKit | heaviest auth, paid acct |
-| Amazon Music | ✗ | ✗ | — | — | — | no public write |
+| Provider | Playlists/tracks | Saved albums | Artists | Target lookup | Notes |
+|---|---|---|---|---|---|
+| Spotify | Read/write | Read/write | Follow read/write | ISRC, UPC, text | official |
+| Tidal | Read/write | Read/write | Favorite read/write | ISRC, UPC, text | official |
+| YT Music (`ytmusicapi`) | Read/write | — | — | text | unofficial |
+| Apple Music | Read/write | — | — | ISRC + text | library entities not advertised |
+| Amazon Music | — | — | — | — | no public write |
 
 ### UI consequences
 `GET /providers` returns the matrix; the FE renders source/target pickers and
-inline warnings dynamically, so new plugins appear automatically. Core gate before
-a job: source `READ_TRACKS` ∧ target `CREATE_PLAYLIST` + `ADD_TRACKS`. Missing
-optional caps → skip + warn, never hard-fail.
+inline warnings dynamically. Core gates each selected entity independently.
+Playlist selections require track-read and playlist-write caps. Album/artist
+selections require their matching read/write caps, scopes, and operation-specific
+library protocol.
+Unsupported target types remain disabled and are rejected if submitted.
 
 ---
 
@@ -332,8 +343,8 @@ graph as an open dataset is deferred pending legal review.
 
 ## 9. Migration job, idempotency & progress
 
-- `migration_job` + `job_item` per song (status: pending/matched/needs_review/
-  written/skipped/failed). Runs on an **arq** worker.
+- `migration_job` + entity-typed `job_item` rows for tracks, albums, and artists
+  (status: pending/matched/needs_review/written/skipped/failed). Runs on arq.
 - **[rev] Real idempotency via an operation ledger.** Instead of "dedupe by name",
   each write records **intent → call → observed target id/position**. On an
   uncertain failure we **reconcile by reading target state**, never blindly retry a
@@ -356,7 +367,7 @@ graph as an open dataset is deferred pending legal review.
 |---|---|---|
 | `provider_account` | a connected account (provider + label) | private |
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
-| `migration_job`, `job_item` | jobs + per-song status (drives progress) | private |
+| `migration_job`, `job_item` | jobs + per-track/album/artist status | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
 | `track_identity` | canonical track (UUID pk, ISRC as evidence) | global, no PII |
 | `track_edge` | provider links with confidence/source/scope | global + per-account overlays |
@@ -374,7 +385,7 @@ open-playlist-engine/
       providers/   # spotify/, ytmusic/  (self-registering adapters)
       db/          # SQLAlchemy models (private data + identity graph)
       jobs/        # arq worker + import→match→review→write pipeline
-      api/         # FastAPI routers: /providers /auth /playlists /migrations
+      api/         # FastAPI routers: /providers /auth /playlists /library /migrations
     tests/conformance/   # fake provider + contract suite
     migrations/          # Alembic
   frontend/        # Vite + React + TS SPA (consumes generated OpenAPI client)

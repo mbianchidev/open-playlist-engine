@@ -18,7 +18,7 @@ from app.core.adapter import (
     RateLimited,
     RefreshTokenExpired,
 )
-from app.core.models import PlaylistKind, Track
+from app.core.models import Album, Artist, PlaylistKind, Track
 from app.providers.tidal.adapter import (
     _PENDING_STATES,
     TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
@@ -385,6 +385,271 @@ async def test_add_tracks_to_my_collection_requires_write_scope() -> None:
             TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
             ["tidal:track:t1"],
         )
+
+
+async def test_saved_albums_and_favorite_artists_roundtrip() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/v2/userCollectionAlbums/me/relationships/items":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"type": "albums", "id": "album1"}],
+                    "included": [
+                        {
+                            "type": "albums",
+                            "id": "album1",
+                            "attributes": {
+                                "title": "Album One",
+                                "barcodeId": "0123456789012",
+                                "releaseDate": "2020-01-02",
+                            },
+                            "relationships": {
+                                "artists": {"data": [{"type": "artists", "id": "artist1"}]}
+                            },
+                        },
+                        {
+                            "type": "artists",
+                            "id": "artist1",
+                            "attributes": {"name": "Artist One", "popularity": 0.8},
+                        },
+                    ],
+                    "links": {"self": path},
+                },
+            )
+        if path == "/v2/userCollectionArtists/me/relationships/items":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"type": "artists", "id": "artist1"}],
+                    "included": [
+                        {
+                            "type": "artists",
+                            "id": "artist1",
+                            "attributes": {"name": "Artist One", "popularity": 0.8},
+                        }
+                    ],
+                    "links": {"self": path},
+                },
+            )
+        if path == "/v2/albums/album1":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "type": "albums",
+                        "id": "album1",
+                        "attributes": {
+                            "title": "Album One",
+                            "barcodeId": "0123456789012",
+                            "releaseDate": "2020-01-02",
+                        },
+                        "relationships": {
+                            "artists": {"data": [{"type": "artists", "id": "artist1"}]}
+                        },
+                    },
+                    "included": [
+                        {
+                            "type": "artists",
+                            "id": "artist1",
+                            "attributes": {"name": "Artist One", "popularity": 0.8},
+                        }
+                    ],
+                },
+            )
+        if path == "/v2/artists/artist1":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "type": "artists",
+                        "id": "artist1",
+                        "attributes": {"name": "Artist One", "popularity": 0.8},
+                    }
+                },
+            )
+        return httpx.Response(404, json={})
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+    albums = [album async for album in adapter.iter_saved_albums(_collection_cred())]
+    artists = [artist async for artist in adapter.iter_followed_artists(_collection_cred())]
+
+    assert albums[0].title == "Album One"
+    assert albums[0].artists == ["Artist One"]
+    assert albums[0].upc == "0123456789012"
+    assert artists[0].name == "Artist One"
+    assert (await adapter.read_saved_album(_collection_cred(), "album1")).id == "album1"
+    assert (await adapter.read_followed_artist(_collection_cred(), "artist1")).id == "artist1"
+
+
+async def test_library_search_uses_tidal_search_relationships() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/relationships/albums"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"type": "albums", "id": "album1"}],
+                    "included": [
+                        {
+                            "type": "albums",
+                            "id": "album1",
+                            "attributes": {
+                                "title": "Album One",
+                                "barcodeId": "0123456789012",
+                                "releaseDate": "2020-01-02",
+                            },
+                            "relationships": {
+                                "artists": {"data": [{"type": "artists", "id": "artist1"}]}
+                            },
+                        },
+                        {
+                            "type": "artists",
+                            "id": "artist1",
+                            "attributes": {"name": "Artist One", "popularity": 0.8},
+                        },
+                    ],
+                },
+            )
+        if path.endswith("/relationships/artists"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"type": "artists", "id": "artist1"}],
+                    "included": [
+                        {
+                            "type": "artists",
+                            "id": "artist1",
+                            "attributes": {"name": "Artist One", "popularity": 0.8},
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(404, json={})
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+    albums = await adapter.search_albums(
+        _collection_cred(),
+        Album(title="Album One", artists=["Artist One"]),
+    )
+    artists = await adapter.search_artists(_collection_cred(), Artist(name="Artist One"))
+
+    assert albums[0].uri == "tidal:album:album1"
+    assert artists[0].uri == "tidal:artist:artist1"
+
+
+async def test_library_contains_and_writes_use_tidal_collection_relationships() -> None:
+    calls: list[tuple[str, str, bytes]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, request.read()))
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"type": "albums", "id": "album1"}]
+                    if "Albums" in request.url.path
+                    else [{"type": "artists", "id": "artist1"}],
+                    "links": {"self": request.url.path},
+                },
+            )
+        return httpx.Response(200, json={"data": [], "links": {"self": request.url.path}})
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+
+    assert await adapter.contains_saved_albums(
+        _collection_cred(), ["tidal:album:album1", "tidal:album:album2"]
+    ) == [True, False]
+    assert await adapter.contains_followed_artists(
+        _collection_cred(), ["tidal:artist:artist1", "tidal:artist:artist2"]
+    ) == [True, False]
+    assert all(
+        result.ok
+        for result in await adapter.save_albums(
+            _collection_cred(), ["tidal:album:album2"]
+        )
+    )
+    assert all(
+        result.ok
+        for result in await adapter.follow_artists(
+            _collection_cred(), ["tidal:artist:artist2"]
+        )
+    )
+    assert any(
+        path.endswith("/userCollectionAlbums/me/relationships/items")
+        for _, path, _ in calls
+    )
+    assert any(
+        path.endswith("/userCollectionArtists/me/relationships/items")
+        for _, path, _ in calls
+    )
+
+
+async def test_library_writes_map_tidal_skipped_items_per_entity() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [],
+                "meta": {
+                    "skipped": [
+                        {"id": "existing", "reason": "ALREADY_PRESENT"},
+                        {"id": "missing", "reason": "NOT_FOUND"},
+                    ]
+                },
+            },
+        )
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.save_albums(
+        _collection_cred(),
+        ["tidal:album:existing", "tidal:album:missing", "tidal:album:new"],
+    )
+
+    assert results[0].already_present is True
+    assert results[0].ok is True
+    assert results[1].ok is False
+    assert results[1].error == "NOT_FOUND"
+    assert results[2].ok is True
+
+
+async def test_library_write_reconciles_duplicate_race_and_retries_absent_items() -> None:
+    post_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal post_calls
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"type": "albums", "id": "existing"}],
+                    "links": {"self": request.url.path},
+                },
+            )
+        post_calls += 1
+        if post_calls == 1:
+            return httpx.Response(
+                409,
+                json={
+                    "errors": [
+                        {
+                            "code": "DUPLICATE_ITEMS_IN_COLLECTION",
+                            "detail": "one item already exists",
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"data": []})
+
+    adapter = TidalAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.save_albums(
+        _collection_cred(),
+        ["tidal:album:existing", "tidal:album:new"],
+    )
+
+    assert results[0].already_present is True
+    assert results[1].ok is True
+    assert post_calls == 2
 
 
 def _ref(playlist_id: str = "pl_tidal_1", name: str = "Tidal Roadtrip"):
