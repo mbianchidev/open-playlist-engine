@@ -28,12 +28,16 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
     RateLimited,
     RefreshTokenExpired,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
+    Unsupported,
 )
 from app.core.capabilities import Capability, CapabilityDescriptor, SearchMode, Stability
 from app.core.models import MediaType, Playlist, PlaylistKind, PlaylistRef, Track
@@ -409,7 +413,11 @@ def _track_id(uri: str) -> str | None:
     return uri or None
 
 
-def _playlist_ref(resource: dict[str, Any]) -> PlaylistRef:
+def _playlist_ref(
+    resource: dict[str, Any],
+    *,
+    is_owned: bool | None = None,
+) -> PlaylistRef:
     attrs = _attributes(resource)
     owners = _relationship_data(resource, "owners")
     owner_id = None
@@ -423,9 +431,13 @@ def _playlist_ref(resource: dict[str, Any]) -> PlaylistRef:
         if isinstance(attrs.get("numberOfItems"), int)
         else None,
         owner_id=owner_id,
+        is_owned=is_owned,
+        is_followed=None if is_owned is None else not is_owned,
         snapshot_id=attrs.get("lastModifiedAt")
         if isinstance(attrs.get("lastModifiedAt"), str)
         else None,
+        created_at=attrs.get("createdAt"),
+        updated_at=attrs.get("lastModifiedAt"),
     )
 
 
@@ -671,6 +683,7 @@ class TidalAdapter:
                 Capability.WRITE_LIBRARY,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
+                Capability.DELETE_PLAYLIST,
                 Capability.SET_DESCRIPTION,
             },
             has_isrc=True,
@@ -720,7 +733,7 @@ class TidalAdapter:
             while True:
                 payload = resp.json()
                 for resource in _resources_from_payload(payload):
-                    yield _playlist_ref(resource)
+                    yield _playlist_ref(resource, is_owned=True)
                 next_url = _next_url(payload)
                 if not next_url:
                     break
@@ -777,9 +790,13 @@ class TidalAdapter:
             if isinstance(attrs.get("description"), str)
             else None,
             owner_id=_playlist_ref(playlist_resource).owner_id,
+            is_owned=ref.is_owned,
+            is_followed=ref.is_followed,
             snapshot_id=attrs.get("lastModifiedAt")
             if isinstance(attrs.get("lastModifiedAt"), str)
             else ref.snapshot_id,
+            created_at=attrs.get("createdAt"),
+            updated_at=attrs.get("lastModifiedAt"),
             tracks=tracks,
         )
 
@@ -813,6 +830,8 @@ class TidalAdapter:
                 id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
                 name=_COLLECTION_NAME,
                 owner_id=cred.account_id,
+                is_owned=True,
+                is_followed=False,
                 migration_note="Reconnect Tidal to migrate My Collection",
                 kind=PlaylistKind.LIKED_TRACKS,
             )
@@ -1094,6 +1113,40 @@ class TidalAdapter:
             uris,
             f"/playlists/{playlist_id}/relationships/items",
             include_country=True,
+        )
+
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported("Tidal does not expose a verified safe playlist-unfollow operation")
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("Tidal My Collection cannot be deleted as a playlist")
+        if ref.is_owned is not True:
+            raise AccessDenied("Tidal playlist ownership must be confirmed before deletion")
+        async with self._client(cred) as client:
+            _raise_for_status(
+                await _tidal_request(
+                    client,
+                    "DELETE",
+                    f"/playlists/{ref.id}",
+                    params=_params(cred),
+                )
+            )
+        return PlaylistMutationResult()
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        raise Unsupported(
+            "Tidal playlist item removal is unavailable because exact duplicate-occurrence "
+            "semantics are not documented"
         )
 
     async def _add_tracks_to_relationship(

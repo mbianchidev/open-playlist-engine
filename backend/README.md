@@ -8,8 +8,9 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
-- `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/jobs/` — arq worker + migration and durable playlist-organizer jobs.
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
+  `/organizer`).
 
 ## Develop
 ```bash
@@ -34,12 +35,12 @@ suite in `tests/conformance/`. Adapters never touch the match graph — they onl
 read/search/write; `MatchService` owns matching.
 
 ## Provider status
-| Provider | Read / Search | Write | Test seam |
-|---|---|---|---|
-| Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
-| Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
-| YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
-| Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Provider | Read / Search | Migration write | Organizer | Test seam |
+|---|---|---|---|---|
+| Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | ✅ safe unfollow + exact song removal; no destructive delete | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | ✅ owned-playlist delete; song removal gated off | recorded JSON:API fixtures via injected `httpx.MockTransport` |
+| YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | ✅ owned-playlist delete + `setVideoId` song removal; no verified safe unfollow | injected in-memory client (`client_factory`) |
+| Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | read-only; MusicKit lacks delete/remove operations | recorded JSON fixtures via injected `httpx.MockTransport` |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
@@ -59,6 +60,12 @@ partial-migration labels, duplicate skips, batch review actions, and low-confide
 match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+Playlist Organizer uses separate `organizer_job` and `organizer_item` tables. The
+worker persists per-playlist results, skips successful items on retry, rate-limits
+provider/account writes, and invalidates playlist caches after successful work.
+Provider behavior and recovery limits are documented in
+[`docs/PLAYLIST_ORGANIZER.md`](../docs/PLAYLIST_ORGANIZER.md).
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

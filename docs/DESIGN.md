@@ -92,6 +92,21 @@ review, rerun detection and duplicate handling also provide status buckets
 selected migration and all-time totals. Aggregate queries can be filtered by source
 provider, target provider, or both.
 
+### Playlist organizer
+
+Organizer is a separate maintenance flow, not a migration shortcut. The frontend
+defaults to `unfollow_playlist`, exposes `delete_playlist` only as an explicit
+irreversible mode, and lets users select exact song entries only when the adapter
+advertises `remove_tracks`. Preflight always resolves ownership and provider
+capabilities server-side; it never substitutes permanent deletion for a requested
+safe removal.
+
+Destructive playlist deletion and song removal require an exact typed phrase. Jobs
+persist one `organizer_item` per playlist/action, report partial failures without
+hiding successes, and retry only failed/retryable items. Duplicate analysis is a
+read-only review aid using normalized name, compatible owner identity, and track
+overlap; it never creates an organizer selection.
+
 ---
 
 ## 3. Architecture
@@ -110,8 +125,10 @@ Apple   ┘                                  └ Apple
 
 ### Frontend / backend separation
 - **Backend** owns all OAuth/tokens, provider API calls, matching, jobs,
-  orchestration. Emits OpenAPI.
-- **Frontend** owns the source→target wizard, selection, review, progress. It
+  orchestration, organizer preflight and destructive confirmation enforcement.
+  Emits OpenAPI.
+- **Frontend** owns the source→target wizard, organizer workbench, selection,
+  review, progress. It
   consumes a client **generated from the backend OpenAPI**. No business logic, no
   provider secrets.
 
@@ -348,6 +365,23 @@ graph as an open dataset is deferred pending legal review.
   `job_item` rows and streamed over **SSE**; a reconnecting client resumes via
   `Last-Event-ID`, so no events are lost on a dropped connection.
 
+### Organizer jobs
+
+- `organizer_job` + `organizer_item` store account-level status and one durable
+  playlist/action result.
+- Successful items are excluded from subsequent worker runs. Retry resets failed,
+  retryable items only.
+- Spotify song removal is limited to one 100-item snapshot-protected request. The
+  job stores baseline and expected playlist-sequence hashes; an ambiguous retry is
+  complete only if the exact expected sequence is observed.
+- YouTube Music stores per-occurrence `setVideoId` values and removes only IDs still
+  present on retry.
+- Safe removal and deletion reconcile an already-absent playlist as complete.
+- Any success invalidates provider/account playlist caches; failed items remain in
+  the report.
+- The migration `operation_ledger` remains migration-only. Organizer idempotency is
+  stored directly on `organizer_item`.
+
 ---
 
 ## 10. Data model summary
@@ -358,6 +392,7 @@ graph as an open dataset is deferred pending legal review.
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
 | `migration_job`, `job_item` | jobs + per-song status (drives progress) | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
+| `organizer_job`, `organizer_item` | bulk organizer request + per-playlist action/result | private |
 | `track_identity` | canonical track (UUID pk, ISRC as evidence) | global, no PII |
 | `track_edge` | provider links with confidence/source/scope | global + per-account overlays |
 
@@ -373,8 +408,8 @@ open-playlist-engine/
                    # match_service, rate_limit, security  (provider-agnostic hub)
       providers/   # spotify/, ytmusic/  (self-registering adapters)
       db/          # SQLAlchemy models (private data + identity graph)
-      jobs/        # arq worker + import→match→review→write pipeline
-      api/         # FastAPI routers: /providers /auth /playlists /migrations
+      jobs/        # arq worker + migration and playlist-organizer pipelines
+      api/         # FastAPI routers: /providers /auth /playlists /migrations /organizer
     tests/conformance/   # fake provider + contract suite
     migrations/          # Alembic
   frontend/        # Vite + React + TS SPA (consumes generated OpenAPI client)
@@ -406,6 +441,8 @@ generated OpenAPI client.
 | Awkward auth (ytmusic, Apple) | 3 challenge shapes + per-provider lifecycle hooks |
 | Fuzzy mismatches | ISRC-first; review step; confirmations as overlays, promoted only on evidence |
 | Partial writes on retry | operation ledger: reconcile by reading target state |
+| Accidental destructive organizer action | safe remove is a distinct capability; delete/remove-songs require typed confirmation |
+| Duplicate playlist false positive | suggestions require normalized name + owner compatibility + ≥50% overlap and are never auto-selected |
 | Provider API/ToS changes | capability descriptors + conformance suite catch regressions |
 | Lossy migrations | fidelity contract + per-job lossy report (`unsupported_reason`) |
 
@@ -435,6 +472,8 @@ generated OpenAPI client.
 - ✅ **[rev]** evidence graph keyed by UUID; per-account overlays; evidence-gated promotion.
 - ✅ **[rev]** idempotency via operation ledger; central rate limiter; replayable SSE.
 - ✅ **[rev]** capability descriptors (constraints); fidelity contract + lossy report.
+- ✅ Capability-gated Playlist Organizer with durable per-playlist results and
+  provider-specific recovery warnings.
 - ✅ Self-host single-user v1 with SaaS-ready seams (`DEPLOYMENT_MODE` + `KeyProvider`).
 
 ## 16. Open questions

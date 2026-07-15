@@ -11,6 +11,10 @@ export interface ProviderView {
   has_isrc: boolean;
   can_source: boolean;
   can_target: boolean;
+  can_unfollow_playlist: boolean;
+  can_delete_playlist: boolean;
+  can_remove_tracks: boolean;
+  max_remove_batch: number;
   warning: string | null;
 }
 
@@ -50,9 +54,14 @@ export interface PlaylistRef {
   name: string;
   track_count: number | null;
   owner_id: string | null;
+  owner_name: string | null;
+  is_owned: boolean | null;
+  is_followed: boolean | null;
   collaborative: boolean | null;
   snapshot_id: string | null;
   tracks_href: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   migration_status: string | null;
   migrated_track_count: number;
   remaining_track_count: number | null;
@@ -214,4 +223,107 @@ export interface ProgressEvent {
   items?: JobItemView[];
   job_id?: string;
   missing?: boolean;
+}
+
+export type OrganizerIntent = "remove" | "delete" | "remove_tracks";
+export type OrganizerAction = "unfollow_playlist" | "delete_playlist" | "remove_tracks";
+
+export interface OrganizerTrackSelection {
+  position: number;
+  source_item_id?: string | null;
+}
+
+export interface OrganizerSelection {
+  playlist_actions: { playlist_id: string; intent: OrganizerIntent }[];
+  track_removals: { playlist_id: string; tracks: OrganizerTrackSelection[] }[];
+}
+
+export interface OrganizerRequestBody {
+  provider: string;
+  account_id: string;
+  selection: OrganizerSelection;
+  confirmation?: string | null;
+}
+
+export interface OrganizerPlaylistView {
+  playlist: PlaylistRef;
+  ownership: "owned" | "collaborative" | "followed" | "unknown";
+  available_intents: OrganizerIntent[];
+  requires_ownership_check: boolean;
+  notes: string[];
+}
+
+export interface OrganizerPreflightItemView {
+  playlist_id: string;
+  playlist_name: string;
+  action: OrganizerAction;
+  destructive: boolean;
+  ownership: string;
+  collaborative: boolean | null;
+  selected_track_count: number;
+  recovery: string;
+}
+
+export interface OrganizerPreflightGroupView {
+  action: OrganizerAction;
+  label: string;
+  destructive: boolean;
+  recovery: string;
+  items: OrganizerPreflightItemView[];
+}
+
+export interface OrganizerUnsupportedItem {
+  playlist_id: string;
+  playlist_name: string;
+  intent: OrganizerIntent;
+  reason: string;
+}
+
+export interface OrganizerPreflightView {
+  code: "organizer_preflight" | "organizer_confirmation_required";
+  groups: OrganizerPreflightGroupView[];
+  unsupported: OrganizerUnsupportedItem[];
+  confirmation_required: boolean;
+  confirmation_phrase: string | null;
+  total_playlists: number;
+  total_tracks: number;
+}
+
+export interface DuplicateCandidateView {
+  playlist_ids: [string, string];
+  playlist_names: [string, string];
+  normalized_name: string;
+  overlap_count: number;
+  overlap_ratio: number;
+  reasons: string[];
+}
+
+export interface OrganizerItemView {
+  id: string;
+  playlist_id: string;
+  playlist_name: string;
+  action: OrganizerAction;
+  destructive: boolean;
+  ownership: string;
+  collaborative: boolean | null;
+  status: string;
+  attempts: number;
+  retryable: boolean;
+  error: string | null;
+  request_payload: Record<string, unknown>;
+  result_payload: Record<string, unknown>;
+}
+
+export interface OrganizerJobView {
+  id: string;
+  provider: string;
+  account_id: string;
+  status: string;
+  total: number;
+  done: number;
+  failed: number;
+  error: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  items: OrganizerItemView[];
 }

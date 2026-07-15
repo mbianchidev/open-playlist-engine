@@ -21,8 +21,10 @@ from app.core.adapter import (
     CreatePlaylistSpec,
     ProviderCredential,
     RateLimited,
+    TrackRemoval,
+    Unsupported,
 )
-from app.core.models import Track
+from app.core.models import PlaylistRef, Track
 from app.providers.applemusic.adapter import (
     AppleDeveloperTokenProvider,
     AppleMusicAdapter,
@@ -318,3 +320,35 @@ async def test_auth_complete_uses_stable_account_identity() -> None:
     assert credential.expires_at is None
     assert credential.extra["storefront"] == "us"
     assert credential.extra["display_name"] == "Apple Music (US)"
+
+
+async def test_playlist_removal_operations_are_explicitly_unsupported() -> None:
+    adapter = AppleMusicAdapter(
+        transport=applemusic_transport(),
+        developer_token="fixture-developer-token",
+    )
+    credential = ProviderCredential(
+        account_id="acc",
+        provider="applemusic",
+        auth_kind=AuthKind.DEVELOPER_USER_TOKEN,
+        access_token="fixture-user-token",
+        extra={"storefront": "us"},
+    )
+    playlist = PlaylistRef(id=APPLE_MUSIC_PLAYLIST_ID, name="Roadtrip", is_owned=True)
+
+    with pytest.raises(Unsupported):
+        await adapter.unfollow_playlist(credential, playlist)
+    with pytest.raises(Unsupported):
+        await adapter.delete_playlist(credential, playlist)
+    with pytest.raises(Unsupported):
+        await adapter.remove_tracks(
+            credential,
+            playlist,
+            [
+                TrackRemoval(
+                    source_item_id="library-song",
+                    provider_uri="applemusic:catalog:us:song:1001",
+                    position=0,
+                )
+            ],
+        )

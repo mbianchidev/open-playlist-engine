@@ -14,7 +14,8 @@ instantly works with all the others — both as source and target.
 > OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
 > official Apple MusicKit library read/search/write. Persisted credentials,
 > playlist/track selection, partial-migration detection, migration jobs, review
-> actions, SSE progress and migration statistics are wired. Other provider
+> actions, SSE progress, migration statistics, and a capability-gated Playlist
+> Organizer are wired. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -37,7 +38,7 @@ for low-confidence matches.
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
 | `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
-| `docs/` | [`DESIGN.md`](docs/DESIGN.md) and [ADRs](docs/adr). |
+| `docs/` | [`DESIGN.md`](docs/DESIGN.md), [`PLAYLIST_ORGANIZER.md`](docs/PLAYLIST_ORGANIZER.md), provider setup, and [ADRs](docs/adr). |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
 the generated OpenAPI client.
@@ -88,6 +89,10 @@ warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 second
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
 ARQ's 5-minute default timeout.
+Organizer pacing and retries use `OPE_ORGANIZER_RATE_LIMIT_CAPACITY`,
+`OPE_ORGANIZER_RATE_LIMIT_REFILL_PER_S`, `OPE_ORGANIZER_RETRY_ATTEMPTS`,
+`OPE_ORGANIZER_RETRY_MAX_DELAY_S`, and
+`OPE_ORGANIZER_WORKER_JOB_TIMEOUT_S`.
 
 ## Spotify, Tidal, YouTube Music and Apple Music
 
@@ -130,11 +135,18 @@ ARQ's 5-minute default timeout.
 9. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-10. Open the **Stats** tab to inspect one migration from the playlist-name dropdown
+10. Open **Organizer** to filter and sort one connected library, safely remove
+    playlists, permanently delete owned playlists where supported, or remove exact
+    song entries. The preflight shows ownership, collaboration, recovery impact, and
+    unsupported operations. Destructive work requires an exact typed phrase; retries
+    run failed playlist items only. Duplicate scans are review-only and never select
+    or remove a candidate. See
+    [`docs/PLAYLIST_ORGANIZER.md`](docs/PLAYLIST_ORGANIZER.md).
+11. Open the **Stats** tab to inspect one migration from the playlist-name dropdown
     or view all-time aggregate stats filtered by source and target provider. The
     **Migration** tab keeps provider setup, playlist selection, review, and progress
     in a separate workspace.
-11. Re-running a playlist reuses an existing migrated target playlist, labels
+12. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
 

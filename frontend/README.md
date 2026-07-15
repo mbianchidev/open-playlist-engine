@@ -33,12 +33,17 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 6. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
+7. Use the Organizer tab to search/sort one provider library, choose a
+   capability-gated action, review duplicate evidence, type destructive
+   confirmations, and inspect or retry durable per-playlist job results.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised
 by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.
 Native liked-track collections map across Spotify Liked Songs, Tidal My Collection,
 and YouTube Music Liked Songs.
+Playlist Organizer defaults to safe library removal, never substitutes deletion,
+and requires explicit song-entry selection for playlist edits.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
 

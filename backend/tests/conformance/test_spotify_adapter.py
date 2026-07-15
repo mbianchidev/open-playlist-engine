@@ -16,8 +16,10 @@ from app.core.adapter import (
     ProviderCredential,
     RateLimited,
     RefreshTokenExpired,
+    TrackRemoval,
+    Unsupported,
 )
-from app.core.models import MediaType, PlaylistKind, Track
+from app.core.models import MediaType, PlaylistKind, PlaylistRef, Track
 from app.providers.spotify.adapter import (
     SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
     SpotifyAdapter,
@@ -546,6 +548,94 @@ async def test_add_playlist_tracks_uses_items_endpoint() -> None:
     assert captured["path"] == "/v1/playlists/playlist/items"
     assert b'"spotify:track:t2"' in captured["body"]
     assert all(result.ok for result in results)
+
+
+async def test_unfollow_playlist_uses_generic_library_endpoint() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["uris"] = request.url.params.get("uris")
+        return httpx.Response(204)
+
+    cred = _cred().model_copy(update={"scopes": ["user-library-modify"]})
+    result = await SpotifyAdapter(transport=httpx.MockTransport(handler)).unfollow_playlist(
+        cred,
+        PlaylistRef(
+            id="playlist",
+            name="Roadtrip",
+            owner_id="other-user",
+            is_owned=False,
+            is_followed=True,
+        ),
+    )
+
+    assert result.ok is True
+    assert captured == {
+        "method": "DELETE",
+        "path": "/v1/me/library",
+        "uris": "spotify:playlist:playlist",
+    }
+
+
+async def test_unfollow_playlist_requires_library_modify_scope() -> None:
+    adapter = SpotifyAdapter(transport=spotify_transport())
+
+    with pytest.raises(AccessDenied, match="user-library-modify"):
+        await adapter.unfollow_playlist(
+            _cred(),
+            PlaylistRef(id="playlist", name="Roadtrip", is_followed=True),
+        )
+
+
+async def test_remove_tracks_uses_positions_and_snapshot() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = request.read()
+        return httpx.Response(200, json={"snapshot_id": "next-snapshot"})
+
+    result = await SpotifyAdapter(transport=httpx.MockTransport(handler)).remove_tracks(
+        _cred(),
+        PlaylistRef(
+            id="playlist",
+            name="Roadtrip",
+            snapshot_id="original-snapshot",
+            is_owned=True,
+        ),
+        [
+            TrackRemoval(
+                source_item_id="t1",
+                provider_uri="spotify:track:t1",
+                position=0,
+            ),
+            TrackRemoval(
+                source_item_id="t1",
+                provider_uri="spotify:track:t1",
+                position=3,
+            ),
+        ],
+    )
+
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/v1/playlists/playlist/items"
+    assert captured["body"] == (
+        b'{"items":[{"uri":"spotify:track:t1","positions":[0,3]}],'
+        b'"snapshot_id":"original-snapshot"}'
+    )
+    assert result.snapshot_id == "next-snapshot"
+    assert [item.ok for item in result.items] == [True, True]
+
+
+async def test_spotify_destructive_playlist_delete_is_unsupported() -> None:
+    with pytest.raises(Unsupported):
+        await SpotifyAdapter(transport=spotify_transport()).delete_playlist(
+            _cred(),
+            PlaylistRef(id="playlist", name="Roadtrip", is_owned=True),
+        )
 
 
 async def test_save_library_tracks_batches_at_current_limit() -> None:

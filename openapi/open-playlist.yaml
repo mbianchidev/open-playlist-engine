@@ -5,7 +5,7 @@ info:
     A universal, open, and interoperable playlist API specification.
     Enables seamless migration and playback of playlists across all major
     music platforms—Spotify, Tidal, YouTube Music, Deezer, Apple Music, and beyond.
-  version: 0.1.0
+  version: 0.2.0
   license:
     name: MIT
 
@@ -124,6 +124,122 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /organizer/preflight:
+    post:
+      summary: Preview playlist organizer operations
+      operationId: preflightOrganizer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizerRequest"
+      responses:
+        "200":
+          description: Exact provider operations, recovery implications, and confirmation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerPreflight"
+        "400":
+          description: Invalid or stale organizer selection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /organizer/duplicates:
+    post:
+      summary: Find review-only duplicate playlist candidates
+      operationId: analyzeOrganizerDuplicates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizerRequest"
+      responses:
+        "200":
+          description: Explainable candidates. No action is created or selected.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DuplicateCandidate"
+
+  /organizer/jobs:
+    get:
+      summary: List recent organizer jobs
+      operationId: listOrganizerJobs
+      responses:
+        "200":
+          description: Recent organizer audit reports.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizerJob"
+    post:
+      summary: Start a durable organizer job
+      operationId: createOrganizerJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizerRequest"
+      responses:
+        "200":
+          description: Queued organizer job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerJob"
+        "409":
+          description: Unsupported selections or exact typed confirmation required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerPreflight"
+
+  /organizer/jobs/{jobId}:
+    get:
+      summary: Get one organizer audit report
+      operationId: getOrganizerJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Organizer job and per-playlist results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerJob"
+
+  /organizer/jobs/{jobId}/retry:
+    post:
+      summary: Retry failed organizer items only
+      operationId: retryOrganizerJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Requeued job. Successful items remain complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerJob"
+
 components:
   schemas:
     Playlist:
@@ -163,6 +279,21 @@ components:
           type: string
           description: The unique identifier of the playlist owner.
           example: "user-42"
+        owner_name:
+          type: string
+          description: Display name for the playlist owner when exposed by the provider.
+        is_owned:
+          type: boolean
+          nullable: true
+          description: Whether the connected account owns the playlist.
+        is_followed:
+          type: boolean
+          nullable: true
+          description: Whether the playlist is followed rather than owned.
+        collaborative:
+          type: boolean
+          nullable: true
+          description: Whether the connected account can collaborate on the playlist.
         created_at:
           type: string
           format: date-time
@@ -173,6 +304,10 @@ components:
           format: date-time
           description: Timestamp when the playlist was last updated.
           example: "2026-02-01T14:00:00Z"
+        kind:
+          type: string
+          enum: [standard, liked_tracks]
+          default: standard
 
     Track:
       type: object
@@ -278,6 +413,19 @@ components:
           example:
             genre: "Synth-pop"
             bpm: 171
+        position:
+          type: integer
+          nullable: true
+          description: Zero-based position of this occurrence in its source playlist.
+        source_item_id:
+          type: string
+          nullable: true
+          description: Provider occurrence ID used for exact item operations.
+        added_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when this occurrence was added to the playlist.
 
     Credit:
       type: object
@@ -363,6 +511,272 @@ components:
           type: integer
           description: Number of tracks that could not be matched on the target provider.
           example: 2
+
+    OrganizerIntent:
+      type: string
+      enum: [remove, delete, remove_tracks]
+
+    OrganizerTrackSelection:
+      type: object
+      required: [position]
+      properties:
+        position:
+          type: integer
+          minimum: 0
+        source_item_id:
+          type: string
+          nullable: true
+
+    OrganizerSelection:
+      type: object
+      properties:
+        playlist_actions:
+          type: array
+          items:
+            type: object
+            required: [playlist_id, intent]
+            properties:
+              playlist_id:
+                type: string
+              intent:
+                $ref: "#/components/schemas/OrganizerIntent"
+        track_removals:
+          type: array
+          items:
+            type: object
+            required: [playlist_id, tracks]
+            properties:
+              playlist_id:
+                type: string
+              tracks:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizerTrackSelection"
+
+    OrganizerRequest:
+      type: object
+      required: [provider, account_id, selection]
+      properties:
+        provider:
+          type: string
+        account_id:
+          type: string
+        selection:
+          $ref: "#/components/schemas/OrganizerSelection"
+        confirmation:
+          type: string
+          nullable: true
+          description: Exact phrase returned by preflight for irreversible operations.
+
+    OrganizerPreflight:
+      type: object
+      required:
+        - code
+        - groups
+        - unsupported
+        - confirmation_required
+        - total_playlists
+        - total_tracks
+      properties:
+        code:
+          type: string
+          enum: [organizer_preflight, organizer_confirmation_required]
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizerPreflightGroup"
+        unsupported:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizerUnsupported"
+        confirmation_required:
+          type: boolean
+        confirmation_phrase:
+          type: string
+          nullable: true
+        total_playlists:
+          type: integer
+        total_tracks:
+          type: integer
+
+    OrganizerPreflightGroup:
+      type: object
+      required: [action, label, destructive, recovery, items]
+      properties:
+        action:
+          type: string
+          enum: [unfollow_playlist, delete_playlist, remove_tracks]
+        label:
+          type: string
+        destructive:
+          type: boolean
+        recovery:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - playlist_id
+              - playlist_name
+              - action
+              - destructive
+              - ownership
+              - selected_track_count
+              - recovery
+            properties:
+              playlist_id:
+                type: string
+              playlist_name:
+                type: string
+              action:
+                type: string
+              destructive:
+                type: boolean
+              ownership:
+                type: string
+              collaborative:
+                type: boolean
+                nullable: true
+              selected_track_count:
+                type: integer
+              recovery:
+                type: string
+
+    OrganizerUnsupported:
+      type: object
+      required: [playlist_id, playlist_name, intent, reason]
+      properties:
+        playlist_id:
+          type: string
+        playlist_name:
+          type: string
+        intent:
+          $ref: "#/components/schemas/OrganizerIntent"
+        reason:
+          type: string
+
+    OrganizerJob:
+      type: object
+      required:
+        - id
+        - provider
+        - account_id
+        - status
+        - total
+        - done
+        - failed
+        - items
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+        account_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, done, partial, failed]
+        total:
+          type: integer
+        done:
+          type: integer
+        failed:
+          type: integer
+        error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizerItem"
+
+    OrganizerItem:
+      type: object
+      required:
+        - id
+        - playlist_id
+        - playlist_name
+        - action
+        - destructive
+        - ownership
+        - status
+        - attempts
+        - retryable
+      properties:
+        id:
+          type: string
+        playlist_id:
+          type: string
+        playlist_name:
+          type: string
+        action:
+          type: string
+          enum: [unfollow_playlist, delete_playlist, remove_tracks]
+        destructive:
+          type: boolean
+        ownership:
+          type: string
+        collaborative:
+          type: boolean
+          nullable: true
+        status:
+          type: string
+        attempts:
+          type: integer
+        retryable:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        request_payload:
+          type: object
+          additionalProperties: true
+        result_payload:
+          type: object
+          additionalProperties: true
+
+    DuplicateCandidate:
+      type: object
+      required:
+        - playlist_ids
+        - playlist_names
+        - normalized_name
+        - overlap_count
+        - overlap_ratio
+        - reasons
+      properties:
+        playlist_ids:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: string
+        playlist_names:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: string
+        normalized_name:
+          type: string
+        overlap_count:
+          type: integer
+        overlap_ratio:
+          type: number
+          format: float
+        reasons:
+          type: array
+          items:
+            type: string
 
     Error:
       type: object
