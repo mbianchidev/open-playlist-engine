@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.core.capabilities import Capability
 from app.core.registry import all_info
+from app.imports import LOCAL_FILE_PROVIDER
 
 router = APIRouter(prefix="/api", tags=["providers"])
 
@@ -29,7 +30,18 @@ class ProviderView(BaseModel):
 
 @router.get("/providers", response_model=list[ProviderView])
 async def list_providers() -> list[ProviderView]:
-    views: list[ProviderView] = []
+    views: list[ProviderView] = [
+        ProviderView(
+            name=LOCAL_FILE_PROVIDER,
+            display_name="Local playlist file",
+            auth_kind="upload",
+            official=True,
+            stability="stable",
+            has_isrc=True,
+            can_source=True,
+            can_target=False,
+        )
+    ]
     for info in all_info():
         caps = info.capabilities
         views.append(

@@ -28,3 +28,14 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert rows["applemusic"]["can_source"] is True
     assert rows["applemusic"]["can_target"] is True
     assert rows["applemusic"]["auth_kind"] == "developer_user_token"
+    assert rows["local_file"] == {
+        "name": "local_file",
+        "display_name": "Local playlist file",
+        "auth_kind": "upload",
+        "official": True,
+        "stability": "stable",
+        "has_isrc": True,
+        "can_source": True,
+        "can_target": False,
+        "warning": None,
+    }

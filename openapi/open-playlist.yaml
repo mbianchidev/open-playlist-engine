@@ -5,7 +5,7 @@ info:
     A universal, open, and interoperable playlist API specification.
     Enables seamless migration and playback of playlists across all major
     music platforms—Spotify, Tidal, YouTube Music, Deezer, Apple Music, and beyond.
-  version: 0.1.0
+  version: 0.2.0
   license:
     name: MIT
 
@@ -123,6 +123,81 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/imports/preview:
+    post:
+      summary: Validate a local playlist file
+      description: |
+        Streams one supported playlist file into a bounded local parser and
+        returns an expiring normalized preview. The raw file is closed after
+        parsing and is never sent to an external service.
+      operationId: previewLocalPlaylistFile
+      parameters:
+        - name: filename
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Parsed playlist preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalImportPreview"
+        "413":
+          description: Configured upload-size limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportError"
+        "422":
+          description: Unsupported, malformed, or item-limit-exceeding input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportError"
+
+  /api/imports/{importId}:
+    parameters:
+      - name: importId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get an unexpired local import preview
+      operationId: getLocalPlaylistImport
+      responses:
+        "200":
+          description: Current normalized preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalImportPreview"
+        "404":
+          description: Import not found for the current user.
+        "410":
+          description: Import expired and must be uploaded again.
+    delete:
+      summary: Discard an unused local import preview
+      operationId: discardLocalPlaylistImport
+      responses:
+        "204":
+          description: Preview discarded.
+        "404":
+          description: Import not found for the current user.
+        "409":
+          description: Import is already queued for migration.
 
 components:
   schemas:
@@ -363,6 +438,124 @@ components:
           type: integer
           description: Number of tracks that could not be matched on the target provider.
           example: 2
+
+    ImportIssue:
+      type: object
+      required:
+        - severity
+        - code
+        - message
+      properties:
+        severity:
+          type: string
+          enum: [warning, error]
+        code:
+          type: string
+        message:
+          type: string
+        line_or_item:
+          oneOf:
+            - type: integer
+            - type: string
+          nullable: true
+        playlist_name:
+          type: string
+          nullable: true
+        raw_excerpt:
+          type: string
+          nullable: true
+
+    ImportLimits:
+      type: object
+      required:
+        - max_upload_bytes
+        - max_playlists
+        - max_tracks
+        - max_issues
+        - spool_memory_bytes
+      properties:
+        max_upload_bytes:
+          type: integer
+        max_playlists:
+          type: integer
+        max_tracks:
+          type: integer
+        max_issues:
+          type: integer
+        spool_memory_bytes:
+          type: integer
+
+    LocalImportPreview:
+      type: object
+      required:
+        - id
+        - filename
+        - detected_format
+        - file_size
+        - status
+        - expires_at
+        - playlists
+        - issues
+        - playlist_count
+        - track_count
+        - duplicate_count
+        - malformed_count
+        - unsupported_count
+        - limits
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        detected_format:
+          type: string
+          enum: [txt, csv, m3u, m3u8, pls, wpl, xspf, xml, json]
+        encoding:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+        status:
+          type: string
+          enum: [ready, queued, failed]
+        expires_at:
+          type: string
+          format: date-time
+        playlists:
+          type: array
+          items:
+            $ref: "#/components/schemas/Playlist"
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportIssue"
+        playlist_count:
+          type: integer
+        track_count:
+          type: integer
+        duplicate_count:
+          type: integer
+        malformed_count:
+          type: integer
+        unsupported_count:
+          type: integer
+        limits:
+          $ref: "#/components/schemas/ImportLimits"
+
+    ImportError:
+      type: object
+      properties:
+        detail:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            format:
+              type: string
+              nullable: true
 
     Error:
       type: object

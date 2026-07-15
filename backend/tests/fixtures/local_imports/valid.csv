@@ -1,0 +1,5 @@
+Playlist Name,Track,Artists,Album,Duration,ISRC,URL
+Road Trip,Déjà Vu,Beyoncé,B'Day,3:59,USSM10603689,spotify:track:abc
+Road Trip,Déjà Vu,Beyoncé,B'Day,3:59,USSM10603689,spotify:track:abc
+Road Trip,Title without artist,,Unknown,,,
+Road Trip,Local Song,Local Artist,Unknown,,,file:///Users/example/Music/local.mp3

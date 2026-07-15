@@ -41,7 +41,8 @@ supports import → match → write with SSE item progress; low-confidence match
 marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
 batch-denied from the progress panel. The UI also exposes ledger-backed
 single-migration and all-time aggregate statistics with source/target provider
-filters.
+filters. A built-in local-file source parses TXT, CSV, M3U/M3U8, PLS, WPL, XSPF,
+XML, and JSON into the same universal models before the pipeline begins.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -58,7 +59,7 @@ created.
 
 | Phase | Step | Component |
 |---|---|---|
-| 0 | Get access to **source** | Backend auth (per-provider strategy) |
+| 0 | Get access to **source** | Backend auth, or bounded local-file upload |
 | 1 | **Import**: fetch playlists from source (names + tracks, capture ISRC) | Source adapter → Open Playlist model |
 | 2 | UI: select/deselect playlists and songs | Frontend selection tree |
 | 3 | Get access to **target** | Backend auth |
@@ -110,7 +111,8 @@ Apple   ┘                                  └ Apple
 
 ### Frontend / backend separation
 - **Backend** owns all OAuth/tokens, provider API calls, matching, jobs,
-  orchestration. Emits OpenAPI.
+  orchestration, local-file parsing, and expiring normalized previews. Emits
+  OpenAPI.
 - **Frontend** owns the source→target wizard, selection, review, progress. It
   consumes a client **generated from the backend OpenAPI**. No business logic, no
   provider secrets.
@@ -138,6 +140,17 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
   **Valkey** (job queue + pacing).
 - **Infra**: `docker compose` (backend, worker, frontend, postgres, valkey), built
   with `--no-cache`.
+
+### Local-file trust boundary
+
+Local imports use an application upload endpoint, never an arbitrary host path.
+The backend streams each request into a bounded spooled temporary file, rejects
+configured byte/playlist/track limits, blocks XML entities and document types,
+and never opens paths referenced by M3U, PLS, WPL, XSPF, XML, or JSON entries.
+The raw stream is closed after parsing. Only normalized `Playlist`/`Track` JSON
+and bounded validation issues are retained in an owner-scoped expiring row.
+Queued jobs lease that row; successful jobs delete it atomically, while failures
+retain a short retry grace before scheduled cleanup.
 
 ### YouTube write path
 - **Default: `ytmusicapi`** (unofficial) — real YouTube Music, **no quota**,

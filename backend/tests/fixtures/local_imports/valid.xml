@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<playlists>
+  <playlist name="Road Trip">
+    <track title="Déjà Vu" artist="Beyoncé" album="B'Day" duration="239" isrc="USSM10603689" uri="spotify:track:abc" />
+    <track title="Déjà Vu" artist="Beyoncé" album="B'Day" duration="239" isrc="USSM10603689" uri="spotify:track:abc" />
+    <track title="Title without artist" duration="180" uri="https://example.com/audio.mp3" />
+    <track title="Local Song" artist="Local Artist" duration="200" uri="file:///Users/example/Music/local.mp3" />
+  </playlist>
+</playlists>

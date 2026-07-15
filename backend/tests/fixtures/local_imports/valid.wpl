@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<smil>
+  <head><title>Road Trip</title></head>
+  <body><seq>
+    <media src="spotify:track:abc" trackTitle="Déjà Vu" trackArtist="Beyoncé" albumTitle="B'Day" duration="239000" />
+    <media src="spotify:track:abc" trackTitle="Déjà Vu" trackArtist="Beyoncé" albumTitle="B'Day" duration="239000" />
+    <media src="https://example.com/audio.mp3" trackTitle="Title without artist" duration="180000" />
+    <media src="file:///Users/example/Music/local.mp3" trackTitle="Local Song" trackArtist="Local Artist" duration="200000" />
+  </seq></body>
+</smil>

@@ -496,6 +496,10 @@ h3 {
   --provider-color: #fa586a;
 }
 
+.provider-icon[data-provider="local_file"] {
+  --provider-color: var(--info);
+}
+
 .provider-icon-inline {
   width: 1.25rem;
   height: 1.25rem;
@@ -571,6 +575,277 @@ h3 {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-soft);
+}
+
+.local-import-panel {
+  display: grid;
+  align-content: start;
+}
+
+.local-import-dropzone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 0.45rem;
+  min-height: 10rem;
+  padding: 1.25rem;
+  overflow: hidden;
+  border: 1px dashed color-mix(in oklch, var(--info) 55%, var(--border));
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--info) 8%, transparent) 1px, transparent 1px)
+      0 0 / 1.25rem 100%,
+    var(--bg-raised);
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.local-import-dropzone:hover:not(.is-busy) {
+  border-color: var(--info);
+  background-color: color-mix(in oklch, var(--info) 8%, var(--bg-raised));
+}
+
+.local-import-dropzone input,
+.button-label input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.local-import-dropzone:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.local-import-dropzone svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--info);
+}
+
+.local-import-dropzone strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.local-import-dropzone span {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.local-import-privacy {
+  margin: 0.75rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.import-manifest {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--info) 38%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.import-manifest-rail {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid color-mix(in oklch, var(--info) 38%, var(--border));
+  background: color-mix(in oklch, var(--info) 12%, var(--surface-soft));
+  color: var(--info);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.import-manifest-body {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 0.9rem;
+}
+
+.import-manifest-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.import-ready-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.65rem;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.import-ready-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.import-manifest-heading > div {
+  display: grid;
+  min-width: 0;
+}
+
+.import-manifest-heading strong,
+.import-manifest-heading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-manifest-heading strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.import-manifest-heading div span,
+.import-expiry {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+}
+
+.format-stamp {
+  padding: 0.25rem 0.42rem;
+  border: 1px solid color-mix(in oklch, var(--info) 45%, var(--border));
+  border-radius: 0.4rem;
+  color: var(--info);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.import-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--border);
+}
+
+.import-metrics div {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.55rem;
+  background: var(--surface-soft);
+}
+
+.import-metrics dt {
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.import-metrics dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.import-expiry {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.import-issues {
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+
+.import-issues summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.import-issues ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-issues li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.issue-marker {
+  min-width: 3.5rem;
+  padding: 0.12rem 0.3rem;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.issue-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.issue-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+label.button-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+label.button-label:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+label.button-label:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .account-heading {
@@ -722,6 +997,14 @@ textarea,
 
 .playlist-row {
   min-height: 3.25rem;
+}
+
+.track-row-unsupported {
+  color: var(--ink-muted);
+}
+
+.track-row-unsupported input {
+  opacity: 0.45;
 }
 
 input[type="checkbox"] {
@@ -1022,6 +1305,10 @@ textarea {
     margin-left: 0.5rem;
   }
 
+  .import-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .progress-row,
   .review-controls {
     grid-template-columns: 1fr;
@@ -1048,7 +1335,8 @@ textarea {
   }
 
   .toolbar button,
-  .account-panel button.secondary {
+  .account-panel button.secondary,
+  label.button-label {
     width: 100%;
   }
 
