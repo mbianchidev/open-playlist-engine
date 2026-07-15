@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Archive,
   ArrowRight,
   BarChart3,
   Check,
@@ -37,6 +38,7 @@ import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
+import SnapshotPanel from "./components/SnapshotPanel";
 import { providerLabel } from "./utils/providers";
 
 export default function App() {
@@ -71,6 +73,7 @@ export default function App() {
   const playlistLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const snapshotsTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
 
   const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
@@ -797,16 +800,23 @@ export default function App() {
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
+    const tabs: WorkspaceTab[] = ["migration", "snapshots", "stats"];
+    const currentIndex = tabs.indexOf(activeTab);
     const nextTab =
       event.key === "Home"
-        ? "migration"
+        ? tabs[0]
         : event.key === "End"
-          ? "stats"
-          : activeTab === "migration"
-            ? "stats"
-            : "migration";
+          ? tabs[tabs.length - 1]
+          : event.key === "ArrowRight"
+            ? tabs[(currentIndex + 1) % tabs.length]
+            : tabs[(currentIndex - 1 + tabs.length) % tabs.length];
     setActiveTab(nextTab);
-    (nextTab === "migration" ? migrationTabRef : statsTabRef).current?.focus();
+    const refs = {
+      migration: migrationTabRef,
+      snapshots: snapshotsTabRef,
+      stats: statsTabRef,
+    };
+    refs[nextTab].current?.focus();
   }
 
   return (
@@ -854,6 +864,24 @@ export default function App() {
             Migration
           </span>
           <small>Move playlists</small>
+        </button>
+        <button
+          ref={snapshotsTabRef}
+          id="snapshots-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Snapshots"
+          aria-selected={activeTab === "snapshots"}
+          aria-controls="snapshots-panel"
+          tabIndex={activeTab === "snapshots" ? 0 : -1}
+          onClick={() => setActiveTab("snapshots")}
+        >
+          <span>
+            <Archive aria-hidden="true" />
+            Snapshots
+          </span>
+          <small>Local backup</small>
         </button>
         <button
           ref={statsTabRef}
@@ -1289,6 +1317,20 @@ export default function App() {
             </section>
           ) : null}
         </div>
+      ) : activeTab === "snapshots" ? (
+        <div
+          id="snapshots-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="snapshots-tab"
+        >
+          <SnapshotPanel
+            providers={providers}
+            accounts={accounts}
+            onReconnectProvider={connect}
+            onMigrationChanged={handleMigrationChanged}
+          />
+        </div>
       ) : (
         <div
           id="stats-panel"
@@ -1352,7 +1394,7 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "stats";
+type WorkspaceTab = "migration" | "snapshots" | "stats";
 
 interface AppleMusicChallenge {
   developerToken: string;

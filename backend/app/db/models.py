@@ -20,11 +20,14 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
+    Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -119,6 +122,89 @@ class CachedPlaylistTracks(Base):
 
 
 # --------------------------------------------------------------------------- #
+# Local library snapshots (private metadata; archives live in configured storage)
+# --------------------------------------------------------------------------- #
+class SnapshotProfile(Base):
+    __tablename__ = "snapshot_profile"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    retention_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    sources: Mapped[list[SnapshotProfileSource]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+    snapshots: Mapped[list[LibrarySnapshot]] = relationship(back_populates="profile")
+
+
+class SnapshotProfileSource(Base):
+    __tablename__ = "snapshot_profile_source"
+    __table_args__ = (UniqueConstraint("profile_id", "provider", "account_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("snapshot_profile.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String)
+    account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("provider_account.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    account_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    collection_ids: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    profile: Mapped[SnapshotProfile] = relationship(back_populates="sources")
+
+
+class LibrarySnapshot(Base):
+    __tablename__ = "library_snapshot"
+    __table_args__ = (
+        UniqueConstraint("user_id", "archive_sha256", name="uq_library_snapshot_archive"),
+        Index(
+            "uq_library_snapshot_active_profile",
+            "profile_id",
+            unique=True,
+            postgresql_where=text(
+                "profile_id IS NOT NULL AND status IN ('pending', 'running')"
+            ),
+            sqlite_where=text("profile_id IS NOT NULL AND status IN ('pending', 'running')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("snapshot_profile.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    bundle_id: Mapped[str] = mapped_column(String, index=True)
+    library_id: Mapped[str] = mapped_column(String, index=True)
+    source_providers: Mapped[list] = mapped_column(JSON, default=list)
+    source_labels: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    archive_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    archive_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    manifest: Mapped[dict] = mapped_column(JSON, default=dict)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+    verification_status: Mapped[str] = mapped_column(String, default="unverified")
+    verification_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    profile: Mapped[SnapshotProfile | None] = relationship(back_populates="snapshots")
+
+
+# --------------------------------------------------------------------------- #
 # Jobs & operation ledger (private)
 # --------------------------------------------------------------------------- #
 class MigrationJob(Base):
@@ -126,9 +212,13 @@ class MigrationJob(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, index=True)
+    source_kind: Mapped[str] = mapped_column(String, default="provider", index=True)
     source_provider: Mapped[str] = mapped_column(String)
     target_provider: Mapped[str] = mapped_column(String)
     source_account_id: Mapped[str] = mapped_column(String)
+    source_snapshot_id: Mapped[str | None] = mapped_column(
+        ForeignKey("library_snapshot.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     target_account_id: Mapped[str] = mapped_column(String)
     selection: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String, default="pending", index=True)

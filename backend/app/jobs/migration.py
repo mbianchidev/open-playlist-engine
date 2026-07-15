@@ -25,6 +25,7 @@ from app.core.adapter import (
     TrackCandidate,
 )
 from app.core.match_service import MatchResult, MatchService
+from app.core.migration_source import resolve_job_source
 from app.core.migration_state import (
     has_track_overlap,
     keys_from_metadata,
@@ -35,7 +36,7 @@ from app.core.migration_state import (
 from app.core.models import PlaylistKind, PlaylistRef, Track
 from app.core.registry import get
 from app.db import models as orm
-from app.db.account_scope import provider_account_history
+from app.db.account_scope import migration_source_history, provider_account_history
 from app.db.base import get_sessionmaker
 from app.db.repositories import load_fresh_credential
 from app.settings import get_settings
@@ -87,11 +88,8 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
-    source = get(job.source_provider)
+    source = await resolve_job_source(session, job)
     target = get(job.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session, account_id=job.source_account_id, adapter=source, provider=job.source_provider
-    )
     target_cred, _ = await load_fresh_credential(
         session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
     )
@@ -120,9 +118,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         logger.info(
             "migration job_id=%s reading source playlist playlist_id=%s", job.id, playlist_id
         )
-        playlist = await source.read_playlist(
-            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-        )
+        playlist = await source.read_playlist(playlist_id)
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         logger.info(
@@ -143,7 +139,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             playlist_id=playlist_id,
             playlist_name=playlist.name,
             description=playlist.description
-            or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            or source.migration_description(playlist_id),
             playlist_kind=playlist.kind,
             source_tracks=tracks,
         )
@@ -424,9 +420,11 @@ async def _previous_target_playlist_id(
             orm.MigrationJob.id != job.id,
             orm.MigrationJob.user_id == job.user_id,
             orm.MigrationJob.source_provider == job.source_provider,
-            provider_account_history(
+            migration_source_history(
                 orm.MigrationJob.source_account_id,
+                orm.MigrationJob.source_kind,
                 current_account_id=job.source_account_id,
+                current_source_kind=job.source_kind,
                 user_id=job.user_id,
                 provider=job.source_provider,
             ),
@@ -489,9 +487,11 @@ async def _previous_reviewed_items(
             orm.MigrationJob.id != job.id,
             orm.MigrationJob.user_id == job.user_id,
             orm.MigrationJob.source_provider == job.source_provider,
-            provider_account_history(
+            migration_source_history(
                 orm.MigrationJob.source_account_id,
+                orm.MigrationJob.source_kind,
                 current_account_id=job.source_account_id,
+                current_source_kind=job.source_kind,
                 user_id=job.user_id,
                 provider=job.source_provider,
             ),

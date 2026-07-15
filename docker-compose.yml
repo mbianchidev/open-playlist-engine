@@ -30,6 +30,9 @@ services:
     environment:
       OPE_DATABASE_URL: postgresql+psycopg://ope:ope@postgres:5432/ope
       OPE_VALKEY_URL: redis://valkey:6379/0
+      OPE_SNAPSHOT_DIR: /data/snapshots
+    volumes:
+      - snapshots:/data/snapshots
     ports:
       - "8000:8000"
     depends_on:
@@ -45,6 +48,9 @@ services:
     environment:
       OPE_DATABASE_URL: postgresql+psycopg://ope:ope@postgres:5432/ope
       OPE_VALKEY_URL: redis://valkey:6379/0
+      OPE_SNAPSHOT_DIR: /data/snapshots
+    volumes:
+      - snapshots:/data/snapshots
     depends_on:
       backend:
         condition: service_started
@@ -61,3 +67,4 @@ services:
 
 volumes:
   pgdata:
+  snapshots:

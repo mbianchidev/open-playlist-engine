@@ -79,7 +79,9 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
-`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`.
+`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`, `OPE_SNAPSHOT_DIR`,
+`OPE_SNAPSHOT_DEFAULT_RETENTION_COUNT`, `OPE_SNAPSHOT_DEFAULT_RETENTION_DAYS`,
+and snapshot import/verification size limits shown in [`.env.example`](.env.example).
 Self-host mode resolves the migration owner server-side as the local user. Hosted
 mode fails closed until a real user-authentication dependency is configured; it
 does not accept a caller-provided user ID.
@@ -137,9 +139,36 @@ ARQ's 5-minute default timeout.
 11. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice.
+12. Open the **Snapshots** tab to define one or more connected source accounts,
+   select playlists or liked-track collections, set count/age retention, and create
+   a local metadata-only snapshot. History supports verification, version diff,
+   download, deletion, portable import, and selected restore through the same
+   preflight → match → review → write pipeline.
 
 Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
+
+## Local library snapshots
+
+Snapshots are versioned Open Playlist bundles stored only on the self-hosted
+instance. Docker Compose persists them in the shared `snapshots` named volume at
+`/data/snapshots`; local development defaults to `./data/snapshots` through
+`OPE_SNAPSHOT_DIR`. The backend and worker both mount the same directory so the
+worker can stream archives while the API verifies, downloads, imports, diffs, and
+deletes them.
+
+Bundles contain playlist/liked-track and item metadata, a schema-versioned manifest,
+counts, per-collection checksums, and an archive checksum. They never contain
+provider credentials, raw auth headers, cookies, audio, or Spotify preview audio.
+Opaque provider metadata is restricted to a small safe allow-list. Integrity checks
+detect corruption but are not a cryptographic signature or encryption layer.
+
+Retention can limit each profile by count and age; cleanup is deterministic and
+always keeps the newest usable snapshot. Imported archives are not attached to a
+profile and are retained until manually deleted. Newer schemas, unsafe paths,
+undeclared/binary files, excessive expansion, and checksum failures are rejected
+without changing provider libraries. See [`docs/SNAPSHOTS.md`](docs/SNAPSHOTS.md)
+for persistence, portability, restore behavior, and limitations.
 
 ## Adding a provider
 

@@ -11,6 +11,7 @@ import json
 import logging
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
@@ -18,7 +19,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
+from app.core.migration_source import (
+    MigrationSource,
+    resolve_live_source,
+    resolve_snapshot_source,
+)
 from app.core.migration_state import (
     has_track_overlap,
     keys_from_metadata,
@@ -45,6 +51,7 @@ from app.db.repositories import (
 )
 from app.jobs.migration import commit_job_counts, run_migration
 from app.settings import get_settings
+from app.snapshots.bundle import SnapshotError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/migrations", tags=["migrations"])
@@ -57,18 +64,32 @@ class Selection(BaseModel):
 
 
 class CreateMigration(BaseModel):
-    source_provider: str
+    source_provider: str | None = None
     target_provider: str
-    source_account_id: str
+    source_account_id: str | None = None
+    source_snapshot_id: str | None = None
     target_account_id: str
     selection: Selection
     acknowledge_warnings: bool = False
+
+    @model_validator(mode="after")
+    def validate_source(self) -> CreateMigration:
+        live = bool(self.source_provider and self.source_account_id)
+        partial_live = bool(self.source_provider) != bool(self.source_account_id)
+        snapshot = bool(self.source_snapshot_id)
+        if partial_live or live == snapshot:
+            raise ValueError(
+                "provide either source_provider/source_account_id or source_snapshot_id"
+            )
+        return self
 
 
 class JobView(BaseModel):
     id: str
     status: str
+    source_kind: str = "provider"
     source_provider: str
+    source_snapshot_id: str | None = None
     target_provider: str
     total: int = 0
     done: int = 0
@@ -165,11 +186,19 @@ class MigrationWarningsView(BaseModel):
     warnings: list[dict[str, str]] = []
 
 
+@dataclass(slots=True)
+class _ValidatedPreflight:
+    source: MigrationSource
+    warnings: list[dict[str, str]]
+
+
 def _job_view(job: orm.MigrationJob) -> JobView:
     return JobView(
         id=job.id,
         status=job.status,
+        source_kind=job.source_kind,
         source_provider=job.source_provider,
+        source_snapshot_id=job.source_snapshot_id,
         target_provider=job.target_provider,
         total=job.total,
         done=job.done,
@@ -296,6 +325,39 @@ async def _playlist_names_by_job(
     if not missing_name_jobs:
         return names_by_job
 
+    snapshot_jobs = [job for job in missing_name_jobs if job.source_snapshot_id]
+    if snapshot_jobs:
+        snapshot_rows = list(
+            (
+                await session.execute(
+                    select(orm.LibrarySnapshot).where(
+                        orm.LibrarySnapshot.id.in_(
+                            [job.source_snapshot_id for job in snapshot_jobs]
+                        ),
+                        orm.LibrarySnapshot.user_id == user_id,
+                    )
+                )
+            ).scalars()
+        )
+        manifests = {
+            row.id: row.manifest
+            for row in snapshot_rows
+            if isinstance(row.manifest, dict)
+        }
+        for job in snapshot_jobs:
+            collections = {
+                str(collection.get("id")): str(collection.get("name"))
+                for collection in manifests.get(job.source_snapshot_id or "", {}).get(
+                    "collections", []
+                )
+                if isinstance(collection, dict)
+                and collection.get("id")
+                and collection.get("name")
+            }
+            for playlist_id in _selected_playlist_ids(job):
+                _append_unique(names_by_job[job.id], collections.get(playlist_id))
+
+    missing_name_jobs = [job for job in missing_name_jobs if not names_by_job[job.id]]
     fallback_ids: set[str] = set()
     for job in missing_name_jobs:
         fallback_ids.update(_selected_playlist_ids(job))
@@ -514,7 +576,7 @@ async def create_migration(
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
     try:
-        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        preflight = await _validated_preflight_warnings(session, body, user_id=user_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (AccountNotFound, CredentialNotFound) as exc:
@@ -529,19 +591,23 @@ async def create_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SnapshotError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if warnings and not body.acknowledge_warnings:
+    if preflight.warnings and not body.acknowledge_warnings:
         await session.commit()
         raise HTTPException(
             status_code=409,
-            detail=MigrationWarningsView(warnings=warnings).model_dump(),
+            detail=MigrationWarningsView(warnings=preflight.warnings).model_dump(),
         )
 
     job = orm.MigrationJob(
         user_id=user_id,
-        source_provider=body.source_provider,
+        source_kind=preflight.source.kind,
+        source_provider=preflight.source.provider,
         target_provider=body.target_provider,
-        source_account_id=body.source_account_id,
+        source_account_id=preflight.source.account_id,
+        source_snapshot_id=preflight.source.snapshot_id,
         target_account_id=body.target_account_id,
         selection=body.selection.model_dump(),
         status="pending",
@@ -561,9 +627,9 @@ async def preflight_migration(
     if not body.selection.playlist_ids:
         raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
     try:
-        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        preflight = await _validated_preflight_warnings(session, body, user_id=user_id)
         await session.commit()
-        return MigrationWarningsView(warnings=warnings)
+        return MigrationWarningsView(warnings=preflight.warnings)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (AccountNotFound, CredentialNotFound) as exc:
@@ -578,6 +644,8 @@ async def preflight_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SnapshotError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 async def _validated_preflight_warnings(
@@ -585,37 +653,49 @@ async def _validated_preflight_warnings(
     body: CreateMigration,
     *,
     user_id: str,
-) -> list[dict[str, str]]:
-    source = get(body.source_provider)
+) -> _ValidatedPreflight:
     get(body.target_provider)
-
-    source_caps = source.info.capabilities
-    if not source_caps.can(Capability.READ_TRACKS):
-        raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
-    await load_credential(
-        session, account_id=body.source_account_id, provider=body.source_provider
-    )
+    if body.source_snapshot_id:
+        source = await resolve_snapshot_source(
+            session,
+            snapshot_id=body.source_snapshot_id,
+            user_id=user_id,
+        )
+    else:
+        source_provider = body.source_provider or ""
+        source_account_id = body.source_account_id or ""
+        source = await resolve_live_source(
+            session,
+            provider=source_provider,
+            account_id=source_account_id,
+        )
+        source_caps = source.adapter.info.capabilities if source.adapter else None
+        if not source_caps or not source_caps.can(Capability.READ_TRACKS):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{source_provider} cannot read tracks",
+            )
     await load_credential(
         session, account_id=body.target_account_id, provider=body.target_provider
     )
-    return await _preflight_warnings(session, body, user_id=user_id)
+    warnings = await _preflight_warnings(
+        session,
+        body,
+        source=source,
+        user_id=user_id,
+    )
+    return _ValidatedPreflight(source=source, warnings=warnings)
 
 
 async def _preflight_warnings(
     session: AsyncSession,
     body: CreateMigration,
     *,
+    source: MigrationSource,
     user_id: str,
 ) -> list[dict[str, str]]:
     settings = get_settings()
-    source = get(body.source_provider)
     target = get(body.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session,
-        account_id=body.source_account_id,
-        adapter=source,
-        provider=body.source_provider,
-    )
     target_cred, _ = await load_fresh_credential(
         session,
         account_id=body.target_account_id,
@@ -623,10 +703,20 @@ async def _preflight_warnings(
         provider=body.target_provider,
     )
 
-    selected = await _selected_playlists(source, source_cred, body.selection)
+    selected = await _selected_playlists(source, body.selection)
     _validate_target_capabilities(target, target_cred, selected)
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     warnings: list[dict[str, str]] = []
+    if source.kind == "snapshot":
+        for playlist_id in body.selection.playlist_ids:
+            collection = source.collection(playlist_id)
+            if collection and not collection.complete:
+                warnings.append(
+                    _warning(
+                        "partial_snapshot_collection",
+                        f'"{collection.name}" was only partially captured: {collection.error}.',
+                    )
+                )
     if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
         warnings.append(
             _warning(
@@ -681,14 +771,13 @@ async def _preflight_warnings(
 
 
 async def _selected_playlists(
-    source, source_cred, selection: Selection
+    source: MigrationSource,
+    selection: Selection,
 ) -> dict[str, Playlist]:
     selected: dict[str, Playlist] = {}
     track_filters = selection.tracks or {}
     for playlist_id in selection.playlist_ids:
-        playlist = await source.read_playlist(
-            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-        )
+        playlist = await source.read_playlist(playlist_id)
         wanted = set(track_filters.get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         selected[playlist_id] = playlist.model_copy(update={"tracks": tracks})
