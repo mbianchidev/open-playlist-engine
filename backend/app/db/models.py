@@ -119,6 +119,36 @@ class CachedPlaylistTracks(Base):
 
 
 # --------------------------------------------------------------------------- #
+# Ephemeral normalized local-file imports (private)
+# --------------------------------------------------------------------------- #
+class LocalPlaylistImport(Base):
+    __tablename__ = "local_playlist_import"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    filename: Mapped[str] = mapped_column(String)
+    detected_format: Mapped[str] = mapped_column(String)
+    encoding: Mapped[str | None] = mapped_column(String, nullable=True)
+    file_size: Mapped[int] = mapped_column(Integer)
+    # ready | queued | failed
+    status: Mapped[str] = mapped_column(String, default="ready", index=True)
+    queued_job_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    playlists: Mapped[list] = mapped_column(JSON, default=list)
+    issues: Mapped[list] = mapped_column(JSON, default=list)
+    limits: Mapped[dict] = mapped_column(JSON, default=dict)
+    playlist_count: Mapped[int] = mapped_column(Integer, default=0)
+    track_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    malformed_count: Mapped[int] = mapped_column(Integer, default=0)
+    unsupported_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Jobs & operation ledger (private)
 # --------------------------------------------------------------------------- #
 class MigrationJob(Base):

@@ -38,6 +38,13 @@ from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
 from app.db.repositories import load_fresh_credential
+from app.imports import LOCAL_FILE_PROVIDER
+from app.imports.service import (
+    LocalImportExpired,
+    delete_import_for_job,
+    mark_import_failed,
+)
+from app.imports.source import open_migration_source
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -73,25 +80,55 @@ async def run_migration(ctx: dict, job_id: str) -> None:
             raise
         except Exception as exc:
             await session.rollback()
-            await _mark_job_failed(session, job_id, str(exc))
+            await _mark_job_failed(
+                session,
+                job_id,
+                str(exc),
+                discard_local_import=isinstance(exc, LocalImportExpired),
+            )
             logger.exception("migration job_id=%s failed", job_id)
 
 
-async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> None:
+async def _mark_job_failed(
+    session: AsyncSession,
+    job_id: str,
+    error: str,
+    *,
+    discard_local_import: bool = False,
+) -> None:
     job = await session.get(orm.MigrationJob, job_id)
     if job is None:
         return
     job.status = "failed"
     job.error = error
+    if job.source_provider == LOCAL_FILE_PROVIDER:
+        if discard_local_import:
+            await delete_import_for_job(
+                session,
+                import_id=job.source_account_id,
+                job_id=job.id,
+            )
+        else:
+            await mark_import_failed(
+                session,
+                import_id=job.source_account_id,
+                job_id=job.id,
+                settings=get_settings(),
+            )
     await session.commit()
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
-    source = get(job.source_provider)
-    target = get(job.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session, account_id=job.source_account_id, adapter=source, provider=job.source_provider
+    settings = get_settings()
+    source = await open_migration_source(
+        session,
+        provider=job.source_provider,
+        account_id=job.source_account_id,
+        user_id=job.user_id,
+        settings=settings,
+        job_id=job.id,
     )
+    target = get(job.target_provider)
     target_cred, _ = await load_fresh_credential(
         session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
     )
@@ -111,7 +148,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         len(playlist_ids),
     )
 
-    review_threshold = get_settings().review_confidence_threshold
+    review_threshold = settings.review_confidence_threshold
     matcher = MatchService(graph=None, review_threshold=review_threshold)
     reviewed_history = await _previous_reviewed_items(
         session, job=job, review_threshold=review_threshold
@@ -120,9 +157,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         logger.info(
             "migration job_id=%s reading source playlist playlist_id=%s", job.id, playlist_id
         )
-        playlist = await source.read_playlist(
-            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-        )
+        playlist = await source.read_playlist(playlist_id)
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         logger.info(
@@ -143,7 +178,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             playlist_id=playlist_id,
             playlist_name=playlist.name,
             description=playlist.description
-            or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            or f"Migrated from {source.display_name} by Open Playlist Engine.",
             playlist_kind=playlist.kind,
             source_tracks=tracks,
         )
@@ -173,6 +208,22 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         matched: list[orm.JobItem] = []
         for item, track in item_pairs:
             item.target_playlist_id = target_playlist_id
+            if item.status in {"written", "skipped", "needs_review"}:
+                continue
+            if item.status == "matched" and item.target_uri:
+                matched.append(item)
+                await _flush_matched_chunk(
+                    session,
+                    job,
+                    target,
+                    target_cred,
+                    target_playlist_id,
+                    matched,
+                    existing_keys=target_existing_keys,
+                )
+                continue
+            item.status = "pending"
+            item.reason = None
             if not track.is_migratable:
                 item.status = "skipped"
                 item.reason = track.unsupported_reason or "unsupported playlist item"
@@ -241,6 +292,12 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
 
     await commit_job_counts(session, job)
     job.status = "done"
+    if job.source_provider == LOCAL_FILE_PROVIDER:
+        await delete_import_for_job(
+            session,
+            import_id=job.source_account_id,
+            job_id=job.id,
+        )
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
 
@@ -341,23 +398,39 @@ async def _create_items(
     tracks: list[Track],
 ) -> list[tuple[orm.JobItem, Track]]:
     pairs: list[tuple[orm.JobItem, Track]] = []
+    existing_items: dict[int, orm.JobItem] = {}
+    if job.source_provider == LOCAL_FILE_PROVIDER:
+        existing_items = {
+            item.position: item
+            for item in (
+                await session.execute(
+                    select(orm.JobItem).where(
+                        orm.JobItem.job_id == job.id,
+                        orm.JobItem.source_playlist_id == playlist_id,
+                    )
+                )
+            ).scalars()
+        }
     for fallback_position, track in enumerate(tracks):
-        item = orm.JobItem(
-            job_id=job.id,
-            source_playlist_id=playlist_id,
-            source_playlist_name=playlist_name,
-            position=track.position if track.position is not None else fallback_position,
-            title=track.title,
-            artist=track.artist,
-            album=track.album,
-            duration_s=track.duration_s,
-            release_year=track.release_year,
-            explicit=track.explicit,
-            isrc=track.isrc,
-            source_metadata=track.model_dump(mode="json"),
-            status="pending",
-        )
-        session.add(item)
+        position = track.position if track.position is not None else fallback_position
+        item = existing_items.get(position)
+        if item is None:
+            item = orm.JobItem(
+                job_id=job.id,
+                source_playlist_id=playlist_id,
+                source_playlist_name=playlist_name,
+                position=position,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                duration_s=track.duration_s,
+                release_year=track.release_year,
+                explicit=track.explicit,
+                isrc=track.isrc,
+                source_metadata=track.model_dump(mode="json"),
+                status="pending",
+            )
+            session.add(item)
         pairs.append((item, track))
     await commit_job_counts(session, job)
     return pairs

@@ -7,9 +7,12 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
+- `app/imports/` — bounded local-file streaming, format registry, normalized
+  previews, source loading, and retention cleanup.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/imports`,
+  `/migrations`).
 
 ## Develop
 ```bash
@@ -59,6 +62,12 @@ partial-migration labels, duplicate skips, batch review actions, and low-confide
 match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+Local-file imports accept raw request bodies at `/api/imports/preview`, persist
+only normalized Open Playlist JSON with an expiry, and enter the same migration
+worker without a provider credential. Supported formats, CSV aliases, limits,
+retention, and API examples are in
+[`docs/LOCAL_FILE_IMPORTS.md`](../docs/LOCAL_FILE_IMPORTS.md).
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

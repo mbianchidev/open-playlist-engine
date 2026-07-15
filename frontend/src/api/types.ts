@@ -110,6 +110,41 @@ export interface Playlist {
   kind: "standard" | "liked_tracks";
 }
 
+export interface ImportIssue {
+  severity: "warning" | "error";
+  code: string;
+  message: string;
+  line_or_item: number | string | null;
+  playlist_name: string | null;
+  raw_excerpt: string | null;
+}
+
+export interface ImportLimits {
+  max_upload_bytes: number;
+  max_playlists: number;
+  max_tracks: number;
+  max_issues: number;
+  spool_memory_bytes: number;
+}
+
+export interface LocalImportPreview {
+  id: string;
+  filename: string;
+  detected_format: "txt" | "csv" | "m3u" | "m3u8" | "pls" | "wpl" | "xspf" | "xml" | "json";
+  encoding: string | null;
+  file_size: number;
+  status: string;
+  expires_at: string;
+  playlists: Playlist[];
+  issues: ImportIssue[];
+  playlist_count: number;
+  track_count: number;
+  duplicate_count: number;
+  malformed_count: number;
+  unsupported_count: number;
+  limits: ImportLimits;
+}
+
 export interface CreateMigrationBody {
   source_provider: string;
   target_provider: string;

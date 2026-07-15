@@ -30,7 +30,6 @@ from app.core.migration_state import (
     has_track_overlap,
     keys_from_metadata,
     track_keys,
-    track_selected,
     uri_keys,
 )
 from app.core.models import Playlist, PlaylistKind, PlaylistRef
@@ -40,11 +39,18 @@ from app.db.base import get_session, get_sessionmaker
 from app.db.repositories import (
     AccountNotFound,
     CredentialNotFound,
-    load_credential,
     load_fresh_credential,
 )
+from app.imports import LOCAL_FILE_PROVIDER
+from app.imports.service import (
+    LocalImportExpired,
+    LocalImportNotFound,
+    LocalImportStateError,
+    queue_import,
+)
+from app.imports.source import MigrationSource, open_migration_source
 from app.jobs.migration import commit_job_counts, run_migration
-from app.settings import get_settings
+from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/migrations", tags=["migrations"])
@@ -529,6 +535,8 @@ async def create_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
+        raise _local_import_http_error(exc) from exc
 
     if warnings and not body.acknowledge_warnings:
         await session.commit()
@@ -547,6 +555,19 @@ async def create_migration(
         status="pending",
     )
     session.add(job)
+    await session.flush()
+    if body.source_provider == LOCAL_FILE_PROVIDER:
+        try:
+            await queue_import(
+                session,
+                import_id=body.source_account_id,
+                user_id=user_id,
+                job_id=job.id,
+                settings=get_settings(),
+            )
+        except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
+            await session.rollback()
+            raise _local_import_http_error(exc) from exc
     await session.commit()
     await _enqueue_or_inline(background_tasks, job.id)
     return _job_view(job)
@@ -578,6 +599,8 @@ async def preflight_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
+        raise _local_import_http_error(exc) from exc
 
 
 async def _validated_preflight_warnings(
@@ -586,19 +609,32 @@ async def _validated_preflight_warnings(
     *,
     user_id: str,
 ) -> list[dict[str, str]]:
-    source = get(body.source_provider)
-    get(body.target_provider)
-
-    source_caps = source.info.capabilities
-    if not source_caps.can(Capability.READ_TRACKS):
+    settings = get_settings()
+    source = await open_migration_source(
+        session,
+        provider=body.source_provider,
+        account_id=body.source_account_id,
+        user_id=user_id,
+        settings=settings,
+    )
+    if not source.can_read_tracks:
         raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
-    await load_credential(
-        session, account_id=body.source_account_id, provider=body.source_provider
+    target = get(body.target_provider)
+    target_cred, _ = await load_fresh_credential(
+        session,
+        account_id=body.target_account_id,
+        adapter=target,
+        provider=body.target_provider,
     )
-    await load_credential(
-        session, account_id=body.target_account_id, provider=body.target_provider
+    return await _preflight_warnings(
+        session,
+        body,
+        user_id=user_id,
+        source=source,
+        target=target,
+        target_cred=target_cred,
+        settings=settings,
     )
-    return await _preflight_warnings(session, body, user_id=user_id)
 
 
 async def _preflight_warnings(
@@ -606,24 +642,15 @@ async def _preflight_warnings(
     body: CreateMigration,
     *,
     user_id: str,
+    source: MigrationSource,
+    target,
+    target_cred,
+    settings: Settings,
 ) -> list[dict[str, str]]:
-    settings = get_settings()
-    source = get(body.source_provider)
-    target = get(body.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session,
-        account_id=body.source_account_id,
-        adapter=source,
-        provider=body.source_provider,
+    selected = await source.selected_playlists(
+        playlist_ids=body.selection.playlist_ids,
+        track_filters=body.selection.tracks or {},
     )
-    target_cred, _ = await load_fresh_credential(
-        session,
-        account_id=body.target_account_id,
-        adapter=target,
-        provider=body.target_provider,
-    )
-
-    selected = await _selected_playlists(source, source_cred, body.selection)
     _validate_target_capabilities(target, target_cred, selected)
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     warnings: list[dict[str, str]] = []
@@ -641,6 +668,20 @@ async def _preflight_warnings(
                 "track_count",
                 f"Safe default is {settings.migration_safe_max_tracks_per_job} tracks "
                 f"per job; this job has {total_tracks}.",
+            )
+        )
+
+    unsupported_items = sum(
+        not track.is_migratable
+        for playlist in selected.values()
+        for track in playlist.tracks
+    )
+    if unsupported_items:
+        warnings.append(
+            _warning(
+                "unsupported_items",
+                f"{unsupported_items} selected local or malformed "
+                "playlist entries cannot be matched and will be skipped.",
             )
         )
 
@@ -678,21 +719,6 @@ async def _preflight_warnings(
 
     warnings.extend(await _same_name_warnings(target, target_cred, selected))
     return warnings
-
-
-async def _selected_playlists(
-    source, source_cred, selection: Selection
-) -> dict[str, Playlist]:
-    selected: dict[str, Playlist] = {}
-    track_filters = selection.tracks or {}
-    for playlist_id in selection.playlist_ids:
-        playlist = await source.read_playlist(
-            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-        )
-        wanted = set(track_filters.get(playlist_id) or [])
-        tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
-        selected[playlist_id] = playlist.model_copy(update={"tracks": tracks})
-    return selected
 
 
 async def _same_name_warnings(
@@ -800,6 +826,26 @@ async def _job_wait_remaining(
 
 def _warning(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
+
+
+def _local_import_http_error(
+    exc: LocalImportNotFound | LocalImportExpired | LocalImportStateError,
+) -> HTTPException:
+    if isinstance(exc, LocalImportNotFound):
+        return HTTPException(status_code=404, detail="Local import not found")
+    if isinstance(exc, LocalImportExpired):
+        return HTTPException(
+            status_code=410,
+            detail={
+                "code": "import_expired",
+                "message": "This local import expired. Upload the file again.",
+            },
+        )
+    status_code = 409 if exc.code == "import_queued" else 400
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
 
 
 @router.get("/stats", response_model=AggregateMigrationStatsView)

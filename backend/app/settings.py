@@ -10,7 +10,10 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.imports.models import ImportLimits
 
 
 class DeploymentMode(StrEnum):
@@ -51,6 +54,16 @@ class Settings(BaseSettings):
     migration_safe_min_job_gap_s: int = 120
     migration_worker_job_timeout_s: int = 3600
 
+    # Local playlist-file imports. Raw request bodies are never persisted.
+    local_import_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    local_import_max_playlists: int = Field(default=100, gt=0)
+    local_import_max_tracks: int = Field(default=5_000, gt=0)
+    local_import_max_issues: int = Field(default=200, gt=0)
+    local_import_spool_memory_bytes: int = Field(default=1024 * 1024, gt=0)
+    local_import_retention_s: int = Field(default=3600, gt=0)
+    local_import_queued_retention_s: int = Field(default=7200, gt=0)
+    local_import_failed_retention_s: int = Field(default=900, gt=0)
+
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
@@ -76,6 +89,25 @@ class Settings(BaseSettings):
     def allow_header_paste(self) -> bool:
         """Pasting provider session headers/cookies is only safe when self-hosted."""
         return not self.is_hosted
+
+    @property
+    def local_import_limits(self) -> ImportLimits:
+        return ImportLimits(
+            max_upload_bytes=self.local_import_max_bytes,
+            max_playlists=self.local_import_max_playlists,
+            max_tracks=self.local_import_max_tracks,
+            max_issues=self.local_import_max_issues,
+            spool_memory_bytes=self.local_import_spool_memory_bytes,
+        )
+
+    @model_validator(mode="after")
+    def validate_local_import_lease(self) -> Settings:
+        if self.local_import_queued_retention_s <= self.migration_worker_job_timeout_s:
+            raise ValueError(
+                "local_import_queued_retention_s must exceed "
+                "migration_worker_job_timeout_s"
+            )
+        return self
 
 
 @lru_cache

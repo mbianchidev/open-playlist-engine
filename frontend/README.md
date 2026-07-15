@@ -24,9 +24,11 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 ```
 
 ## Flow (maps to the phased design)
-1. Pick source/target providers from `/api/providers`.
-2. Connect accounts through generic auth challenges.
-3. Load source playlists and optional per-playlist track details from `/api/playlists`.
+1. Pick source/target providers from `/api/providers`, including the built-in
+   local playlist-file source.
+2. Connect provider accounts, or upload and validate a local playlist file.
+3. Load provider playlists from `/api/playlists`, or use the normalized preview
+   returned by `/api/imports/preview`.
 4. Create a migration with selected playlist and track IDs. Warning popups guard
    slow defaults and same-name target playlist conflicts.
 5. Render live job/item progress from SSE.
@@ -41,6 +43,9 @@ Native liked-track collections map across Spotify Liked Songs, Tidal My Collecti
 and YouTube Music Liked Songs.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
+The local-file panel renders detected format/counts, parse findings, duplicates,
+unsupported entries, expiry, and playlist/track selection without exposing a
+server filesystem path.
 
 ## Visual system
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<playlist version="1" xmlns="http://xspf.org/ns/0/">
+  <title>Road Trip</title>
+  <trackList>
+    <track><location>spotify:track:abc</location><title>Déjà Vu</title><creator>Beyoncé</creator><album>B'Day</album><duration>239000</duration><identifier>USSM10603689</identifier></track>
+    <track><location>spotify:track:abc</location><title>Déjà Vu</title><creator>Beyoncé</creator><album>B'Day</album><duration>239000</duration><identifier>USSM10603689</identifier></track>
+    <track><location>https://example.com/audio.mp3</location><title>Title without artist</title><duration>180000</duration></track>
+    <track><location>file:///Users/example/Music/local.mp3</location><title>Local Song</title><creator>Local Artist</creator><duration>200000</duration></track>
+  </trackList>
+</playlist>
