@@ -33,7 +33,7 @@ from app.core.migration_state import (
     track_selected,
     uri_keys,
 )
-from app.core.models import Playlist, PlaylistKind, PlaylistRef
+from app.core.models import Playlist, PlaylistKind, PlaylistRef, PlaylistSelection
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
@@ -50,10 +50,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/migrations", tags=["migrations"])
 
 
-class Selection(BaseModel):
-    playlist_ids: list[str] = []
-    # optional per-playlist track filtering: {playlist_id: [track_ids]}
-    tracks: dict[str, list[str]] = {}
+Selection = PlaylistSelection
 
 
 class CreateMigration(BaseModel):

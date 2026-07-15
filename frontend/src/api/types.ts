@@ -110,13 +110,32 @@ export interface Playlist {
   kind: "standard" | "liked_tracks";
 }
 
+export interface PlaylistSelection {
+  playlist_ids: string[];
+  tracks: Record<string, string[]>;
+}
+
 export interface CreateMigrationBody {
   source_provider: string;
   target_provider: string;
   source_account_id: string;
   target_account_id: string;
-  selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
+  selection: PlaylistSelection;
   acknowledge_warnings?: boolean;
+}
+
+export type ExportFormat = "csv" | "txt" | "m3u8" | "xspf" | "json";
+
+export interface CreateExportBody {
+  source_provider: string;
+  source_account_id: string;
+  format: ExportFormat;
+  selection: PlaylistSelection;
+}
+
+export interface ExportDownloadResult {
+  filename: string;
+  warningCount: number;
 }
 
 export interface JobView {

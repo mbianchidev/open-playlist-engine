@@ -671,6 +671,44 @@ summary:focus-visible {
   box-shadow: var(--shadow-lg);
 }
 
+.export-local-mark {
+  padding: 0.32rem 0.5rem;
+  border: 1px dashed color-mix(in oklch, var(--accent) 45%, var(--border));
+  border-radius: 0.35rem;
+  color: var(--accent);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.export-format-field {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.export-format-field select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.export-message {
+  color: var(--success);
+}
+
+.stats-export-row {
+  border-top: 1px solid var(--border);
+}
+
 .action-label {
   gap: 0.4rem;
   margin: 0;
@@ -995,12 +1033,17 @@ textarea {
   .section-heading,
   .guide-heading,
   .migration-action-bar,
-  .stats-filter-row {
+  .stats-filter-row,
+  .stats-export-row {
     gap: 0.85rem;
   }
 
   .section-heading > .toolbar,
-  .migration-action-bar button.primary {
+  .migration-action-bar button.primary,
+  .migration-action-buttons,
+  .export-control-block,
+  .export-controls,
+  .export-format-field {
     width: 100%;
   }
 

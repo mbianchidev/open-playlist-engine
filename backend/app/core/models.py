@@ -76,6 +76,11 @@ class Track(BaseModel):
         return self.media_type is MediaType.TRACK and not self.is_local
 
 
+class PlaylistSelection(BaseModel):
+    playlist_ids: list[str] = Field(default_factory=list)
+    tracks: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class PlaylistRef(BaseModel):
     """Lightweight handle returned while listing, before full read."""
 

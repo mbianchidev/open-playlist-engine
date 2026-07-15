@@ -4,7 +4,10 @@ import type {
   AuthChallenge,
   ConnectionView,
   ConnectionTestView,
+  CreateExportBody,
   CreateMigrationBody,
+  ExportDownloadResult,
+  ExportFormat,
   JobItemView,
   JobView,
   MigrationOptionView,
@@ -28,10 +31,14 @@ export class ApiError extends Error {
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
-    throw new ApiError(res.status, res.statusText, body?.detail ?? null);
+    await throwApiError(res);
   }
   return (await res.json()) as T;
+}
+
+async function throwApiError(res: Response): Promise<never> {
+  const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+  throw new ApiError(res.status, res.statusText, body?.detail ?? null);
 }
 
 function errorDetailMessage(detail: unknown): string | null {
@@ -111,6 +118,31 @@ export async function getPlaylist(
 ): Promise<Playlist> {
   const params = playlistParams(provider, accountId, context);
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
+export async function downloadPlaylistExport(
+  body: CreateExportBody,
+): Promise<ExportDownloadResult> {
+  return download(
+    await fetch("/api/exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function downloadMigrationExport(
+  jobId: string,
+  format: ExportFormat,
+): Promise<ExportDownloadResult> {
+  return download(
+    await fetch(`/api/exports/migrations/${encodeURIComponent(jobId)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ format }),
+    }),
+  );
 }
 
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {
@@ -196,4 +228,42 @@ export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) =>
   const source = new EventSource(`/api/migrations/${jobId}/events`);
   source.addEventListener("progress", onMessage as EventListener);
   return () => source.close();
+}
+
+async function download(res: Response): Promise<ExportDownloadResult> {
+  if (!res.ok) await throwApiError(res);
+  const filename = downloadFilename(res.headers.get("content-disposition")) ?? "playlist-export";
+  const warningCount = Number.parseInt(
+    res.headers.get("x-open-playlist-warning-count") ?? "0",
+    10,
+  );
+  const objectUrl = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+  return {
+    filename,
+    warningCount: Number.isFinite(warningCount) ? warningCount : 0,
+  };
+}
+
+function downloadFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) return null;
+  const encoded = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+  return contentDisposition.match(/filename="?([^";]+)"?/i)?.[1] ?? null;
 }

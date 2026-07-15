@@ -17,7 +17,8 @@ defining a universal, provider-agnostic `Playlist`/`Track` format with an
 ISRC-first matching strategy.
 
 **This repo** is the concrete engine that implements that spec for many providers
-and lets a user migrate playlists from any source to any target through a UI.
+and lets a user migrate playlists from any source to any target or export portable
+local files through a UI.
 
 - Internal interchange model = the spec's `Playlist`/`Track` (`app/core/models.py`).
 - Frontend and backend are **hard-separated**: no shared code. The backend is the
@@ -29,6 +30,7 @@ and lets a user migrate playlists from any source to any target through a UI.
 - Adding a provider is a **plugin drop-in**, not a core change.
 - Track matching that gets **cheaper and more accurate over time**.
 - Long-running migrations with **durable, replayable live progress**.
+- Local, provider-neutral backups with stable versioned schemas.
 
 ### Current implementation status
 The self-hosted MVP currently exposes only implemented capabilities in the UI:
@@ -41,7 +43,8 @@ supports import → match → write with SSE item progress; low-confidence match
 marked `needs_review` and can be approved, batch-approved, corrected, skipped, or
 batch-denied from the progress panel. The UI also exposes ledger-backed
 single-migration and all-time aggregate statistics with source/target provider
-filters.
+filters. Live selections and terminal migration history can be exported as CSV,
+tabular TXT, M3U8, XSPF, or versioned Open Playlist JSON.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -61,6 +64,7 @@ created.
 | 0 | Get access to **source** | Backend auth (per-provider strategy) |
 | 1 | **Import**: fetch playlists from source (names + tracks, capture ISRC) | Source adapter → Open Playlist model |
 | 2 | UI: select/deselect playlists and songs | Frontend selection tree |
+| 2.5 | Optional local export: serialize the selection to a streamed file | Export service |
 | 3 | Get access to **target** | Backend auth |
 | 3.5 | **Match**: resolve each track on the target | `MatchService` (graph → search → score) |
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
@@ -92,6 +96,27 @@ review, rerun detection and duplicate handling also provide status buckets
 selected migration and all-time totals. Aggregate queries can be filtered by source
 provider, target provider, or both.
 
+### Portable local exports
+
+Portable exports branch directly from the universal model before matching or writing
+to another provider. `POST /api/exports` reads one selected playlist at a time,
+serializes into a temporary file, and returns a cancellation-safe streamed response.
+One playlist downloads directly; multiple playlists always use a ZIP with a versioned
+`manifest.json`. JSON archives contain one multi-playlist bundle, while formats that
+represent one playlist contain one sanitized, collision-safe entry per playlist.
+
+Completed and failed migration history is exportable without reconnecting the source.
+`JobItem.source_metadata` preserves track metadata, and migration jobs store a small
+playlist-level snapshot (excluding tracks) in their existing selection JSON. Older
+jobs remain exportable with explicit metadata warnings.
+
+CSV/TXT serializers neutralize spreadsheet formula prefixes. XSPF strips XML-illegal
+controls and escapes entities. M3U8/XSPF normalize known Spotify and Tidal track URIs
+to web URLs while retaining source URIs in format metadata. Empty playlists,
+partial selections, unsupported media, missing URIs, and per-playlist read failures
+remain valid output with warnings. Authentication and rate-limit errors abort
+immediately rather than repeatedly calling the provider.
+
 ---
 
 ## 3. Architecture
@@ -105,12 +130,13 @@ works with all others, both directions.
 Spotify ┐                                  ┌ YouTube / YT Music
 Tidal   ┼─ read → [ OPEN PLAYLIST hub ] → write ─┼ Tidal
 Deezer  ┤            (identity graph)           ├ Deezer
-Apple   ┘                                  └ Apple
+Apple   ┘                 │                └ Apple
+                          └─ export → local portable files
 ```
 
 ### Frontend / backend separation
-- **Backend** owns all OAuth/tokens, provider API calls, matching, jobs,
-  orchestration. Emits OpenAPI.
+- **Backend** owns all OAuth/tokens, provider API calls, matching, jobs, export
+  serialization/orchestration. Emits OpenAPI.
 - **Frontend** owns the source→target wizard, selection, review, progress. It
   consumes a client **generated from the backend OpenAPI**. No business logic, no
   provider secrets.
@@ -138,6 +164,8 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
   **Valkey** (job queue + pacing).
 - **Infra**: `docker compose` (backend, worker, frontend, postgres, valkey), built
   with `--no-cache`.
+- **Portable files**: stdlib CSV, ZIP64, XML, JSON, and temporary-file streaming;
+  no cloud storage or delivery service.
 
 ### YouTube write path
 - **Default: `ytmusicapi`** (unofficial) — real YouTube Music, **no quota**,

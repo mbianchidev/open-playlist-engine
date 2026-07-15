@@ -9,7 +9,10 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`).
+- `app/exports/` — versioned portable schemas, serializers, history reconstruction,
+  and temporary-file-backed archive generation.
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
+  `/exports`).
 
 ## Develop
 ```bash
@@ -59,6 +62,12 @@ partial-migration labels, duplicate skips, batch review actions, and low-confide
 match correction in the UI. Migration creation performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+Portable exports read one playlist at a time and stream temporary CSV, TXT, M3U8,
+XSPF, JSON, or ZIP64 artifacts. Live selections use `POST /api/exports`; terminal
+migration history uses `POST /api/exports/migrations/{job_id}`. The default limit is
+100 playlists per request (`OPE_EXPORT_MAX_PLAYLISTS`) with no track cap. See
+[`docs/EXPORTING_PLAYLISTS.md`](../docs/EXPORTING_PLAYLISTS.md).
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

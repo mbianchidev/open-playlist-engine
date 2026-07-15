@@ -24,15 +24,18 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 ```
 
 ## Flow (maps to the phased design)
-1. Pick source/target providers from `/api/providers`.
+1. Pick a source and optional target provider from `/api/providers`.
 2. Connect accounts through generic auth challenges.
 3. Load source playlists and optional per-playlist track details from `/api/playlists`.
-4. Create a migration with selected playlist and track IDs. Warning popups guard
+4. Download selected playlists through `/api/exports` as JSON, CSV, TXT, M3U8, or
+   XSPF; a target account is not required.
+5. Create a migration with selected playlist and track IDs. Warning popups guard
    slow defaults and same-name target playlist conflicts.
-5. Render live job/item progress from SSE.
-6. Review low-confidence matches by approving a suggested target URI, pasting a
+6. Render live job/item progress from SSE.
+7. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
+8. Export a completed/failed migration's source snapshot from the Stats history view.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised
