@@ -7,7 +7,7 @@ import {
   subscribeProgress,
 } from "../api/client";
 import type { JobItemView, JobView, ProgressEvent } from "../api/types";
-import { providerLabel } from "../utils/providers";
+import { providerLabel, targetPlaylistUrl } from "../utils/providers";
 
 interface Props {
   jobId: string;
@@ -582,14 +582,4 @@ function getTargetPlaylists(items: JobItemView[], provider: string): TargetPlayl
     });
   }
   return [...byId.values()];
-}
-
-function targetPlaylistUrl(provider: string, playlistId: string): string | null {
-  if (provider === "ytmusic" || provider === "youtube" || provider === "youtube_music") {
-    return `https://music.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
-  }
-  if (provider === "spotify") {
-    return `https://open.spotify.com/playlist/${encodeURIComponent(playlistId)}`;
-  }
-  return null;
 }

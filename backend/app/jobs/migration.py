@@ -37,6 +37,13 @@ from app.core.registry import get
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
+from app.db.migration_history import (
+    TERMINAL_JOB_STATUSES,
+    collect_job_result_summary,
+    mark_job_started,
+    mark_job_terminal,
+    summary_playlists,
+)
 from app.db.repositories import load_fresh_credential
 from app.settings import get_settings
 
@@ -81,12 +88,19 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
     job = await session.get(orm.MigrationJob, job_id)
     if job is None:
         return
-    job.status = "failed"
+    job.result_summary = await collect_job_result_summary(session, job)
+    mark_job_terminal(
+        job,
+        status="failed",
+        retention_days=get_settings().migration_history_retention_days,
+    )
     job.error = error
     await session.commit()
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
+    mark_job_started(job)
+    await session.commit()
     source = get(job.source_provider)
     target = get(job.target_provider)
     source_cred, _ = await load_fresh_credential(
@@ -95,10 +109,6 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     target_cred, _ = await load_fresh_credential(
         session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
     )
-    job.status = "running"
-    job.error = None
-    await session.commit()
-
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
     if not playlist_ids:
@@ -240,7 +250,12 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         )
 
     await commit_job_counts(session, job)
-    job.status = "done"
+    job.result_summary = await collect_job_result_summary(session, job)
+    mark_job_terminal(
+        job,
+        status="done",
+        retention_days=get_settings().migration_history_retention_days,
+    )
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
 
@@ -417,7 +432,7 @@ async def _resolve_target_playlist(
 async def _previous_target_playlist_id(
     session: AsyncSession, *, job: orm.MigrationJob, playlist_id: str
 ) -> str | None:
-    return await session.scalar(
+    target_playlist_id = await session.scalar(
         select(orm.JobItem.target_playlist_id)
         .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
         .where(
@@ -443,10 +458,58 @@ async def _previous_target_playlist_id(
         .order_by(orm.JobItem.updated_at.desc())
         .limit(1)
     )
+    if target_playlist_id:
+        return target_playlist_id
+
+    prior_jobs = list(
+        (
+            await session.execute(
+                select(orm.MigrationJob)
+                .where(
+                    orm.MigrationJob.id != job.id,
+                    orm.MigrationJob.user_id == job.user_id,
+                    orm.MigrationJob.source_provider == job.source_provider,
+                    provider_account_history(
+                        orm.MigrationJob.source_account_id,
+                        current_account_id=job.source_account_id,
+                        user_id=job.user_id,
+                        provider=job.source_provider,
+                    ),
+                    orm.MigrationJob.target_provider == job.target_provider,
+                    provider_account_history(
+                        orm.MigrationJob.target_account_id,
+                        current_account_id=job.target_account_id,
+                        user_id=job.user_id,
+                        provider=job.target_provider,
+                    ),
+                    orm.MigrationJob.status.in_(TERMINAL_JOB_STATUSES),
+                )
+                .order_by(
+                    orm.MigrationJob.completed_at.desc().nullslast(),
+                    orm.MigrationJob.created_at.desc(),
+                    orm.MigrationJob.id.desc(),
+                )
+            )
+        ).scalars()
+    )
+    return _target_playlist_id_from_summaries(prior_jobs, playlist_id)
+
+
+def _target_playlist_id_from_summaries(
+    jobs: list[orm.MigrationJob], playlist_id: str
+) -> str | None:
+    for prior_job in jobs:
+        for playlist in summary_playlists(prior_job):
+            if str(playlist.get("source_playlist_id") or "") != playlist_id:
+                continue
+            target_playlist_id = str(playlist.get("target_playlist_id") or "")
+            if target_playlist_id:
+                return target_playlist_id
+    return None
 
 
 def _apply_review_history_bonus(
-    prior_items: list[orm.JobItem],
+    prior_items: list[orm.JobItem | orm.ReviewDecision],
     *,
     track: Track,
     result: MatchResult,
@@ -481,40 +544,37 @@ async def _previous_reviewed_items(
     *,
     job: orm.MigrationJob,
     review_threshold: float,
-) -> list[orm.JobItem]:
+) -> list[orm.ReviewDecision]:
     stmt = (
-        select(orm.JobItem)
-        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
+        select(orm.ReviewDecision)
         .where(
-            orm.MigrationJob.id != job.id,
-            orm.MigrationJob.user_id == job.user_id,
-            orm.MigrationJob.source_provider == job.source_provider,
+            orm.ReviewDecision.job_id != job.id,
+            orm.ReviewDecision.user_id == job.user_id,
+            orm.ReviewDecision.source_provider == job.source_provider,
             provider_account_history(
-                orm.MigrationJob.source_account_id,
+                orm.ReviewDecision.source_account_id,
                 current_account_id=job.source_account_id,
                 user_id=job.user_id,
                 provider=job.source_provider,
             ),
-            orm.MigrationJob.target_provider == job.target_provider,
+            orm.ReviewDecision.target_provider == job.target_provider,
             provider_account_history(
-                orm.MigrationJob.target_account_id,
+                orm.ReviewDecision.target_account_id,
                 current_account_id=job.target_account_id,
                 user_id=job.user_id,
                 provider=job.target_provider,
             ),
-            orm.JobItem.status.in_(["written", "skipped"]),
-            orm.JobItem.target_uri.is_not(None),
-            orm.JobItem.confidence.is_not(None),
-            orm.JobItem.confidence < review_threshold,
+            orm.ReviewDecision.status.in_(["written", "skipped"]),
+            orm.ReviewDecision.confidence < review_threshold,
         )
-        .order_by(orm.JobItem.updated_at.desc())
+        .order_by(orm.ReviewDecision.created_at.desc())
     )
     return list((await session.execute(stmt)).scalars())
 
 
 def _prior_reviewed_item(
-    track: Track, prior_items: list[orm.JobItem], review_threshold: float
-) -> orm.JobItem | None:
+    track: Track, prior_items: list[orm.JobItem | orm.ReviewDecision], review_threshold: float
+) -> orm.JobItem | orm.ReviewDecision | None:
     keys = track_keys(track)
     if not keys:
         return None
@@ -528,7 +588,7 @@ def _prior_reviewed_item(
     return None
 
 
-def _candidate_from_reviewed_item(item: orm.JobItem) -> TrackCandidate:
+def _candidate_from_reviewed_item(item: orm.JobItem | orm.ReviewDecision) -> TrackCandidate:
     target_uri = item.target_uri or ""
     return TrackCandidate(
         provider_track_id=_provider_track_id(target_uri),
@@ -546,7 +606,7 @@ def _provider_track_id(uri: str) -> str:
     return keys[0] if keys else uri
 
 
-def _source_item_keys(item: orm.JobItem) -> set[str]:
+def _source_item_keys(item: orm.JobItem | orm.ReviewDecision) -> set[str]:
     return keys_from_metadata(
         item.source_metadata,
         title=item.title,

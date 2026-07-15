@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
@@ -16,7 +17,7 @@ from typing import Annotated, Literal
 
 from arq import create_pool
 from arq.connections import RedisSettings
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
@@ -26,6 +27,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.capabilities import Capability
+from app.core.migration_reports import (
+    REPORT_VERSION,
+    build_report_row,
+    csv_header_chunk,
+    csv_row_chunk,
+    json_report_item_chunk,
+    json_report_prefix,
+    json_report_suffix,
+)
 from app.core.migration_state import (
     has_track_overlap,
     keys_from_metadata,
@@ -37,6 +47,18 @@ from app.core.models import Playlist, PlaylistKind, PlaylistRef
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
+from app.db.migration_history import (
+    MigrationItemFilters,
+    collect_job_result_summary,
+    details_available,
+    effective_details_expires_at,
+    migration_item_count_stmt,
+    migration_items_stmt,
+    migration_outcome,
+    summary_counts,
+    summary_playlists,
+    utcnow,
+)
 from app.db.repositories import (
     AccountNotFound,
     CredentialNotFound,
@@ -76,6 +98,12 @@ class JobView(BaseModel):
     error: str | None = None
 
 
+class AccountHistoryView(BaseModel):
+    id: str
+    display_name: str | None = None
+    connected: bool = False
+
+
 class StatusCounts(BaseModel):
     total: int = 0
     pending: int = 0
@@ -95,6 +123,9 @@ class MigrationOptionView(BaseModel):
     source_provider: str
     target_provider: str
     created_at: datetime | None = None
+    outcome: str | None = None
+    detail_available: bool = True
+    detail_expires_at: datetime | None = None
 
 
 class PlaylistStatsView(BaseModel):
@@ -112,11 +143,23 @@ class MigrationStatsView(BaseModel):
     source_provider: str
     target_provider: str
     created_at: datetime | None = None
+    outcome: str | None = None
+    source_account: AccountHistoryView | None = None
+    target_account: AccountHistoryView | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_s: int | None = None
+    warnings: list[dict[str, str]] = Field(default_factory=list)
+    error: str | None = None
     counts: StatusCounts
     playlist_count: int = 0
     playlists: list[PlaylistStatsView] = Field(default_factory=list)
     empty: bool = False
     message: str | None = None
+    detail_available: bool = True
+    detail_expires_at: datetime | None = None
+    detail_purged_at: datetime | None = None
+    retention_days: int = 0
 
 
 class AggregateMigrationStatsView(BaseModel):
@@ -147,6 +190,12 @@ class JobItemView(BaseModel):
     confidence: float | None = None
     status: str
     reason: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    review_action: Literal["approve", "skip"] | None = None
+    review_original_status: str | None = None
+    review_original_reason: str | None = None
+    reviewed_at: datetime | None = None
 
 
 class ReviewItem(BaseModel):
@@ -197,6 +246,12 @@ def _item_view(item: orm.JobItem) -> JobItemView:
         confidence=item.confidence,
         status=item.status,
         reason=item.reason,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        review_action=item.review_action,
+        review_original_status=item.review_original_status,
+        review_original_reason=item.review_original_reason,
+        reviewed_at=item.reviewed_at,
     )
 
 
@@ -328,7 +383,20 @@ async def _playlist_names_by_job(
     return names_by_job
 
 
-def _migration_option(job: orm.MigrationJob, playlist_names: list[str]) -> MigrationOptionView:
+def _migration_option(
+    job: orm.MigrationJob,
+    playlist_names: list[str],
+    counts: StatusCounts | None = None,
+    *,
+    retention_days: int | None = None,
+    now: datetime | None = None,
+) -> MigrationOptionView:
+    resolved_counts = counts or _status_counts(Counter(), total_hint=job.total)
+    resolved_retention_days = (
+        get_settings().migration_history_retention_days
+        if retention_days is None
+        else retention_days
+    )
     return MigrationOptionView(
         id=job.id,
         label=_migration_label(job, playlist_names),
@@ -337,6 +405,15 @@ def _migration_option(job: orm.MigrationJob, playlist_names: list[str]) -> Migra
         source_provider=job.source_provider,
         target_provider=job.target_provider,
         created_at=job.created_at,
+        outcome=migration_outcome(job.status, resolved_counts.model_dump()),
+        detail_available=details_available(
+            job,
+            retention_days=resolved_retention_days,
+            now=now,
+        ),
+        detail_expires_at=effective_details_expires_at(
+            job, retention_days=resolved_retention_days
+        ),
     )
 
 
@@ -393,6 +470,140 @@ def _build_migration_stats(
     )
 
 
+def _build_migration_stats_from_summary(
+    job: orm.MigrationJob,
+    summary: Mapping[str, object],
+    playlist_names: list[str],
+    *,
+    source_account: AccountHistoryView,
+    target_account: AccountHistoryView,
+    retention_days: int,
+    now: datetime | None = None,
+) -> MigrationStatsView:
+    counts = _status_counts_from_history(summary.get("counts"), total_hint=job.total)
+    playlists = _playlist_stats_from_summary(job, summary, playlist_names)
+    available = details_available(job, retention_days=retention_days, now=now)
+    empty = counts.total == 0
+    if not available:
+        message = "Item-level migration detail is no longer retained."
+    elif empty:
+        message = "No track items were recorded for this migration yet."
+    else:
+        message = None
+    return MigrationStatsView(
+        id=job.id,
+        label=_migration_label(job, playlist_names),
+        playlist_names=playlist_names,
+        status=job.status,
+        outcome=migration_outcome(job.status, counts.model_dump()),
+        source_provider=job.source_provider,
+        target_provider=job.target_provider,
+        source_account=source_account,
+        target_account=target_account,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        duration_s=_job_duration_s(job, now=now),
+        warnings=job.warnings or [],
+        error=job.error,
+        counts=counts,
+        playlist_count=max(len(playlists), len(_selected_playlist_ids(job))),
+        playlists=playlists,
+        empty=empty,
+        message=message,
+        detail_available=available,
+        detail_expires_at=effective_details_expires_at(job, retention_days=retention_days),
+        detail_purged_at=job.details_purged_at,
+        retention_days=retention_days,
+    )
+
+
+def _status_counts_from_history(value: object, *, total_hint: int = 0) -> StatusCounts:
+    if not isinstance(value, Mapping):
+        return _status_counts(Counter(), total_hint=total_hint)
+    other = value.get("other")
+    known = {
+        status: int(value.get(status, 0) or 0)
+        for status in _STATUS_FIELDS
+    }
+    parsed_other = (
+        {
+            str(status): int(count)
+            for status, count in other.items()
+            if int(count) > 0
+        }
+        if isinstance(other, Mapping)
+        else {}
+    )
+    observed = sum(known.values()) + sum(parsed_other.values())
+    if total_hint > observed:
+        known["pending"] += total_hint - observed
+    return StatusCounts(
+        total=max(int(value.get("total", 0) or 0), total_hint, observed),
+        pending=known["pending"],
+        matched=known["matched"],
+        needs_review=known["needs_review"],
+        written=known["written"],
+        skipped=known["skipped"],
+        failed=known["failed"],
+        other=parsed_other,
+    )
+
+
+def _playlist_stats_from_summary(
+    job: orm.MigrationJob,
+    summary: Mapping[str, object],
+    playlist_names: list[str],
+) -> list[PlaylistStatsView]:
+    raw_playlists = summary.get("playlists")
+    playlists: list[PlaylistStatsView] = []
+    if isinstance(raw_playlists, list):
+        for raw in raw_playlists:
+            if not isinstance(raw, Mapping):
+                continue
+            source_playlist_id = str(raw.get("source_playlist_id") or "")
+            if not source_playlist_id:
+                continue
+            playlists.append(
+                PlaylistStatsView(
+                    source_playlist_id=source_playlist_id,
+                    source_playlist_name=_optional_string(raw.get("source_playlist_name")),
+                    target_playlist_id=_optional_string(raw.get("target_playlist_id")),
+                    counts=_status_counts_from_history(raw.get("counts")),
+                )
+            )
+
+    by_id = {playlist.source_playlist_id: playlist for playlist in playlists}
+    selected_ids = _selected_playlist_ids(job)
+    for index, playlist_id in enumerate(selected_ids):
+        if playlist_id in by_id:
+            continue
+        playlist = PlaylistStatsView(
+            source_playlist_id=playlist_id,
+            source_playlist_name=playlist_names[index] if index < len(playlist_names) else None,
+            counts=StatusCounts(),
+        )
+        playlists.append(playlist)
+        by_id[playlist_id] = playlist
+    return sorted(
+        playlists,
+        key=lambda playlist: playlist.source_playlist_name or playlist.source_playlist_id,
+    )
+
+
+def _job_duration_s(job: orm.MigrationJob, *, now: datetime | None = None) -> int | None:
+    if job.started_at is None:
+        return None
+    end = job.completed_at or now or utcnow()
+    started_at = job.started_at if job.started_at.tzinfo else job.started_at.replace(tzinfo=UTC)
+    resolved_end = end if end.tzinfo else end.replace(tzinfo=UTC)
+    return max(0, int((resolved_end - started_at).total_seconds()))
+
+
+def _optional_string(value: object) -> str | None:
+    return str(value) if value is not None and str(value) else None
+
+
 def _build_aggregate_stats(
     jobs: list[orm.MigrationJob],
     status_counts_by_job: Mapping[str, Counter[str]],
@@ -439,6 +650,43 @@ def _migration_filter_conditions(
     return conditions
 
 
+def _migration_item_filters(
+    *,
+    source_playlist_id: str | None,
+    statuses: list[str] | None,
+    min_confidence: float | None,
+    max_confidence: float | None,
+    reason: str | None,
+    title: str | None,
+    artist: str | None,
+    problem_only: bool,
+) -> MigrationItemFilters:
+    if (
+        min_confidence is not None
+        and max_confidence is not None
+        and min_confidence > max_confidence
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="min_confidence cannot be greater than max_confidence",
+        )
+    normalized_statuses = tuple(
+        status.strip() for status in statuses or [] if status.strip()
+    )
+    if len(normalized_statuses) > 20 or any(len(status) > 50 for status in normalized_statuses):
+        raise HTTPException(status_code=400, detail="status filters are invalid")
+    return MigrationItemFilters(
+        source_playlist_id=source_playlist_id,
+        statuses=normalized_statuses,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        reason=reason,
+        title=title,
+        artist=artist,
+        problem_only=problem_only,
+    )
+
+
 def _owned_job_stmt(job_id: str, user_id: str):
     return select(orm.MigrationJob).where(
         orm.MigrationJob.id == job_id,
@@ -453,6 +701,79 @@ async def _owned_job(
     user_id: str,
 ) -> orm.MigrationJob | None:
     return await session.scalar(_owned_job_stmt(job_id, user_id))
+
+
+async def _owned_accounts_by_id(
+    session: AsyncSession,
+    jobs: list[orm.MigrationJob],
+    *,
+    user_id: str,
+) -> dict[str, orm.ProviderAccount]:
+    account_ids = {
+        account_id
+        for job in jobs
+        for account_id in (job.source_account_id, job.target_account_id)
+        if account_id
+    }
+    if not account_ids:
+        return {}
+    accounts = (
+        await session.execute(
+            select(orm.ProviderAccount).where(
+                orm.ProviderAccount.user_id == user_id,
+                orm.ProviderAccount.id.in_(account_ids),
+            )
+        )
+    ).scalars()
+    return {account.id: account for account in accounts}
+
+
+def _account_history_view(
+    account_id: str,
+    provider: str,
+    accounts_by_id: Mapping[str, orm.ProviderAccount],
+    *,
+    user_id: str,
+) -> AccountHistoryView:
+    account = accounts_by_id.get(account_id)
+    connected = (
+        account is not None and account.provider == provider and account.user_id == user_id
+    )
+    return AccountHistoryView(
+        id=account_id,
+        display_name=account.display_name if connected else None,
+        connected=connected,
+    )
+
+
+async def _job_result_summary(
+    session: AsyncSession, job: orm.MigrationJob
+) -> Mapping[str, object]:
+    if job.details_purged_at is not None:
+        return job.result_summary or {}
+    return await collect_job_result_summary(session, job)
+
+
+def _require_details_available(job: orm.MigrationJob) -> None:
+    retention_days = get_settings().migration_history_retention_days
+    if details_available(job, retention_days=retention_days):
+        return
+    expires_at = effective_details_expires_at(job, retention_days=retention_days)
+    if expires_at:
+        detail = f"migration item detail expired at {expires_at.isoformat()}"
+    else:
+        detail = "migration item detail is no longer retained"
+    raise HTTPException(status_code=410, detail=detail)
+
+
+def _initialize_details_expiry(job: orm.MigrationJob, *, retention_days: int) -> bool:
+    if job.details_expires_at is not None or retention_days <= 0:
+        return False
+    expires_at = effective_details_expires_at(job, retention_days=retention_days)
+    if expires_at is None:
+        return False
+    job.details_expires_at = expires_at
+    return True
 
 
 def _aggregate_item_counts_stmt(job_ids: list[str]):
@@ -491,6 +812,7 @@ async def list_migrations(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
 ) -> list[MigrationOptionView]:
+    retention_days = get_settings().migration_history_retention_days
     jobs = list(
         (
             await session.execute(
@@ -500,8 +822,36 @@ async def list_migrations(
             )
         ).scalars()
     )
+    expiry_changed = False
+    for job in jobs:
+        expiry_changed = (
+            _initialize_details_expiry(job, retention_days=retention_days) or expiry_changed
+        )
+    if expiry_changed:
+        await session.commit()
     names_by_job = await _playlist_names_by_job(session, jobs, user_id=user_id)
-    return [_migration_option(job, names_by_job[job.id]) for job in jobs]
+    status_counts_by_job: dict[str, Counter[str]] = defaultdict(Counter)
+    if jobs:
+        rows = await session.execute(_aggregate_item_counts_stmt([job.id for job in jobs]))
+        for job_id, _playlist_id, item_status, count in rows.all():
+            status_counts_by_job[job_id][item_status] += int(count)
+    options = []
+    for job in jobs:
+        live_counts = status_counts_by_job.get(job.id, Counter())
+        counts = (
+            _status_counts(live_counts, total_hint=job.total)
+            if live_counts
+            else _status_counts_from_history(summary_counts(job), total_hint=job.total)
+        )
+        options.append(
+            _migration_option(
+                job,
+                names_by_job[job.id],
+                counts,
+                retention_days=retention_days,
+            )
+        )
+    return options
 
 
 @router.post("", response_model=JobView)
@@ -545,6 +895,7 @@ async def create_migration(
         target_account_id=body.target_account_id,
         selection=body.selection.model_dump(),
         status="pending",
+        warnings=warnings,
     )
     session.add(job)
     await session.commit()
@@ -831,6 +1182,22 @@ async def get_aggregate_migration_stats(
         for job_id, playlist_id, status, count in rows.all():
             status_counts_by_job[job_id][status] += int(count)
             playlist_keys.add((job_id, playlist_id))
+        for job in jobs:
+            if status_counts_by_job[job.id]:
+                continue
+            saved_counts = summary_counts(job)
+            for item_status in _STATUS_FIELDS:
+                status_counts_by_job[job.id][item_status] = int(
+                    saved_counts.get(item_status, 0) or 0
+                )
+            saved_other = saved_counts.get("other")
+            if isinstance(saved_other, Mapping):
+                for item_status, count in saved_other.items():
+                    status_counts_by_job[job.id][str(item_status)] = int(count)
+            for playlist in summary_playlists(job):
+                playlist_id = str(playlist.get("source_playlist_id") or "")
+                if playlist_id:
+                    playlist_keys.add((job.id, playlist_id))
     return _build_aggregate_stats(
         jobs,
         status_counts_by_job,
@@ -849,17 +1216,30 @@ async def get_migration_stats(
     job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
-    items = list(
-        (
-            await session.execute(
-                select(orm.JobItem)
-                .where(orm.JobItem.job_id == job_id)
-                .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
-            )
-        ).scalars()
-    )
+    retention_days = get_settings().migration_history_retention_days
+    if _initialize_details_expiry(job, retention_days=retention_days):
+        await session.commit()
+    summary = await _job_result_summary(session, job)
     names_by_job = await _playlist_names_by_job(session, [job], user_id=user_id)
-    return _build_migration_stats(job, items, names_by_job[job.id])
+    accounts_by_id = await _owned_accounts_by_id(session, [job], user_id=user_id)
+    return _build_migration_stats_from_summary(
+        job,
+        summary,
+        names_by_job[job.id],
+        source_account=_account_history_view(
+            job.source_account_id,
+            job.source_provider,
+            accounts_by_id,
+            user_id=user_id,
+        ),
+        target_account=_account_history_view(
+            job.target_account_id,
+            job.target_provider,
+            accounts_by_id,
+            user_id=user_id,
+        ),
+        retention_days=retention_days,
+    )
 
 
 @router.get("/{job_id}", response_model=JobView)
@@ -877,18 +1257,171 @@ async def get_migration(
 @router.get("/{job_id}/items", response_model=list[JobItemView])
 async def get_migration_items(
     job_id: str,
+    response: Response,
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
+    source_playlist_id: str | None = None,
+    statuses: Annotated[list[str] | None, Query(alias="status")] = None,
+    min_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
+    max_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
+    reason: Annotated[str | None, Query(max_length=200)] = None,
+    title: Annotated[str | None, Query(max_length=200)] = None,
+    artist: Annotated[str | None, Query(max_length=200)] = None,
+    problem_only: bool = False,
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[JobItemView]:
     job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
-    stmt = (
-        select(orm.JobItem)
-        .where(orm.JobItem.job_id == job_id)
-        .order_by(orm.JobItem.source_playlist_id, orm.JobItem.position)
+    _require_details_available(job)
+    filters = _migration_item_filters(
+        source_playlist_id=source_playlist_id,
+        statuses=statuses,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        reason=reason,
+        title=title,
+        artist=artist,
+        problem_only=problem_only,
     )
+    stmt = migration_items_stmt(job_id=job_id, user_id=user_id, filters=filters)
+    total = int(
+        await session.scalar(
+            migration_item_count_stmt(job_id=job_id, user_id=user_id, filters=filters)
+        )
+        or 0
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit).offset(offset)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return [_item_view(item) for item in (await session.execute(stmt)).scalars()]
+
+
+@router.get("/{job_id}/report")
+async def download_migration_report(
+    job_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
+    report_format: Annotated[Literal["csv", "json"], Query(alias="format")] = "csv",
+    scope: Literal["all", "problems"] = "all",
+    source_playlist_id: str | None = None,
+    statuses: Annotated[list[str] | None, Query(alias="status")] = None,
+    min_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
+    max_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
+    reason: Annotated[str | None, Query(max_length=200)] = None,
+    title: Annotated[str | None, Query(max_length=200)] = None,
+    artist: Annotated[str | None, Query(max_length=200)] = None,
+) -> StreamingResponse:
+    job = await _owned_job(session, job_id=job_id, user_id=user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="migration job not found")
+    retention_days = get_settings().migration_history_retention_days
+    if _initialize_details_expiry(job, retention_days=retention_days):
+        await session.commit()
+    _require_details_available(job)
+    filters = _migration_item_filters(
+        source_playlist_id=source_playlist_id,
+        statuses=statuses,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        reason=reason,
+        title=title,
+        artist=artist,
+        problem_only=scope == "problems",
+    )
+    summary = await _job_result_summary(session, job)
+    counts = _status_counts_from_history(summary.get("counts"), total_hint=job.total)
+    outcome = migration_outcome(job.status, counts.model_dump())
+    metadata = {
+        "report_version": REPORT_VERSION,
+        "job_id": job.id,
+        "job_status": job.status,
+        "job_outcome": outcome,
+        "scope": scope,
+        "filters": _report_filters(filters),
+        "generated_at": utcnow().isoformat(),
+    }
+    extension = "csv" if report_format == "csv" else "json"
+    filename = _report_filename(job.id, scope=scope, extension=extension)
+    media_type = (
+        "text/csv; charset=utf-8"
+        if report_format == "csv"
+        else "application/json; charset=utf-8"
+    )
+    return StreamingResponse(
+        _migration_report_stream(
+            job_id=job.id,
+            user_id=user_id,
+            report_format=report_format,
+            filters=filters,
+            metadata=metadata,
+            outcome=outcome,
+        ),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+async def _migration_report_stream(
+    *,
+    job_id: str,
+    user_id: str,
+    report_format: Literal["csv", "json"],
+    filters: MigrationItemFilters,
+    metadata: Mapping[str, object],
+    outcome: str,
+) -> AsyncIterator[bytes]:
+    settings = get_settings()
+    async with get_sessionmaker()() as session:
+        job = await _owned_job(session, job_id=job_id, user_id=user_id)
+        if job is None:
+            raise RuntimeError("authorized migration disappeared before report generation")
+        stmt = migration_items_stmt(job_id=job_id, user_id=user_id, filters=filters)
+        result = await session.stream_scalars(
+            stmt.execution_options(yield_per=settings.migration_report_batch_size)
+        )
+        try:
+            if report_format == "csv":
+                yield csv_header_chunk()
+                async for item in result:
+                    yield csv_row_chunk(build_report_row(job, item, outcome=outcome))
+                return
+
+            yield json_report_prefix(metadata)
+            first = True
+            async for item in result:
+                yield json_report_item_chunk(
+                    build_report_row(job, item, outcome=outcome),
+                    first=first,
+                )
+                first = False
+            yield json_report_suffix()
+        finally:
+            await result.close()
+
+
+def _report_filters(filters: MigrationItemFilters) -> dict[str, object]:
+    return {
+        "source_playlist_id": filters.source_playlist_id,
+        "statuses": list(filters.statuses),
+        "min_confidence": filters.min_confidence,
+        "max_confidence": filters.max_confidence,
+        "reason": filters.reason,
+        "title": filters.title,
+        "artist": filters.artist,
+        "problem_only": filters.problem_only,
+    }
+
+
+def _report_filename(job_id: str, *, scope: str, extension: str) -> str:
+    safe_job_id = re.sub(r"[^A-Za-z0-9_-]+", "-", job_id).strip("-")[:48] or "migration"
+    return f"migration-{safe_job_id}-{scope}.{extension}"
 
 
 @router.post("/{job_id}/items/{item_id}/review", response_model=JobItemView)
@@ -902,6 +1435,7 @@ async def review_migration_item(
     job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
+    _require_details_available(job)
     item = await session.get(orm.JobItem, item_id)
     if item is None or item.job_id != job_id:
         raise HTTPException(status_code=404, detail="migration item not found")
@@ -918,6 +1452,7 @@ async def review_migration_items(
     job = await _owned_job(session, job_id=job_id, user_id=user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="migration job not found")
+    _require_details_available(job)
     if not body.item_ids:
         raise HTTPException(status_code=400, detail="Select at least one migration item")
     stmt = select(orm.JobItem).where(
@@ -951,6 +1486,13 @@ async def _apply_review(
     if item.status not in {"needs_review", "failed"}:
         raise HTTPException(status_code=400, detail=f"item is already {item.status}")
 
+    original_status = item.status
+    original_reason = item.reason
+    item.review_action = body.action
+    item.review_original_status = original_status
+    item.review_original_reason = original_reason
+    item.reviewed_at = _utcnow()
+
     if body.action == "skip":
         item.status = "skipped"
         item.target_uri = None
@@ -982,6 +1524,7 @@ async def _apply_review(
             item.target_uri = target_uri
             item.status = "skipped"
             item.reason = "duplicate already exists in target playlist"
+            session.add(_review_decision(job, item, target_uri=target_uri))
             await commit_job_counts(session, job)
             return _item_view(item)
         results = await target.add_tracks(target_cred, item.target_playlist_id, [target_uri])
@@ -1013,11 +1556,39 @@ async def _apply_review(
     if result and result.ok:
         item.status = "written"
         item.reason = None
+        session.add(_review_decision(job, item, target_uri=target_uri))
     else:
         item.status = "failed"
         item.reason = (result.error if result else None) or "target rejected reviewed track"
     await commit_job_counts(session, job)
     return _item_view(item)
+
+
+def _review_decision(
+    job: orm.MigrationJob, item: orm.JobItem, *, target_uri: str
+) -> orm.ReviewDecision:
+    return orm.ReviewDecision(
+        job_id=job.id,
+        user_id=job.user_id,
+        source_provider=job.source_provider,
+        target_provider=job.target_provider,
+        source_account_id=job.source_account_id,
+        target_account_id=job.target_account_id,
+        title=item.title,
+        artist=item.artist,
+        album=item.album,
+        duration_s=item.duration_s,
+        isrc=item.isrc,
+        source_metadata=item.source_metadata or {},
+        target_uri=target_uri,
+        confidence=float(item.confidence or 0.0),
+        status=item.status,
+        action="approve",
+    )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 async def _target_playlist_keys(target, target_cred, playlist_id: str) -> set[str]:

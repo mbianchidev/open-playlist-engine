@@ -861,7 +861,7 @@ export default function App() {
           className="workspace-tab"
           type="button"
           role="tab"
-          aria-label="Stats"
+          aria-label="History and stats"
           aria-selected={activeTab === "stats"}
           aria-controls="stats-panel"
           tabIndex={activeTab === "stats" ? 0 : -1}
@@ -869,9 +869,9 @@ export default function App() {
         >
           <span>
             <BarChart3 aria-hidden="true" />
-            Stats
+            History
           </span>
-          <small>Review history</small>
+          <small>Inspect results</small>
         </button>
       </div>
 

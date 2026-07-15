@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, History, RefreshCw } from "lucide-react";
+import { BarChart3, ExternalLink, History, RefreshCw } from "lucide-react";
 import {
   getAggregateMigrationStats,
   getMigrationStats,
@@ -12,7 +12,8 @@ import type {
   ProviderView,
   StatusCounts,
 } from "../api/types";
-import { providerLabel } from "../utils/providers";
+import { providerLabel, targetPlaylistUrl } from "../utils/providers";
+import MigrationHistoryDetail from "./MigrationHistoryDetail";
 
 interface Props {
   providers: ProviderView[];
@@ -128,8 +129,8 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
             <BarChart3 />
           </span>
           <div>
-            <h2>Migration stats</h2>
-            <p className="muted">Inspect one migration or all-time migration totals.</p>
+            <h2>Migration history & stats</h2>
+            <p className="muted">Reopen a migration, inspect its ledger, or review all-time totals.</p>
           </div>
         </div>
         <button
@@ -138,7 +139,7 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
           onClick={() => setManualRefresh((value) => value + 1)}
         >
           <RefreshCw aria-hidden="true" />
-          {listLoading || aggregateLoading || selectedLoading ? "Refreshing..." : "Refresh stats"}
+          {listLoading || aggregateLoading || selectedLoading ? "Refreshing..." : "Refresh history"}
         </button>
       </div>
 
@@ -146,10 +147,12 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
         <div className="stats-subheading">
           <h3>
             <History aria-hidden="true" />
-            Single migration
+            Migration history
           </h3>
           {selectedStats ? (
-            <span className={`badge status-${selectedStats.status}`}>{statusLabel(selectedStats.status)}</span>
+            <span className={`badge status-${selectedStats.outcome ?? selectedStats.status}`}>
+              {statusLabel(selectedStats.outcome ?? selectedStats.status)}
+            </span>
           ) : null}
         </div>
         {listError ? <p className="warn">{listError}</p> : null}
@@ -176,7 +179,12 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
             </label>
             {selectedLoading ? <p className="muted">Loading migration stats...</p> : null}
             {selectedError ? <p className="warn">{selectedError}</p> : null}
-            {selectedStats ? <SingleMigrationStats stats={selectedStats} /> : null}
+            {selectedStats ? (
+              <>
+                <SingleMigrationStats stats={selectedStats} />
+                <MigrationHistoryDetail stats={selectedStats} />
+              </>
+            ) : null}
           </>
         )}
       </div>
@@ -249,6 +257,24 @@ function SingleMigrationStats({ stats }: { stats: MigrationStatsView }) {
               <div>
                 <strong>{playlist.source_playlist_name ?? "Unnamed playlist"}</strong>
                 <p className="muted">{compactCounts(playlist.counts)}</p>
+                {playlist.target_playlist_id ? (
+                  targetPlaylistUrl(stats.target_provider, playlist.target_playlist_id) ? (
+                    <a
+                      className="stats-target-link"
+                      href={
+                        targetPlaylistUrl(stats.target_provider, playlist.target_playlist_id) ??
+                        undefined
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open target
+                      <ExternalLink aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <code>{playlist.target_playlist_id}</code>
+                  )
+                ) : null}
               </div>
               <span className="badge">{playlist.counts.total} tracks</span>
             </div>
@@ -322,7 +348,8 @@ function providerChoices(
 function migrationOptionLabel(option: MigrationOptionView): string {
   const route = `${providerLabel(option.source_provider)} to ${providerLabel(option.target_provider)}`;
   const created = formatDate(option.created_at);
-  return [option.label, route, created].filter(Boolean).join(" - ");
+  const outcome = option.outcome ? statusLabel(option.outcome) : statusLabel(option.status);
+  return [option.label, route, outcome, created].filter(Boolean).join(" - ");
 }
 
 function compactCounts(counts: StatusCounts): string {
@@ -341,7 +368,7 @@ function countLabel(value: number, label: string): string | null {
 }
 
 function statusLabel(status: string): string {
-  return status.replace("_", " ");
+  return status.replaceAll("_", " ");
 }
 
 function formatDate(value: string | null): string | null {
