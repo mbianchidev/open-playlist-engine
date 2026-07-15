@@ -201,3 +201,10 @@ class ProviderAdapter(Protocol):
     async def add_tracks(
         self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
     ) -> list[AddItemResult]: ...
+
+
+@runtime_checkable
+class MirrorProviderAdapter(Protocol):
+    async def replace_playlist_tracks(
+        self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
+    ) -> None: ...

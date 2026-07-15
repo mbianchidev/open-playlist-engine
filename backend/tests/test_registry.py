@@ -28,3 +28,7 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert rows["applemusic"]["can_source"] is True
     assert rows["applemusic"]["can_target"] is True
     assert rows["applemusic"]["auth_kind"] == "developer_user_token"
+    assert rows["spotify"]["can_mirror"] is True
+    assert rows["spotify"]["mirror_unavailable_reason"] is None
+    assert rows["tidal"]["can_mirror"] is False
+    assert rows["tidal"]["mirror_unavailable_reason"]

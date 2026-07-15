@@ -20,11 +20,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -136,11 +138,16 @@ class MigrationJob(Base):
     done: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    origin: Mapped[str] = mapped_column(String, default="manual", index=True)
+    sync_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sync_run.id", ondelete="CASCADE"), nullable=True, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     items: Mapped[list[JobItem]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+    sync_run: Mapped[SyncRun | None] = relationship(back_populates="migration_job")
 
 
 class JobItem(Base):
@@ -193,6 +200,116 @@ class OperationLedger(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# --------------------------------------------------------------------------- #
+# Scheduled playlist synchronization (private)
+# --------------------------------------------------------------------------- #
+class SyncRule(Base):
+    __tablename__ = "sync_rule"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "source_provider",
+            "source_account_id",
+            "source_playlist_id",
+            "target_provider",
+            "target_account_id",
+            "target_playlist_id",
+            name="uq_sync_rule_endpoint_pair",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    source_provider: Mapped[str] = mapped_column(String)
+    source_account_id: Mapped[str] = mapped_column(String)
+    source_playlist_id: Mapped[str] = mapped_column(String)
+    source_playlist_name: Mapped[str] = mapped_column(String)
+    target_provider: Mapped[str] = mapped_column(String)
+    target_account_id: Mapped[str] = mapped_column(String)
+    target_playlist_id: Mapped[str] = mapped_column(String)
+    target_playlist_name: Mapped[str] = mapped_column(String)
+    mode: Mapped[str] = mapped_column(String, default="add_only")
+    cadence_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    timezone: Mapped[str] = mapped_column(String, default="UTC")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    status: Mapped[str] = mapped_column(String, default="idle", index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_added: Mapped[int] = mapped_column(Integer, default=0)
+    last_removed: Mapped[int] = mapped_column(Integer, default=0)
+    last_reordered: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    runs: Mapped[list[SyncRun]] = relationship(
+        back_populates="rule", cascade="all, delete-orphan"
+    )
+    checkpoint: Mapped[SyncCheckpoint | None] = relationship(
+        back_populates="rule", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_run"
+    __table_args__ = (
+        Index(
+            "uq_sync_run_active_rule",
+            "rule_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    rule_id: Mapped[str] = mapped_column(
+        ForeignKey("sync_rule.id", ondelete="CASCADE"), index=True
+    )
+    trigger: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="queued", index=True)
+    lease_token: Mapped[str] = mapped_column(String, default=_uuid)
+    queue_job_id: Mapped[str] = mapped_column(String, unique=True)
+    source_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_before: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_after: Mapped[dict] = mapped_column(JSON, default=dict)
+    added: Mapped[int] = mapped_column(Integer, default=0)
+    removed: Mapped[int] = mapped_column(Integer, default=0)
+    reordered: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    rule: Mapped[SyncRule] = relationship(back_populates="runs")
+    migration_job: Mapped[MigrationJob | None] = relationship(
+        back_populates="sync_run", uselist=False
+    )
+
+
+class SyncCheckpoint(Base):
+    __tablename__ = "sync_checkpoint"
+
+    rule_id: Mapped[str] = mapped_column(
+        ForeignKey("sync_rule.id", ondelete="CASCADE"), primary_key=True
+    )
+    source_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    mappings: Mapped[dict] = mapped_column(JSON, default=dict)
+    unresolved: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    rule: Mapped[SyncRule] = relationship(back_populates="checkpoint")
 
 
 # --------------------------------------------------------------------------- #
