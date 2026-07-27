@@ -3,8 +3,8 @@ info:
   title: Open Playlist API
   description: |
     A universal, open, and interoperable playlist API specification.
-    Enables seamless migration and playback of playlists across all major
-    music platforms—Spotify, Tidal, YouTube Music, Deezer, Apple Music, and beyond.
+    Enables seamless migration of playlists and explicit music-library entities
+    across Spotify, Tidal, YouTube Music, Deezer, Apple Music, and beyond.
   version: 0.1.0
   license:
     name: MIT
@@ -278,6 +278,91 @@ components:
           example:
             genre: "Synth-pop"
             bpm: 171
+
+    Album:
+      type: object
+      required:
+        - title
+        - artists
+        - provider_uris
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: Stable provider album identifier when available.
+        title:
+          type: string
+          description: Album title.
+        artists:
+          type: array
+          items:
+            type: string
+          description: Ordered album artist names.
+        upc:
+          type: string
+          nullable: true
+          description: UPC or provider-equivalent barcode used as strong match evidence.
+        release_date:
+          type: string
+          format: date
+          nullable: true
+        release_year:
+          type: integer
+          nullable: true
+          description: Release year when the provider exposes only partial date precision.
+        artwork_uri:
+          type: string
+          format: uri
+          nullable: true
+        provider_uris:
+          type: object
+          additionalProperties:
+            type: string
+          description: Provider album URIs keyed by provider name.
+        metadata:
+          type: object
+          additionalProperties: true
+        source_item_id:
+          type: string
+          nullable: true
+          description: Stable source-library item identifier.
+        added_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Artist:
+      type: object
+      required:
+        - name
+        - provider_uris
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: Stable provider artist identifier when available.
+        name:
+          type: string
+        artwork_uri:
+          type: string
+          format: uri
+          nullable: true
+        provider_uris:
+          type: object
+          additionalProperties:
+            type: string
+          description: Provider artist URIs keyed by provider name.
+        metadata:
+          type: object
+          additionalProperties: true
+        source_item_id:
+          type: string
+          nullable: true
+          description: Stable source-library item identifier.
+        added_at:
+          type: string
+          format: date-time
+          nullable: true
 
     Credit:
       type: object

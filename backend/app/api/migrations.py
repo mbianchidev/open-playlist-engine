@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import urllib.parse
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
@@ -24,7 +25,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUserId
-from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
+from app.core.adapter import (
+    AccessDenied,
+    AuthExpired,
+    FollowedArtistReader,
+    FollowedArtistWriter,
+    NotFound,
+    ProviderError,
+    RateLimited,
+    SavedAlbumReader,
+    SavedAlbumWriter,
+    Unsupported,
+)
 from app.core.capabilities import Capability
 from app.core.migration_state import (
     has_track_overlap,
@@ -33,7 +45,7 @@ from app.core.migration_state import (
     track_selected,
     uri_keys,
 )
-from app.core.models import Playlist, PlaylistKind, PlaylistRef
+from app.core.models import MigrationEntityType, Playlist, PlaylistKind, PlaylistRef
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session, get_sessionmaker
@@ -51,9 +63,14 @@ router = APIRouter(prefix="/api/migrations", tags=["migrations"])
 
 
 class Selection(BaseModel):
-    playlist_ids: list[str] = []
+    playlist_ids: list[str] = Field(default_factory=list)
     # optional per-playlist track filtering: {playlist_id: [track_ids]}
-    tracks: dict[str, list[str]] = {}
+    tracks: dict[str, list[str]] = Field(default_factory=dict)
+    saved_album_ids: list[str] = Field(default_factory=list)
+    followed_artist_ids: list[str] = Field(default_factory=list)
+
+    def has_items(self) -> bool:
+        return bool(self.playlist_ids or self.saved_album_ids or self.followed_artist_ids)
 
 
 class CreateMigration(BaseModel):
@@ -87,6 +104,13 @@ class StatusCounts(BaseModel):
     other: dict[str, int] = Field(default_factory=dict)
 
 
+class MigrationSelectionSummary(BaseModel):
+    playlists: int = 0
+    tracks: int = 0
+    saved_albums: int = 0
+    followed_artists: int = 0
+
+
 class MigrationOptionView(BaseModel):
     id: str
     label: str
@@ -95,6 +119,7 @@ class MigrationOptionView(BaseModel):
     source_provider: str
     target_provider: str
     created_at: datetime | None = None
+    selection_summary: MigrationSelectionSummary
 
 
 class PlaylistStatsView(BaseModel):
@@ -114,6 +139,9 @@ class MigrationStatsView(BaseModel):
     created_at: datetime | None = None
     counts: StatusCounts
     playlist_count: int = 0
+    saved_album_count: int = 0
+    followed_artist_count: int = 0
+    entity_counts: dict[str, StatusCounts] = Field(default_factory=dict)
     playlists: list[PlaylistStatsView] = Field(default_factory=list)
     empty: bool = False
     message: str | None = None
@@ -124,6 +152,9 @@ class AggregateMigrationStatsView(BaseModel):
     target_provider: str | None = None
     total_migrations: int = 0
     total_playlists: int = 0
+    total_saved_albums: int = 0
+    total_followed_artists: int = 0
+    entity_counts: dict[str, StatusCounts] = Field(default_factory=dict)
     counts: StatusCounts
     empty: bool = False
     message: str | None = None
@@ -131,9 +162,13 @@ class AggregateMigrationStatsView(BaseModel):
 
 class JobItemView(BaseModel):
     id: str
-    source_playlist_id: str
+    entity_type: str
+    source_playlist_id: str | None = None
     source_playlist_name: str | None = None
     target_playlist_id: str | None = None
+    source_entity_id: str | None = None
+    source_entity_name: str | None = None
+    target_entity_id: str | None = None
     position: int
     title: str
     artist: str
@@ -162,7 +197,8 @@ class BatchReview(BaseModel):
 class MigrationWarningsView(BaseModel):
     code: str = "migration_warnings"
     message: str = "Review and acknowledge migration warnings before starting."
-    warnings: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = Field(default_factory=list)
+    summary: MigrationSelectionSummary
 
 
 def _job_view(job: orm.MigrationJob) -> JobView:
@@ -181,9 +217,13 @@ def _job_view(job: orm.MigrationJob) -> JobView:
 def _item_view(item: orm.JobItem) -> JobItemView:
     return JobItemView(
         id=item.id,
+        entity_type=_item_entity_type(item),
         source_playlist_id=item.source_playlist_id,
         source_playlist_name=item.source_playlist_name,
         target_playlist_id=item.target_playlist_id,
+        source_entity_id=item.source_entity_id,
+        source_entity_name=item.source_entity_name,
+        target_entity_id=item.target_entity_id,
         position=item.position,
         title=item.title,
         artist=item.artist,
@@ -198,6 +238,10 @@ def _item_view(item: orm.JobItem) -> JobItemView:
         status=item.status,
         reason=item.reason,
     )
+
+
+def _item_entity_type(item: orm.JobItem) -> str:
+    return item.entity_type or MigrationEntityType.TRACK.value
 
 
 _STATUS_FIELDS = ("pending", "matched", "needs_review", "written", "skipped", "failed")
@@ -254,18 +298,63 @@ def _selected_playlist_ids(job: orm.MigrationJob) -> list[str]:
     return [str(playlist_id) for playlist_id in raw_ids if str(playlist_id).strip()]
 
 
+def _selected_library_ids(job: orm.MigrationJob, field: str) -> list[str]:
+    selection = job.selection if isinstance(job.selection, dict) else {}
+    raw_ids = selection.get(field)
+    if not isinstance(raw_ids, list):
+        return []
+    return [str(item_id) for item_id in raw_ids if str(item_id).strip()]
+
+
+def _selection_summary(
+    job: orm.MigrationJob, *, track_count: int | None = None
+) -> MigrationSelectionSummary:
+    selection = job.selection if isinstance(job.selection, dict) else {}
+    tracks = selection.get("tracks")
+    selected_track_count = (
+        sum(len(values) for values in tracks.values() if isinstance(values, list))
+        if isinstance(tracks, dict)
+        else 0
+    )
+    return MigrationSelectionSummary(
+        playlists=len(_selected_playlist_ids(job)),
+        tracks=track_count if track_count is not None else selected_track_count,
+        saved_albums=len(_selected_library_ids(job, "saved_album_ids")),
+        followed_artists=len(_selected_library_ids(job, "followed_artist_ids")),
+    )
+
+
 def _migration_label(job: orm.MigrationJob, playlist_names: list[str]) -> str:
+    library_parts = []
+    saved_album_count = len(_selected_library_ids(job, "saved_album_ids"))
+    followed_artist_count = len(_selected_library_ids(job, "followed_artist_ids"))
+    if saved_album_count:
+        library_parts.append(
+            f"{saved_album_count} saved album{'s' if saved_album_count != 1 else ''}"
+        )
+    if followed_artist_count:
+        library_parts.append(
+            f"{followed_artist_count} artist{'s' if followed_artist_count != 1 else ''}"
+        )
     if len(playlist_names) == 1:
-        return playlist_names[0]
+        playlist_label = playlist_names[0]
+        return ", ".join([playlist_label, *library_parts])
     if len(playlist_names) == 2:
-        return f"{playlist_names[0]}, {playlist_names[1]}"
+        playlist_label = f"{playlist_names[0]}, {playlist_names[1]}"
+        return ", ".join([playlist_label, *library_parts])
     if len(playlist_names) > 2:
-        return f"{playlist_names[0]}, {playlist_names[1]} + {len(playlist_names) - 2} more"
+        playlist_label = (
+            f"{playlist_names[0]}, {playlist_names[1]} + {len(playlist_names) - 2} more"
+        )
+        return ", ".join([playlist_label, *library_parts])
     selected_count = len(_selected_playlist_ids(job))
     if selected_count == 1:
-        return "1 playlist"
+        return ", ".join(["1 playlist", *library_parts])
     if selected_count > 1:
-        return f"{selected_count} playlists"
+        playlist_label = f"{selected_count} playlists"
+        return ", ".join([playlist_label, *library_parts])
+    if library_parts:
+        return ", ".join(library_parts)
     return "Preparing migration"
 
 
@@ -284,7 +373,11 @@ async def _playlist_names_by_job(
             orm.JobItem.source_playlist_id,
             func.max(orm.JobItem.source_playlist_name),
         )
-        .where(orm.JobItem.job_id.in_(job_ids))
+        .where(
+            orm.JobItem.job_id.in_(job_ids),
+            orm.JobItem.entity_type == MigrationEntityType.TRACK,
+            orm.JobItem.source_playlist_id.is_not(None),
+        )
         .group_by(orm.JobItem.job_id, orm.JobItem.source_playlist_id)
         .order_by(orm.JobItem.job_id, orm.JobItem.source_playlist_id)
     )
@@ -337,13 +430,18 @@ def _migration_option(job: orm.MigrationJob, playlist_names: list[str]) -> Migra
         source_provider=job.source_provider,
         target_provider=job.target_provider,
         created_at=job.created_at,
+        selection_summary=_selection_summary(job),
     )
 
 
 def _playlist_stats(items: list[orm.JobItem]) -> list[PlaylistStatsView]:
     grouped: dict[str, list[orm.JobItem]] = defaultdict(list)
     for item in items:
-        grouped[item.source_playlist_id].append(item)
+        if (
+            _item_entity_type(item) == MigrationEntityType.TRACK
+            and item.source_playlist_id is not None
+        ):
+            grouped[item.source_playlist_id].append(item)
 
     playlists: list[PlaylistStatsView] = []
     for source_playlist_id, rows in sorted(
@@ -364,6 +462,19 @@ def _playlist_stats(items: list[orm.JobItem]) -> list[PlaylistStatsView]:
     return playlists
 
 
+def _entity_status_counts(items: list[orm.JobItem]) -> dict[str, StatusCounts]:
+    return {
+        entity_type.value: _status_counts_from_items(
+            [
+                item
+                for item in items
+                if _item_entity_type(item) == entity_type.value
+            ]
+        )
+        for entity_type in MigrationEntityType
+    }
+
+
 def _rows_name(items: list[orm.JobItem]) -> str | None:
     for item in items:
         if item.source_playlist_name:
@@ -376,6 +487,7 @@ def _build_migration_stats(
 ) -> MigrationStatsView:
     playlists = _playlist_stats(items)
     selected_count = len(_selected_playlist_ids(job))
+    entity_counts = _entity_status_counts(items)
     empty = len(items) == 0
     return MigrationStatsView(
         id=job.id,
@@ -387,9 +499,18 @@ def _build_migration_stats(
         created_at=job.created_at,
         counts=_status_counts_from_items(items, total_hint=job.total),
         playlist_count=max(len(playlists), selected_count),
+        saved_album_count=max(
+            entity_counts[MigrationEntityType.ALBUM.value].total,
+            len(_selected_library_ids(job, "saved_album_ids")),
+        ),
+        followed_artist_count=max(
+            entity_counts[MigrationEntityType.ARTIST.value].total,
+            len(_selected_library_ids(job, "followed_artist_ids")),
+        ),
+        entity_counts=entity_counts,
         playlists=playlists,
         empty=empty,
-        message="No track items were recorded for this migration yet." if empty else None,
+        message="No migration items were recorded for this migration yet." if empty else None,
     )
 
 
@@ -397,6 +518,7 @@ def _build_aggregate_stats(
     jobs: list[orm.MigrationJob],
     status_counts_by_job: Mapping[str, Counter[str]],
     playlist_keys: set[tuple[str, str]],
+    entity_counts_by_job: Mapping[str, Mapping[str, Counter[str]]] | None = None,
     *,
     source_provider: str | None,
     target_provider: str | None,
@@ -411,6 +533,23 @@ def _build_aggregate_stats(
             all_playlist_keys.add((job.id, playlist_id))
 
     aggregate = _sum_status_counts(counts)
+    entity_counts_by_job = entity_counts_by_job or {}
+    entity_counts = {}
+    for entity_type in MigrationEntityType:
+        per_job = []
+        for job in jobs:
+            selected_hint = 0
+            if entity_type is MigrationEntityType.ALBUM:
+                selected_hint = len(_selected_library_ids(job, "saved_album_ids"))
+            elif entity_type is MigrationEntityType.ARTIST:
+                selected_hint = len(_selected_library_ids(job, "followed_artist_ids"))
+            per_job.append(
+                _status_counts(
+                    entity_counts_by_job.get(job.id, {}).get(entity_type.value, Counter()),
+                    total_hint=selected_hint,
+                )
+            )
+        entity_counts[entity_type.value] = _sum_status_counts(per_job)
     message = None
     if not jobs:
         message = "No migrations match these filters."
@@ -422,6 +561,9 @@ def _build_aggregate_stats(
         target_provider=target_provider,
         total_migrations=len(jobs),
         total_playlists=len(all_playlist_keys),
+        total_saved_albums=entity_counts[MigrationEntityType.ALBUM.value].total,
+        total_followed_artists=entity_counts[MigrationEntityType.ARTIST.value].total,
+        entity_counts=entity_counts,
         counts=aggregate,
         empty=aggregate.total == 0,
         message=message,
@@ -459,6 +601,7 @@ def _aggregate_item_counts_stmt(job_ids: list[str]):
     return (
         select(
             orm.JobItem.job_id,
+            orm.JobItem.entity_type,
             orm.JobItem.source_playlist_id,
             orm.JobItem.status,
             func.count(),
@@ -466,6 +609,7 @@ def _aggregate_item_counts_stmt(job_ids: list[str]):
         .where(orm.JobItem.job_id.in_(job_ids))
         .group_by(
             orm.JobItem.job_id,
+            orm.JobItem.entity_type,
             orm.JobItem.source_playlist_id,
             orm.JobItem.status,
         )
@@ -511,10 +655,10 @@ async def create_migration(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
 ) -> JobView:
-    if not body.selection.playlist_ids:
-        raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
+    if not body.selection.has_items():
+        raise HTTPException(status_code=400, detail="Select at least one item to migrate")
     try:
-        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        warnings, summary = await _validated_preflight(session, body, user_id=user_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (AccountNotFound, CredentialNotFound) as exc:
@@ -534,7 +678,7 @@ async def create_migration(
         await session.commit()
         raise HTTPException(
             status_code=409,
-            detail=MigrationWarningsView(warnings=warnings).model_dump(),
+            detail=MigrationWarningsView(warnings=warnings, summary=summary).model_dump(),
         )
 
     job = orm.MigrationJob(
@@ -558,12 +702,12 @@ async def preflight_migration(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
 ) -> MigrationWarningsView:
-    if not body.selection.playlist_ids:
-        raise HTTPException(status_code=400, detail="Select at least one playlist to migrate")
+    if not body.selection.has_items():
+        raise HTTPException(status_code=400, detail="Select at least one item to migrate")
     try:
-        warnings = await _validated_preflight_warnings(session, body, user_id=user_id)
+        warnings, summary = await _validated_preflight(session, body, user_id=user_id)
         await session.commit()
-        return MigrationWarningsView(warnings=warnings)
+        return MigrationWarningsView(warnings=warnings, summary=summary)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (AccountNotFound, CredentialNotFound) as exc:
@@ -580,17 +724,17 @@ async def preflight_migration(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-async def _validated_preflight_warnings(
+async def _validated_preflight(
     session: AsyncSession,
     body: CreateMigration,
     *,
     user_id: str,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], MigrationSelectionSummary]:
     source = get(body.source_provider)
     get(body.target_provider)
 
     source_caps = source.info.capabilities
-    if not source_caps.can(Capability.READ_TRACKS):
+    if body.selection.playlist_ids and not source_caps.can(Capability.READ_TRACKS):
         raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
     await load_credential(
         session, account_id=body.source_account_id, provider=body.source_provider
@@ -598,15 +742,15 @@ async def _validated_preflight_warnings(
     await load_credential(
         session, account_id=body.target_account_id, provider=body.target_provider
     )
-    return await _preflight_warnings(session, body, user_id=user_id)
+    return await _preflight(session, body, user_id=user_id)
 
 
-async def _preflight_warnings(
+async def _preflight(
     session: AsyncSession,
     body: CreateMigration,
     *,
     user_id: str,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], MigrationSelectionSummary]:
     settings = get_settings()
     source = get(body.source_provider)
     target = get(body.target_provider)
@@ -624,8 +768,19 @@ async def _preflight_warnings(
     )
 
     selected = await _selected_playlists(source, source_cred, body.selection)
-    _validate_target_capabilities(target, target_cred, selected)
+    _validate_target_capabilities(target, target_cred, selected, body.selection)
+    await _validate_selected_library_entities(
+        source,
+        source_cred,
+        body.selection,
+    )
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
+    summary = MigrationSelectionSummary(
+        playlists=len(body.selection.playlist_ids),
+        tracks=total_tracks,
+        saved_albums=len(body.selection.saved_album_ids),
+        followed_artists=len(body.selection.followed_artist_ids),
+    )
     warnings: list[dict[str, str]] = []
     if len(body.selection.playlist_ids) > settings.migration_safe_max_playlists_per_job:
         warnings.append(
@@ -677,7 +832,8 @@ async def _preflight_warnings(
         )
 
     warnings.extend(await _same_name_warnings(target, target_cred, selected))
-    return warnings
+    warnings.extend(_artist_semantics_warnings(source, target, body.selection))
+    return warnings, summary
 
 
 async def _selected_playlists(
@@ -731,9 +887,98 @@ async def _same_name_warnings(
     return warnings
 
 
-def _validate_target_capabilities(
-    target, target_cred, selected: dict[str, Playlist]
+def _require_saved_album_reader(adapter) -> SavedAlbumReader:
+    if not isinstance(adapter, SavedAlbumReader):
+        raise Unsupported(f"{adapter.info.display_name} cannot read saved albums")
+    return adapter
+
+
+def _require_saved_album_writer(adapter) -> SavedAlbumWriter:
+    if not isinstance(adapter, SavedAlbumWriter):
+        raise Unsupported(f"{adapter.info.display_name} cannot write saved albums")
+    return adapter
+
+
+def _require_followed_artist_reader(adapter) -> FollowedArtistReader:
+    if not isinstance(adapter, FollowedArtistReader):
+        raise Unsupported(
+            f"{adapter.info.display_name} cannot read followed or favorite artists"
+        )
+    return adapter
+
+
+def _require_followed_artist_writer(adapter) -> FollowedArtistWriter:
+    if not isinstance(adapter, FollowedArtistWriter):
+        raise Unsupported(
+            f"{adapter.info.display_name} cannot write followed or favorite artists"
+        )
+    return adapter
+
+
+async def _validate_selected_library_entities(
+    source,
+    source_cred,
+    selection: Selection,
 ) -> None:
+    if not (selection.saved_album_ids or selection.followed_artist_ids):
+        return
+    if selection.saved_album_ids:
+        album_reader = _require_saved_album_reader(source)
+        source.info.require_saved_albums_source(source_cred)
+        present = await album_reader.contains_saved_albums(
+            source_cred, selection.saved_album_ids
+        )
+        if len(present) != len(selection.saved_album_ids):
+            raise ProviderError("source returned an invalid saved-album membership response")
+        for album_id, is_saved in zip(selection.saved_album_ids, present, strict=True):
+            if not is_saved:
+                raise NotFound(f"saved album is no longer in the source library: {album_id}")
+            await album_reader.read_saved_album(source_cred, album_id)
+    if selection.followed_artist_ids:
+        artist_reader = _require_followed_artist_reader(source)
+        source.info.require_followed_artists_source(source_cred)
+        present = await artist_reader.contains_followed_artists(
+            source_cred, selection.followed_artist_ids
+        )
+        if len(present) != len(selection.followed_artist_ids):
+            raise ProviderError("source returned an invalid artist membership response")
+        for artist_id, is_followed in zip(
+            selection.followed_artist_ids, present, strict=True
+        ):
+            if not is_followed:
+                raise NotFound(
+                    f"artist is no longer in the source library: {artist_id}"
+                )
+            await artist_reader.read_followed_artist(source_cred, artist_id)
+
+
+def _artist_semantics_warnings(
+    source,
+    target,
+    selection: Selection,
+) -> list[dict[str, str]]:
+    if not selection.followed_artist_ids:
+        return []
+    source_semantics = source.info.artist_collection_semantics
+    target_semantics = target.info.artist_collection_semantics
+    if not source_semantics or not target_semantics or source_semantics == target_semantics:
+        return []
+    return [
+        _warning(
+            "artist_semantics",
+            f"{source.info.display_name} {source_semantics.value} artists will become "
+            f"{target.info.display_name} {target_semantics.value} artists.",
+        )
+    ]
+
+
+def _validate_target_capabilities(
+    target,
+    target_cred,
+    selected: dict[str, Playlist],
+    selection: Selection | None = None,
+) -> None:
+    selection = selection or Selection(playlist_ids=list(selected))
     kinds = {playlist.kind for playlist in selected.values()}
     if PlaylistKind.STANDARD in kinds:
         caps = target.info.capabilities
@@ -746,6 +991,12 @@ def _validate_target_capabilities(
             )
     if PlaylistKind.LIKED_TRACKS in kinds:
         target.info.require_liked_tracks_target(target_cred)
+    if selection.saved_album_ids:
+        _require_saved_album_writer(target)
+        target.info.require_saved_albums_target(target_cred)
+    if selection.followed_artist_ids:
+        _require_followed_artist_writer(target)
+        target.info.require_followed_artists_target(target_cred)
 
 
 async def _tracks_migrated_today(
@@ -765,6 +1016,7 @@ async def _tracks_migrated_today(
             orm.MigrationJob.target_provider == target_provider,
             orm.MigrationJob.target_account_id == target_account_id,
             orm.MigrationJob.created_at >= today,
+            orm.JobItem.entity_type == MigrationEntityType.TRACK,
         )
     )
     return int(count or 0)
@@ -824,17 +1076,24 @@ async def get_aggregate_migration_stats(
         ).scalars()
     )
     status_counts_by_job: dict[str, Counter[str]] = defaultdict(Counter)
+    entity_counts_by_job: dict[str, dict[str, Counter[str]]] = defaultdict(
+        lambda: defaultdict(Counter)
+    )
     playlist_keys: set[tuple[str, str]] = set()
     if jobs:
         job_ids = [job.id for job in jobs]
         rows = await session.execute(_aggregate_item_counts_stmt(job_ids))
-        for job_id, playlist_id, status, count in rows.all():
+        for job_id, entity_type, playlist_id, status, count in rows.all():
             status_counts_by_job[job_id][status] += int(count)
-            playlist_keys.add((job_id, playlist_id))
+            normalized_entity_type = entity_type or MigrationEntityType.TRACK.value
+            entity_counts_by_job[job_id][normalized_entity_type][status] += int(count)
+            if normalized_entity_type == MigrationEntityType.TRACK and playlist_id:
+                playlist_keys.add((job_id, playlist_id))
     return _build_aggregate_stats(
         jobs,
         status_counts_by_job,
         playlist_keys,
+        entity_counts_by_job,
         source_provider=source_provider,
         target_provider=target_provider,
     )
@@ -954,6 +1213,7 @@ async def _apply_review(
     if body.action == "skip":
         item.status = "skipped"
         item.target_uri = None
+        item.target_entity_id = None
         item.reason = "skipped during review"
         await commit_job_counts(session, job)
         return _item_view(item)
@@ -961,6 +1221,15 @@ async def _apply_review(
     target_uri = (body.target_uri or item.target_uri or "").strip()
     if not target_uri:
         raise HTTPException(status_code=400, detail="target_uri is required to approve a match")
+    entity_type = MigrationEntityType(item.entity_type or MigrationEntityType.TRACK)
+    if entity_type is not MigrationEntityType.TRACK:
+        return await _apply_library_review(
+            session,
+            job,
+            item,
+            target_uri,
+            entity_type,
+        )
     if not item.target_playlist_id:
         raise HTTPException(status_code=400, detail="target playlist is missing for this item")
 
@@ -1018,6 +1287,121 @@ async def _apply_review(
         item.reason = (result.error if result else None) or "target rejected reviewed track"
     await commit_job_counts(session, job)
     return _item_view(item)
+
+
+async def _apply_library_review(
+    session: AsyncSession,
+    job: orm.MigrationJob,
+    item: orm.JobItem,
+    target_uri: str,
+    entity_type: MigrationEntityType,
+) -> JobItemView:
+    reviewed_target_id = _provider_entity_id(target_uri)
+    try:
+        target = get(job.target_provider)
+        target_cred, _ = await load_fresh_credential(
+            session,
+            account_id=job.target_account_id,
+            adapter=target,
+            provider=job.target_provider,
+        )
+        if entity_type is MigrationEntityType.ALBUM:
+            library = _require_saved_album_writer(target)
+            target.info.require_saved_albums_target(target_cred)
+            valid = await library.validate_album_uri(target_cred, target_uri)
+            present = await library.contains_saved_albums(target_cred, [target_uri])
+        else:
+            library = _require_followed_artist_writer(target)
+            target.info.require_followed_artists_target(target_cred)
+            valid = await library.validate_artist_uri(target_cred, target_uri)
+            present = await library.contains_followed_artists(target_cred, [target_uri])
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="target_uri is not valid for target provider and entity type",
+            )
+        if present != [False]:
+            if present == [True]:
+                item.target_uri = target_uri
+                item.target_entity_id = reviewed_target_id
+                item.status = "skipped"
+                item.reason = (
+                    "album already saved in target library"
+                    if entity_type is MigrationEntityType.ALBUM
+                    else "artist already exists in target library"
+                )
+                await commit_job_counts(session, job)
+                return _item_view(item)
+            raise ProviderError("target returned an invalid library contains response")
+        results = (
+            await library.save_albums(target_cred, [target_uri])
+            if entity_type is MigrationEntityType.ALBUM
+            else await library.follow_artists(target_cred, [target_uri])
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthExpired as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RateLimited as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    result = results[0] if results else None
+    operation = (
+        "review_save_album"
+        if entity_type is MigrationEntityType.ALBUM
+        else "review_follow_artist"
+    )
+    session.add(
+        orm.OperationLedger(
+            job_id=job.id,
+            op=operation,
+            intent={"entity_type": entity_type.value, "uri": target_uri},
+            observed_target_id=reviewed_target_id
+            if result and result.ok
+            else None,
+            state="done" if result and result.ok else "ambiguous",
+        )
+    )
+    item.target_uri = target_uri
+    item.target_entity_id = reviewed_target_id
+    if result and result.already_present:
+        item.status = "skipped"
+        item.reason = (
+            "album already saved in target library"
+            if entity_type is MigrationEntityType.ALBUM
+            else "artist already exists in target library"
+        )
+    elif result and result.ok:
+        item.status = "written"
+        item.reason = None
+    else:
+        item.status = "failed"
+        item.reason = (
+            (result.error if result else None)
+            or "target rejected reviewed library item"
+        )
+    await commit_job_counts(session, job)
+    return _item_view(item)
+
+
+def _provider_entity_id(uri: str) -> str:
+    value = uri.strip()
+    if ":" in value and "://" not in value:
+        return value.rsplit(":", 1)[-1] or value
+    parsed = urllib.parse.urlparse(value)
+    parts = [part for part in parsed.path.split("/") if part]
+    for item_type in ("track", "album", "artist"):
+        if item_type in parts:
+            index = parts.index(item_type)
+            if index + 1 < len(parts):
+                return parts[index + 1]
+    return value
 
 
 async def _target_playlist_keys(target, target_cred, playlist_id: str) -> set[str]:

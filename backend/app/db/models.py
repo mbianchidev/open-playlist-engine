@@ -28,6 +28,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.models import MigrationEntityType
 from app.db.base import Base
 
 
@@ -150,9 +151,15 @@ class JobItem(Base):
     job_id: Mapped[str] = mapped_column(
         ForeignKey("migration_job.id", ondelete="CASCADE"), index=True
     )
-    source_playlist_id: Mapped[str] = mapped_column(String)
+    entity_type: Mapped[str] = mapped_column(
+        String, default=MigrationEntityType.TRACK.value, index=True
+    )
+    source_playlist_id: Mapped[str | None] = mapped_column(String, nullable=True)
     source_playlist_name: Mapped[str | None] = mapped_column(String, nullable=True)
     target_playlist_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_entity_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     title: Mapped[str] = mapped_column(String)
     artist: Mapped[str] = mapped_column(String)

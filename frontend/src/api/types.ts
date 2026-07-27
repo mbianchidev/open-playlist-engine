@@ -11,6 +11,12 @@ export interface ProviderView {
   has_isrc: boolean;
   can_source: boolean;
   can_target: boolean;
+  saved_albums: { read: boolean; write: boolean };
+  followed_artists: {
+    read: boolean;
+    write: boolean;
+    semantics: "follow" | "favorite" | null;
+  };
   warning: string | null;
 }
 
@@ -110,12 +116,66 @@ export interface Playlist {
   kind: "standard" | "liked_tracks";
 }
 
+export interface Album {
+  id: string | null;
+  title: string;
+  artists: string[];
+  upc: string | null;
+  release_date: string | null;
+  release_year: number | null;
+  artwork_uri: string | null;
+  provider_uris: Record<string, string>;
+  metadata: Record<string, unknown>;
+  source_item_id: string | null;
+  added_at: string | null;
+}
+
+export interface Artist {
+  id: string | null;
+  name: string;
+  artwork_uri: string | null;
+  provider_uris: Record<string, string>;
+  metadata: Record<string, unknown>;
+  source_item_id: string | null;
+  added_at: string | null;
+}
+
+export interface SavedAlbumsView {
+  source_supported: boolean;
+  target_supported: boolean;
+  count: number;
+  items: Album[];
+  source_limitation: string | null;
+  target_limitation: string | null;
+}
+
+export interface FollowedArtistsView {
+  source_supported: boolean;
+  target_supported: boolean;
+  source_semantics: "follow" | "favorite" | null;
+  target_semantics: "follow" | "favorite" | null;
+  count: number;
+  items: Artist[];
+  source_limitation: string | null;
+  target_limitation: string | null;
+}
+
+export interface LibraryView {
+  saved_albums: SavedAlbumsView;
+  followed_artists: FollowedArtistsView;
+}
+
 export interface CreateMigrationBody {
   source_provider: string;
   target_provider: string;
   source_account_id: string;
   target_account_id: string;
-  selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
+  selection: {
+    playlist_ids: string[];
+    tracks: Record<string, string[]>;
+    saved_album_ids: string[];
+    followed_artist_ids: string[];
+  };
   acknowledge_warnings?: boolean;
 }
 
@@ -149,6 +209,7 @@ export interface MigrationOptionView {
   source_provider: string;
   target_provider: string;
   created_at: string | null;
+  selection_summary: MigrationSelectionSummary;
 }
 
 export interface PlaylistStatsView {
@@ -168,6 +229,9 @@ export interface MigrationStatsView {
   created_at: string | null;
   counts: StatusCounts;
   playlist_count: number;
+  saved_album_count: number;
+  followed_artist_count: number;
+  entity_counts: Record<"track" | "album" | "artist", StatusCounts>;
   playlists: PlaylistStatsView[];
   empty: boolean;
   message: string | null;
@@ -178,6 +242,9 @@ export interface AggregateMigrationStatsView {
   target_provider: string | null;
   total_migrations: number;
   total_playlists: number;
+  total_saved_albums: number;
+  total_followed_artists: number;
+  entity_counts: Record<"track" | "album" | "artist", StatusCounts>;
   counts: StatusCounts;
   empty: boolean;
   message: string | null;
@@ -187,13 +254,25 @@ export interface MigrationWarningsView {
   code: string;
   message: string;
   warnings: { code: string; message: string }[];
+  summary: MigrationSelectionSummary;
+}
+
+export interface MigrationSelectionSummary {
+  playlists: number;
+  tracks: number;
+  saved_albums: number;
+  followed_artists: number;
 }
 
 export interface JobItemView {
   id: string;
-  source_playlist_id: string;
+  entity_type: "track" | "album" | "artist";
+  source_playlist_id: string | null;
   source_playlist_name: string | null;
   target_playlist_id: string | null;
+  source_entity_id: string | null;
+  source_entity_name: string | null;
+  target_entity_id: string | null;
   position: number;
   title: string;
   artist: string;

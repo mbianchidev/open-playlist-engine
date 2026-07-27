@@ -1,7 +1,7 @@
 # Open Playlist Engine
 
-Any-to-any music **playlist migration** — move playlists between Spotify, YouTube
-Music, Tidal, Deezer, Apple Music and more, in any direction, through a sleek UI.
+Any-to-any music **playlist and library migration** — move playlists, liked tracks,
+saved albums, and followed/favorite artists between supported providers.
 
 This is the first reference implementation of the
 [`open-playlist`](https://github.com/mbianchidev/open-playlist) universal
@@ -13,7 +13,7 @@ instantly works with all the others — both as source and target.
 > implemented directions dynamically: Spotify OAuth/read/search/write, Tidal
 > OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
 > official Apple MusicKit library read/search/write. Persisted credentials,
-> playlist/track selection, partial-migration detection, migration jobs, review
+> playlist/track/album/artist selection, partial-migration detection, migration jobs, review
 > actions, SSE progress and migration statistics are wired. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. See
@@ -91,6 +91,17 @@ ARQ's 5-minute default timeout.
 
 ## Spotify, Tidal, YouTube Music and Apple Music
 
+| Provider | Playlists / liked tracks | Saved albums | Followed/favorite artists |
+|---|---|---|---|
+| Spotify | Read/write | Read/write | Read/write as follows |
+| Tidal | Read/write | Read/write | Read/write as favorites |
+| YouTube Music | Read/write | Unsupported | Unsupported |
+| Apple Music | Read/write | Unsupported in this implementation | Unsupported |
+
+Album/artist selections are shown only when the source exposes them. Target
+limitations remain visible and disabled; the engine never converts unsupported
+albums or artists into synthetic playlists.
+
 1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
    redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
 2. Create a Tidal app at <https://developer.tidal.com> and set its redirect URI to
@@ -109,12 +120,15 @@ ARQ's 5-minute default timeout.
    OAuth credentials are not set, use the guided browser-session header fallback
    shown in the connection panel. OAuth reconnects reuse the same YouTube Music
    account by Google email when Google returns it.
-7. Pick one playlist, optionally choose individual tracks, and start the migration.
+7. Pick playlists, optionally choose individual tracks, and select supported saved
+   albums or followed/favorite artists. The preflight shows counts for every entity
+   type before starting.
    Tidal **My Collection**, YouTube Music **Liked Songs**, and Spotify **Liked
    Songs** appear as the same `liked_tracks` collection type. Migrating one writes
    directly into the target provider's native liked/saved library instead of
    creating a normal playlist.
-   Reconnect older Spotify accounts for `user-library-modify`, and older Tidal
+   Reconnect older Spotify accounts for `user-library-modify`, `user-follow-read`,
+   and `user-follow-modify`, and older Tidal
    accounts for `collection.read` and `collection.write`.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
@@ -136,7 +150,9 @@ ARQ's 5-minute default timeout.
     in a separate workspace.
 11. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
-   notice instead of adding them twice.
+   notice instead of adding them twice. Saved albums and artists use native target
+   contains checks before writes, so reruns report already-present items instead of
+   issuing duplicate actions. Name-only artist matches always require review.
 
 Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).

@@ -714,6 +714,30 @@ textarea,
   background: var(--surface-soft);
 }
 
+.library-collection {
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+.library-item-row {
+  border: 1px solid transparent;
+  color: var(--ink);
+}
+
+.library-item-row:hover:not(.disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+}
+
+.library-artwork.placeholder {
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+.library-limitation {
+  color: var(--warning);
+}
+
 .playlist-row,
 .track-row,
 .progress-row {

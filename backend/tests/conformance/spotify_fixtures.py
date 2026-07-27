@@ -31,12 +31,40 @@ def _handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
             return httpx.Response(201, json={"id": "PL_SPOTIFY_CREATED", "name": "Mirror"})
         return httpx.Response(200, json=_load("me_playlists.json"))
+    if path.endswith("/me/albums"):
+        return httpx.Response(200, json=_load("me_albums.json"))
+    if path.endswith("/me/following"):
+        return httpx.Response(200, json=_load("me_following.json"))
+    if path.endswith("/me/library/contains"):
+        return httpx.Response(
+            200,
+            json=[False for _ in request.url.params.get("uris", "").split(",") if _],
+        )
     if path.endswith("/me/library") and request.method == "PUT":
         return httpx.Response(204)
+    if path.endswith("/me/tracks"):
+        return httpx.Response(200, json={"items": [], "total": 0, "next": None})
     if path.endswith("/me"):
         return httpx.Response(200, json={"id": "user1"})
     if path.endswith("/search"):
+        search_type = request.url.params.get("type")
+        if search_type == "album":
+            return httpx.Response(200, json=_load("search_albums.json"))
+        if search_type == "artist":
+            return httpx.Response(200, json=_load("search_artists.json"))
         return httpx.Response(200, json=_load("search_tracks.json"))
+
+    if len(parts) >= 3 and parts[1] == "albums":
+        album_id = parts[2]
+        if album_id == "missing":
+            return httpx.Response(404, json={})
+        return httpx.Response(200, json=_load("album.json"))
+
+    if len(parts) >= 3 and parts[1] == "artists":
+        artist_id = parts[2]
+        if artist_id == "missing":
+            return httpx.Response(404, json={})
+        return httpx.Response(200, json=_load("artist.json"))
 
     if len(parts) >= 3 and parts[1] == "playlists":
         playlist_id = parts[2]
