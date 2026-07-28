@@ -10,7 +10,7 @@ from app.core.migration_state import track_selected
 from app.core.models import Playlist, PlaylistRef
 from app.core.registry import get
 from app.db.repositories import load_fresh_credential
-from app.imports import LOCAL_FILE_PROVIDER
+from app.imports import IMPORT_RECORD_PROVIDERS
 from app.imports.service import (
     LocalImportStateError,
     load_import_for_job,
@@ -90,7 +90,7 @@ async def open_migration_source(
     settings: Settings,
     job_id: str | None = None,
 ) -> MigrationSource:
-    if provider == LOCAL_FILE_PROVIDER:
+    if provider in IMPORT_RECORD_PROVIDERS:
         record = (
             await load_import_for_job(
                 session,
@@ -117,7 +117,7 @@ async def open_migration_source(
         )
         return MigrationSource(
             provider=provider,
-            display_name="Local file",
+            display_name=record.source_label or "Local file",
             local_playlists=playlists,
         )
 

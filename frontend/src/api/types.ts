@@ -176,6 +176,43 @@ export interface PlaylistSelection {
   tracks: Record<string, string[]>;
 }
 
+// --------------------------------------------------------------------------- #
+// Public URL and pasted-text imports (issue #24).
+//
+// These share the same expiring, lease-backed preview lifecycle as local-file
+// imports (see LocalImportPreview above and app.imports.service on the
+// backend), but hold a single playlist rather than a list, since a URL or a
+// block of pasted text always resolves to exactly one playlist.
+// --------------------------------------------------------------------------- #
+export interface SourceImportIssue {
+  line: number | null;
+  code: string;
+  message: string;
+  severity: "warning" | "error";
+  raw: string | null;
+}
+
+export interface SourceImportPreview {
+  id: string;
+  source_kind: string;
+  source_provider: string;
+  source_label: string;
+  source_locator: string;
+  status: string;
+  expires_at: string;
+  playlist: Playlist;
+  issues: SourceImportIssue[];
+  track_count: number;
+  unsupported_count: number;
+}
+
+export interface SourceConnectionRequiredDetail {
+  code: "source_connection_required";
+  message: string;
+  provider: string;
+  action: "connect_source";
+}
+
 export interface Album {
   id: string | null;
   title: string;

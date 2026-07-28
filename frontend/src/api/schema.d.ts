@@ -140,6 +140,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/text-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Text Import */
+        post: operations["preview_text_import_api_imports_text_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/url-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Url Import */
+        post: operations["preview_url_import_api_imports_url_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/{import_id}": {
         parameters: {
             query?: never;
@@ -2085,6 +2119,73 @@ export interface components {
             /** Unsupported Reason */
             unsupported_reason?: string | null;
         };
+        /** SourceConnectionRequiredDetail */
+        SourceConnectionRequiredDetail: {
+            /**
+             * Action
+             * @default connect_source
+             * @constant
+             */
+            action: "connect_source";
+            /**
+             * Code
+             * @default source_connection_required
+             * @constant
+             */
+            code: "source_connection_required";
+            /** Message */
+            message: string;
+            /** Provider */
+            provider: string;
+        };
+        /** SourceConnectionRequiredResponse */
+        SourceConnectionRequiredResponse: {
+            detail: components["schemas"]["SourceConnectionRequiredDetail"];
+        };
+        /** SourceImportIssue */
+        SourceImportIssue: {
+            /** Code */
+            code: string;
+            /** Line */
+            line?: number | null;
+            /** Message */
+            message: string;
+            /** Raw */
+            raw?: string | null;
+            /**
+             * Severity
+             * @default warning
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
+        /** SourceImportPreview */
+        SourceImportPreview: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+            /** Issues */
+            issues?: components["schemas"]["SourceImportIssue"][];
+            playlist: components["schemas"]["Playlist"];
+            /** Source Kind */
+            source_kind: string;
+            /** Source Label */
+            source_label: string;
+            /** Source Locator */
+            source_locator: string;
+            /** Source Provider */
+            source_provider: string;
+            /** Status */
+            status: string;
+            /** Track Count */
+            track_count: number;
+            /** Unsupported Count */
+            unsupported_count: number;
+        };
         /** StatusCounts */
         StatusCounts: {
             /**
@@ -2216,6 +2317,13 @@ export interface components {
             /** Trigger */
             trigger: string;
         };
+        /** TextImportPreviewRequest */
+        TextImportPreviewRequest: {
+            /** Name */
+            name?: string | null;
+            /** Text */
+            text: string;
+        };
         /**
          * Track
          * @description A single playlist item in universal form.
@@ -2317,6 +2425,13 @@ export interface components {
             mode?: ("add_only" | "mirror") | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /** UrlImportPreviewRequest */
+        UrlImportPreviewRequest: {
+            /** Source Account Id */
+            source_account_id?: string | null;
+            /** Url */
+            url: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2641,6 +2756,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_text_import_api_imports_text_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceImportPreview"];
+                };
+            };
+            /** @description The pasted text did not contain any valid tracks. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The pasted text exceeds a configured import limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_url_import_api_imports_url_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UrlImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceImportPreview"];
+                };
+            };
+            /** @description Unsupported or unsafe playlist URL. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The connected source account's credentials expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The playlist is not accessible. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The playlist could not be found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Connect a source account to read this playlist URL. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceConnectionRequiredResponse"];
+                };
+            };
+            /** @description The playlist exceeds a configured import limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

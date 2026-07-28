@@ -100,6 +100,17 @@ class Settings(BaseSettings):
     local_import_queued_retention_s: int = Field(default=7200, gt=0)
     local_import_failed_retention_s: int = Field(default=900, gt=0)
 
+    # Public URL and pasted-text imports
+    import_max_text_bytes: int = 262_144
+    import_max_items: int = 1000
+    import_max_line_chars: int = 2000
+    import_max_field_chars: int = 500
+    import_max_url_chars: int = 2048
+    import_max_response_bytes: int = 2_000_000
+    import_max_redirects: int = 3
+    import_http_timeout_s: float = 10.0
+    import_open_playlist_hosts: str = ""
+
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
@@ -125,6 +136,18 @@ class Settings(BaseSettings):
     def allow_header_paste(self) -> bool:
         """Pasting provider session headers/cookies is only safe when self-hosted."""
         return not self.is_hosted
+
+    @property
+    def open_playlist_import_hosts(self) -> set[str]:
+        hosts = {
+            host.strip().lower().rstrip(".")
+            for host in self.import_open_playlist_hosts.split(",")
+            if host.strip()
+        }
+        public_url = urlsplit(self.public_base_url_normalized)
+        if public_url.scheme == "https" and public_url.hostname:
+            hosts.add(public_url.hostname.lower().rstrip("."))
+        return hosts
 
     @property
     def local_import_limits(self) -> ImportLimits:

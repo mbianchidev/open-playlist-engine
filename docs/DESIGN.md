@@ -75,8 +75,8 @@ created.
 
 | Phase | Step | Component |
 |---|---|---|
-| 0 | Get access to **source** | Backend auth, or bounded local-file upload |
-| 1 | **Import**: fetch playlists, tracks, saved albums, and artists; local files provide playlists/tracks only | Source adapter or local parser → universal model |
+| 0 | Get access to **source**, only when required | Backend auth or bounded import preview |
+| 1 | **Import**: fetch playlists/tracks/albums/artists, upload a local file, resolve a public URL, or parse pasted text | Source adapter or import resolver/parser → universal model |
 | 2 | UI: select supported playlists, songs, albums, and artists | Frontend selection tree |
 | 2.5 | Optional portable export of provider-backed playlist selections | Export service |
 | 3 | Get access to **target** | Backend auth |
@@ -84,6 +84,31 @@ created.
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
 | 4 | **Write**: create playlists and add tracks, idempotently | arq job + operation ledger |
 | 5 | UI shows live progress | Frontend SSE progress board |
+
+### Public URL and pasted-text sources
+
+`POST /api/imports/url-preview` and `POST /api/imports/text-preview` normalize
+external sources before a migration exists; the binary
+`POST /api/imports/preview` route remains dedicated to local playlist files.
+Provider URLs pass through an exact host/path resolver registry and delegate public
+reads to adapter hooks. YouTube Music supports an unauthenticated public client and
+Apple Music uses the configured catalog developer token. Spotify and TIDAL reuse
+owner-bound authenticated reads and return a structured source-connection action
+when no matching account exists. Open Playlist Engine `/share/{token}` links fetch
+only their bounded `/api/public/shares/{token}` snapshot JSON.
+
+Text parsing is deterministic and bounded: comments/blanks are ignored, common
+`artist - title` and tabular forms are recognized, duplicates and Unicode are
+preserved, and malformed rows produce line-level issues without discarding valid
+neighbors.
+
+Local files, public URLs, and pasted text share the private, lease-backed
+`local_playlist_import` table. Each ready preview is owner-scoped; migration
+creation atomically queues the real import record ID as `source_account_id`, and
+the worker renews the lease while loading the exact normalized snapshot. Queue
+delays, retries, or later source changes therefore cannot change the selected
+playlist. After that source seam, imported tracks use the unchanged matching,
+review, progress, duplicate, and write paths.
 
 ### Safe migration defaults
 Spotify → YouTube Music conversion is deliberately boring and slow by default:
@@ -538,6 +563,14 @@ generated OpenAPI client.
 - Separate the PII-free global graph from private user data and per-account overlays.
 - Unofficial adapters: pace + jitter; surface "may break / ToS-grey" warnings.
 - Header-paste auth disabled in hosted mode; plugin allow-list in hosted mode.
+- Public import URLs require HTTPS, exact allowed hosts and paths, no embedded
+  credentials or non-default ports, bounded length, and no IP-literal host.
+- Open Playlist Engine remote JSON uses a pinned-address HTTPS client: every DNS
+  answer must be globally routable, redirects stay on configured hosts, localhost/
+  private/link-local/reserved destinations are rejected, compression is disabled,
+  and redirect, timeout, header, and response-byte caps are enforced.
+- Provider web pages are never scraped; unsupported hosts fail before any network
+  request, and provider authentication/access controls are not bypassed.
 
 ---
 
@@ -557,6 +590,7 @@ generated OpenAPI client.
 | Duplicate playlist false positive | suggestions require normalized name + owner compatibility + ≥50% overlap and are never auto-selected |
 | Provider API/ToS changes | capability descriptors + conformance suite catch regressions |
 | Lossy migrations | fidelity contract + per-job lossy report (`unsupported_reason`) |
+| URL import SSRF or DNS rebinding | exact host registry, public-address validation, pinned TLS socket, redirect/size/time limits |
 
 ---
 

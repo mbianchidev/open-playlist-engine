@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import BinaryIO
 
@@ -11,17 +11,52 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.migration_state import track_selected
 from app.core.models import Playlist
+from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_sessionmaker
+from app.imports import LOCAL_FILE_PROVIDER, PASTED_TEXT_PROVIDER, PUBLIC_URL_PROVIDER
+from app.imports.external import (
+    ExternalImportResult,
+    ImportContentError,
+    SourceConnectionRequired,
+    resolve_text_import,
+    resolve_url_import,
+)
 from app.imports.models import (
+    ImportFormat,
     ImportIssue,
     ImportLimits,
     ImportParseResult,
     LocalImportPreview,
+    SourceImportIssue,
+    SourceImportPreview,
 )
 from app.imports.parsers import ImportLimitExceeded
 from app.imports.registry import sanitize_filename
 from app.settings import Settings
+
+__all__ = [
+    "ImportContentError",
+    "LocalImportExpired",
+    "LocalImportNotFound",
+    "LocalImportStateError",
+    "SourceConnectionRequired",
+    "cleanup_expired_imports",
+    "cleanup_local_imports",
+    "create_import",
+    "create_text_import",
+    "create_url_import",
+    "delete_import_for_job",
+    "discard_import",
+    "load_import_for_job",
+    "load_preview_import",
+    "mark_import_failed",
+    "preview_from_record",
+    "queue_import",
+    "selected_import_playlists",
+    "source_preview_from_record",
+    "spool_upload",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +131,106 @@ async def create_import(
         malformed_count=result.malformed_count,
         unsupported_count=result.unsupported_count,
         expires_at=created_at + timedelta(seconds=settings.local_import_retention_s),
+        source_kind=LOCAL_FILE_PROVIDER,
     )
     session.add(record)
     await session.flush()
     return record
+
+
+async def create_source_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    source_kind: str,
+    result: ExternalImportResult,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    """Persist a resolved public URL/pasted-text playlist as a LocalPlaylistImport.
+
+    Reuses the same ephemeral lease-backed table and required local-file
+    columns as ``create_import`` (populated with synthetic values, since
+    there is no uploaded file) so the rest of the migration pipeline --
+    queueing, worker claims, retention cleanup -- can treat every import
+    record uniformly regardless of its source.
+    """
+    created_at = now or datetime.now(UTC)
+    playlist = result.playlist
+    unsupported_count = sum(not track.is_migratable for track in playlist.tracks)
+    record = orm.LocalPlaylistImport(
+        user_id=user_id,
+        filename=sanitize_filename(f"{result.source_label}.json"),
+        detected_format=ImportFormat.JSON.value,
+        encoding="utf-8",
+        file_size=len(playlist.model_dump_json().encode("utf-8")),
+        status="ready",
+        playlists=[playlist.model_dump(mode="json", exclude_none=False)],
+        issues=[issue.model_dump(mode="json", exclude_none=False) for issue in result.issues],
+        limits=settings.local_import_limits.model_dump(mode="json"),
+        playlist_count=1,
+        track_count=len(playlist.tracks),
+        duplicate_count=0,
+        malformed_count=0,
+        unsupported_count=unsupported_count,
+        expires_at=created_at + timedelta(seconds=settings.local_import_retention_s),
+        source_kind=source_kind,
+        source_provider=result.source_provider,
+        source_label=result.source_label,
+        source_locator=result.source_locator,
+        source_fingerprint=result.source_fingerprint,
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def create_url_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    url: str,
+    source_account_id: str | None,
+    settings: Settings,
+    adapter_getter: Callable[[str], object] = get,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    result = await resolve_url_import(
+        session,
+        user_id=user_id,
+        url=url,
+        source_account_id=source_account_id,
+        settings=settings,
+        adapter_getter=adapter_getter,
+    )
+    return await create_source_import(
+        session,
+        user_id=user_id,
+        source_kind=PUBLIC_URL_PROVIDER,
+        result=result,
+        settings=settings,
+        now=now,
+    )
+
+
+async def create_text_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    text: str,
+    name: str | None,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    result = await resolve_text_import(text, name=name, settings=settings)
+    return await create_source_import(
+        session,
+        user_id=user_id,
+        source_kind=PASTED_TEXT_PROVIDER,
+        result=result,
+        settings=settings,
+        now=now,
+    )
 
 
 async def load_preview_import(
@@ -357,6 +488,24 @@ def preview_from_record(record: orm.LocalPlaylistImport) -> LocalImportPreview:
         malformed_count=record.malformed_count,
         unsupported_count=record.unsupported_count,
         limits=ImportLimits.model_validate(record.limits or {}),
+    )
+
+
+def source_preview_from_record(record: orm.LocalPlaylistImport) -> SourceImportPreview:
+    playlists = [Playlist.model_validate(value) for value in record.playlists or []]
+    playlist = playlists[0] if playlists else Playlist(name=record.filename, tracks=[])
+    return SourceImportPreview(
+        id=record.id,
+        source_kind=record.source_kind,
+        source_provider=record.source_provider or "",
+        source_label=record.source_label or "",
+        source_locator=record.source_locator or "",
+        status=record.status,
+        expires_at=_as_utc(record.expires_at),
+        playlist=playlist,
+        issues=[SourceImportIssue.model_validate(value) for value in record.issues or []],
+        track_count=len(playlist.tracks),
+        unsupported_count=record.unsupported_count,
     )
 
 

@@ -93,7 +93,8 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_MIGRATION_HISTORY_RETENTION_DAYS`. Public playlist sharing additionally uses
 `OPE_PUBLIC_BASE_URL` and `OPE_OWNER_ACCESS_TOKEN`; it remains disabled while the
 public URL is empty. Local imports use the `OPE_LOCAL_IMPORT_*` size, item-count,
-spool, lease, and retention controls.
+spool, lease, and retention controls. Public URL and pasted-text previews use the
+`OPE_IMPORT_*` input, network, redirect, and host-allowlist limits.
 Self-host mode resolves the migration owner server-side as the local user. Hosted
 mode fails closed until a real user-authentication dependency is configured; it
 does not accept a caller-provided user ID.
@@ -239,6 +240,49 @@ albums or artists into synthetic playlists.
    timezone; then run now, pause/resume, edit, delete or inspect the latest result.
    Rules and checkpoints survive restarts. A rule waits when tracks need review
    and resumes its schedule after those items are resolved.
+
+## Import public playlist URLs and pasted text
+
+The source selector also accepts a public playlist URL or a pasted track list. A
+preview is normalized into the same universal `Playlist` model, saved as a private
+per-user snapshot, and then sent through the existing selection, matching, review,
+progress, and write pipeline.
+
+Supported URL shapes:
+
+| Source | Accepted shape | Source access |
+|---|---|---|
+| Spotify | `https://open.spotify.com/playlist/{id}` and locale-prefixed `/intl-xx/playlist/{id}` | A connected Spotify source account is required. Spotify may still block playlists the account does not own or collaborate on. |
+| YouTube Music | `https://music.youtube.com/playlist?list={id}` and the equivalent `youtube.com` playlist URL | Public playlists use an unauthenticated reader. Private/unavailable lists ask for a YouTube Music connection. |
+| Apple Music | `https://music.apple.com/{storefront}/playlist/{slug}/{id}` | Uses the configured MusicKit developer token; a Music User Token is not required for public catalog playlists. |
+| TIDAL | `https://tidal.com/browse/playlist/{uuid}`, `https://listen.tidal.com/browse/playlist/{uuid}`, or `/playlist/{uuid}` | A connected TIDAL source account is required. |
+| Open Playlist Engine | `https://{allowed-host}/share/{token}` | Host must be listed in `OPE_IMPORT_OPEN_PLAYLIST_HOSTS`, or be the public HTTPS `OPE_PUBLIC_BASE_URL` host. |
+
+Pasted text accepts blank lines, `#` comments, Unicode, and duplicates. Supported
+rows are:
+
+```text
+Artist - Title
+Artist<TAB>Title<TAB>Album<TAB>ISRC
+artist<TAB>title<TAB>album<TAB>isrc
+Title without an artist
+```
+
+Headered tabular input may use tabs, commas, semicolons, or pipes. Missing titles
+and overlong rows are reported as line-level errors and skipped; title-only rows
+remain selectable with a missing-artist warning.
+
+Default limits are 256 KiB of text, 1,000 items, 2,000 characters per row, 500
+characters per field, 2,048 characters per URL, three redirects, a 2 MB remote
+response, and a 10-second remote request timeout. Configure them with the
+`OPE_IMPORT_*` settings in `.env.example`.
+
+URL imports never scrape arbitrary pages. Provider links are parsed locally against
+exact HTTPS host/path allowlists. Open Playlist Engine JSON fetches reject URL
+credentials, non-default ports, IP-literal hosts, localhost, private/link-local/
+reserved DNS answers, redirects outside the allowlist, compressed bodies, excess
+redirects, and oversized responses. DNS is validated immediately before connecting
+and the HTTPS socket is pinned to the validated public address.
 
 Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).

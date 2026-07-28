@@ -30,6 +30,8 @@ import {
   getPlaylists,
   getProviders,
   preflightMigration,
+  previewTextImport,
+  previewUrlImport,
   testAccountConnection,
   uploadPlaylistFile,
 } from "./api/client";
@@ -46,9 +48,12 @@ import type {
   Playlist,
   PlaylistRef,
   ProviderView,
+  SourceConnectionRequiredDetail,
+  SourceImportPreview,
   Track,
 } from "./api/types";
 import LocalFileImportPanel from "./components/LocalFileImportPanel";
+import SourceImportPanel from "./components/SourceImportPanel";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ExportControls from "./components/ExportControls";
 import PlaylistOrganizer from "./components/PlaylistOrganizer";
@@ -60,6 +65,17 @@ import ShareManager from "./components/ShareManager";
 import { providerLabel } from "./utils/providers";
 
 const LOCAL_FILE_PROVIDER = "local_file";
+const PUBLIC_URL_PROVIDER = "public_url";
+const PASTED_TEXT_PROVIDER = "pasted_text";
+const IMPORT_SOURCE_PROVIDERS = new Set([
+  LOCAL_FILE_PROVIDER,
+  PUBLIC_URL_PROVIDER,
+  PASTED_TEXT_PROVIDER,
+]);
+
+function isImportSource(provider: string | null): boolean {
+  return provider !== null && IMPORT_SOURCE_PROVIDERS.has(provider);
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("migration");
@@ -91,6 +107,11 @@ export default function App() {
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [localImport, setLocalImport] = useState<LocalImportPreview | null>(null);
+  const [sourceImport, setSourceImport] = useState<SourceImportPreview | null>(null);
+  const [sourceImportUrl, setSourceImportUrl] = useState("");
+  const [sourceImportText, setSourceImportText] = useState("");
+  const [sourceImportName, setSourceImportName] = useState("");
+  const [sourceRequiredProvider, setSourceRequiredProvider] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
   const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
@@ -98,6 +119,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
   const localUploadId = useRef(0);
+  const sourceImportRequestId = useRef(0);
   const playlistLoadId = useRef(0);
   const libraryLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
@@ -108,12 +130,26 @@ export default function App() {
   const sharingTabRef = useRef<HTMLButtonElement>(null);
 
   const isLocalSource = source === LOCAL_FILE_PROVIDER;
-  const sourceAccount = isLocalSource
+  const isUrlSource = source === PUBLIC_URL_PROVIDER;
+  const isTextSource = source === PASTED_TEXT_PROVIDER;
+  const isRecordImportSource = isImportSource(source);
+  const sourceAccount = isRecordImportSource
     ? null
     : accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
-  const sourceAccountId = isLocalSource ? localImport?.id ?? null : sourceAccount?.id ?? null;
-  const sourceReady = isLocalSource ? Boolean(localImport) : Boolean(sourceAccount);
+  const sourceRequiredAccount = sourceRequiredProvider
+    ? accounts.find((a) => a.provider === sourceRequiredProvider) ?? null
+    : null;
+  const sourceAccountId = isLocalSource
+    ? localImport?.id ?? null
+    : isUrlSource || isTextSource
+      ? sourceImport?.id ?? null
+      : sourceAccount?.id ?? null;
+  const sourceReady = isLocalSource
+    ? Boolean(localImport)
+    : isUrlSource || isTextSource
+      ? Boolean(sourceImport)
+      : Boolean(sourceAccount);
   const blockedSpotifyPlaylists = playlists.filter((playlist) =>
     isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
   );
@@ -161,11 +197,11 @@ export default function App() {
     selectedPlaylists.has(playlist.id),
   ).length;
   const selectableAlbumCount =
-    isLocalSource || library?.saved_albums.target_limitation
+    isRecordImportSource || library?.saved_albums.target_limitation
       ? 0
       : (library?.saved_albums.items.length ?? 0);
   const selectableArtistCount =
-    isLocalSource || library?.followed_artists.target_limitation
+    isRecordImportSource || library?.followed_artists.target_limitation
       ? 0
       : (library?.followed_artists.items.length ?? 0);
   const selectableItemCount =
@@ -182,7 +218,7 @@ export default function App() {
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
-      if (source === LOCAL_FILE_PROVIDER) {
+      if (isImportSource(source)) {
         setPlaylistLoading(false);
         return;
       }
@@ -228,7 +264,7 @@ export default function App() {
   );
 
   const refreshSourceLibrary = useCallback(async () => {
-    if (source === LOCAL_FILE_PROVIDER || !source || !sourceAccount || !target || !targetAccount) {
+    if (isImportSource(source) || !source || !sourceAccount || !target || !targetAccount) {
       setLibraryLoading(false);
       return;
     }
@@ -328,7 +364,7 @@ export default function App() {
   useEffect(() => {
     playlistLoadId.current += 1;
     libraryLoadId.current += 1;
-    if (source === LOCAL_FILE_PROVIDER) {
+    if (isImportSource(source)) {
       setPlaylistError(null);
       setPlaylistLoading(false);
       setLibrary(null);
@@ -336,7 +372,8 @@ export default function App() {
       setLibraryLoading(false);
       setSelectedAlbums(new Set());
       setSelectedArtists(new Set());
-      if (!localImport) {
+      const activePreview = isLocalSource ? localImport : sourceImport;
+      if (!activePreview) {
         setPlaylists([]);
         setSelectedPlaylists(new Set());
         setExpandedPlaylists(new Set());
@@ -358,7 +395,7 @@ export default function App() {
     setLibraryError(null);
     void refreshSourcePlaylists({ resetSelection: true });
     void refreshSourceLibrary();
-  }, [refreshSourceLibrary, refreshSourcePlaylists, source, localImport]);
+  }, [refreshSourceLibrary, refreshSourcePlaylists, source, localImport, sourceImport, isLocalSource]);
 
   useEffect(() => {
     if (!blockingAlert) return;
@@ -388,6 +425,9 @@ export default function App() {
 
   async function chooseSource(provider: string) {
     if (provider !== LOCAL_FILE_PROVIDER) localUploadId.current += 1;
+    if (provider !== PUBLIC_URL_PROVIDER && provider !== PASTED_TEXT_PROVIDER) {
+      sourceImportRequestId.current += 1;
+    }
     if (source === LOCAL_FILE_PROVIDER && provider !== LOCAL_FILE_PROVIDER && localImport) {
       try {
         await discardPlaylistImport(localImport.id);
@@ -395,6 +435,14 @@ export default function App() {
         setError(`Could not discard the previous local preview: ${errorMessage(e)}`);
       }
       clearLocalImportPreview();
+    }
+    if ((isUrlSource || isTextSource) && provider !== source && sourceImport) {
+      try {
+        await discardPlaylistImport(sourceImport.id);
+      } catch (e: unknown) {
+        setError(`Could not discard the previous preview: ${errorMessage(e)}`);
+      }
+      clearSourceImportPreview();
     }
     setSource(provider);
   }
@@ -460,13 +508,30 @@ export default function App() {
         .filter((playlist): playlist is Playlist & { id: string } => Boolean(playlist.id))
         .map((playlist) => [playlist.id, playlist.tracks]),
     );
+    setLocalImport(preview);
+    applyImportedPlaylists(refs, tracks);
+  }
+
+  function clearLocalImportPreview() {
+    setLocalImport(null);
+    setPlaylists([]);
+    setSelectedPlaylists(new Set());
+    setExpandedPlaylists(new Set());
+    setPlaylistTracks({});
+    setSelectedTracks({});
+    setPlaylistError(null);
+  }
+
+  // Shared with applyLocalImportPreview: both local-file and URL/text imports
+  // arrive fully loaded (no per-playlist fetch), so the ref list, track cache,
+  // and default selection are built the same way regardless of source.
+  function applyImportedPlaylists(refs: PlaylistRef[], tracks: Record<string, Track[]>) {
     const trackSelections = Object.fromEntries(
       Object.entries(tracks).map(([playlistId, playlistItems]) => [
         playlistId,
         new Set(unmigratedTrackKeys(playlistItems)),
       ]),
     );
-    setLocalImport(preview);
     setPlaylists(refs);
     setPlaylistTracks(tracks);
     setSelectedTracks(trackSelections);
@@ -481,8 +546,100 @@ export default function App() {
     setPlaylistError(null);
   }
 
-  function clearLocalImportPreview() {
-    setLocalImport(null);
+  async function previewSourceImport() {
+    if (!isUrlSource && !isTextSource) return;
+    if (isUrlSource && !sourceImportUrl.trim()) {
+      setError("Paste a public playlist URL first.");
+      return;
+    }
+    if (isTextSource && !sourceImportText.trim()) {
+      setError("Paste at least one track first.");
+      return;
+    }
+    const requestId = sourceImportRequestId.current + 1;
+    sourceImportRequestId.current = requestId;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const previousImportId = sourceImport?.id;
+      const connectedAccount = sourceRequiredProvider
+        ? accounts.find((account) => account.provider === sourceRequiredProvider)
+        : null;
+      let preview: SourceImportPreview;
+      try {
+        preview = isUrlSource
+          ? await previewUrlImport({
+              url: sourceImportUrl.trim(),
+              source_account_id: connectedAccount?.id ?? null,
+            })
+          : await previewTextImport({
+              text: sourceImportText,
+              name: sourceImportName.trim() || null,
+            });
+      } catch (e: unknown) {
+        const required = sourceConnectionRequiredDetail(e);
+        if (required) setSourceRequiredProvider(required.provider);
+        throw e;
+      }
+      if (requestId !== sourceImportRequestId.current) {
+        try {
+          await discardPlaylistImport(preview.id);
+        } catch (e: unknown) {
+          setError(`Stale preview will expire automatically: ${errorMessage(e)}`);
+        }
+        return;
+      }
+      let replacementNotice: string | null = null;
+      if (previousImportId && previousImportId !== preview.id) {
+        try {
+          await discardPlaylistImport(previousImportId);
+        } catch (e: unknown) {
+          replacementNotice = `Previous preview will expire automatically: ${errorMessage(e)}`;
+        }
+      }
+      setSourceRequiredProvider(null);
+      applySourceImportPreview(preview);
+      const issueCount = preview.issues.length;
+      setNotice(
+        replacementNotice ??
+          `Previewed ${preview.track_count} tracks${
+            issueCount
+              ? ` with ${issueCount} parsing or compatibility warning${issueCount === 1 ? "" : "s"}`
+              : ""
+          }.`,
+      );
+    } catch (e: unknown) {
+      showAppError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discardSourceImport() {
+    if (!sourceImport) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await discardPlaylistImport(sourceImport.id);
+      clearSourceImportPreview();
+      setNotice("Playlist preview discarded.");
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applySourceImportPreview(preview: SourceImportPreview) {
+    const ref = sourceImportPlaylistRef(preview);
+    setSourceImport(preview);
+    applyImportedPlaylists([ref], { [ref.id]: preview.playlist.tracks });
+  }
+
+  function clearSourceImportPreview() {
+    setSourceImport(null);
+    setSourceRequiredProvider(null);
     setPlaylists([]);
     setSelectedPlaylists(new Set());
     setExpandedPlaylists(new Set());
@@ -491,10 +648,41 @@ export default function App() {
     setPlaylistError(null);
   }
 
+  // Editing the URL/text/name fields invalidates any preview built from the
+  // previous input so "Start migration" disappears until the user previews
+  // again; the stale record is discarded best-effort (it also self-expires).
+  function invalidateSourceImportPreview() {
+    if (!sourceImport && !sourceRequiredProvider) return;
+    const staleId = sourceImport?.id;
+    sourceImportRequestId.current += 1;
+    clearSourceImportPreview();
+    if (staleId) {
+      void discardPlaylistImport(staleId).catch((e: unknown) => {
+        setNotice(`Previous preview will expire automatically: ${errorMessage(e)}`);
+      });
+    }
+  }
+
+  function updateSourceImportUrl(value: string) {
+    setSourceImportUrl(value);
+    invalidateSourceImportPreview();
+  }
+
+  function updateSourceImportText(value: string) {
+    setSourceImportText(value);
+    invalidateSourceImportPreview();
+  }
+
+  function updateSourceImportName(value: string) {
+    setSourceImportName(value);
+    invalidateSourceImportPreview();
+  }
+
   function migrationCreated(id: string, playlistIds: string[]) {
     setJobId(id);
     setStatsRefreshKey((value) => value + 1);
     if (isLocalSource) clearLocalImportPreview();
+    else if (isUrlSource || isTextSource) clearSourceImportPreview();
     else deselectStartedPlaylists(playlistIds);
     setSelectedAlbums(new Set());
     setSelectedArtists(new Set());
@@ -817,17 +1005,17 @@ export default function App() {
       }
       return next;
     });
-    if (!isLocalSource && !library?.saved_albums.target_limitation) {
+    if (!isRecordImportSource && !library?.saved_albums.target_limitation) {
       setSelectedAlbums(new Set(library?.saved_albums.items.map(albumKey) ?? []));
     }
-    if (!isLocalSource && !library?.followed_artists.target_limitation) {
+    if (!isRecordImportSource && !library?.followed_artists.target_limitation) {
       setSelectedArtists(new Set(library?.followed_artists.items.map(artistKey) ?? []));
     }
   }
 
   function deselectAllPlaylists() {
     setSelectedPlaylists(new Set());
-    if (!isLocalSource) {
+    if (!isRecordImportSource) {
       setPlaylistTracks({});
       setExpandedPlaylists(new Set());
     }
@@ -871,7 +1059,7 @@ export default function App() {
   }
 
   async function loadTracks(playlist: PlaylistRef, options: { forceRefresh?: boolean } = {}) {
-    if (isLocalSource) return;
+    if (isRecordImportSource) return;
     if (!source || !sourceAccount) return;
     setBusy(true);
     setError(null);
@@ -975,7 +1163,7 @@ export default function App() {
       next.delete(playlistId);
       return next;
     });
-    if (!isLocalSource) {
+    if (!isRecordImportSource) {
       setPlaylistTracks((prev) => {
         const next = { ...prev };
         delete next[playlistId];
@@ -1029,7 +1217,7 @@ export default function App() {
             {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
           </span>
         </label>
-        {selectedPlaylists.has(playlist.id) && !isLocalSource ? (
+        {selectedPlaylists.has(playlist.id) && !isRecordImportSource ? (
           <button
             className="secondary compact"
             disabled={busy}
@@ -1066,7 +1254,7 @@ export default function App() {
               >
                 Deselect playlist
               </button>
-              {!isLocalSource ? (
+              {!isRecordImportSource ? (
                 <button
                   className="secondary compact"
                   disabled={busy}
@@ -1403,7 +1591,9 @@ export default function App() {
                   <p className="muted">
                     {isLocalSource
                       ? "Validate the source file and authorize the target service."
-                      : "Connect a source to export; connect both services to migrate."}
+                      : isUrlSource || isTextSource
+                        ? "Preview the playlist and authorize the target service."
+                        : "Connect a source to export; connect both services to migrate."}
                   </p>
                 </div>
               </div>
@@ -1415,6 +1605,24 @@ export default function App() {
                   busy={busy}
                   onUpload={(file) => void importLocalFile(file)}
                   onDiscard={() => void discardLocalImport()}
+                />
+              ) : isUrlSource || isTextSource ? (
+                <SourceImportPanel
+                  provider={source as "public_url" | "pasted_text"}
+                  preview={sourceImport}
+                  busy={busy}
+                  url={sourceImportUrl}
+                  text={sourceImportText}
+                  name={sourceImportName}
+                  onUrlChange={updateSourceImportUrl}
+                  onTextChange={updateSourceImportText}
+                  onNameChange={updateSourceImportName}
+                  onPreview={() => void previewSourceImport()}
+                  onDiscard={() => void discardSourceImport()}
+                  requiredProvider={sourceRequiredProvider}
+                  requiredAccount={sourceRequiredAccount}
+                  onConnect={connect}
+                  onTestConnection={testConnection}
                 />
               ) : (
                 <AccountPanel
@@ -1609,7 +1817,7 @@ export default function App() {
               <div>
               <h2>Pick music to migrate</h2>
               <p className="muted">
-                {isLocalSource
+                {isRecordImportSource
                   ? `${selectedMigrationPlaylistIds.length} of ${selectableCandidatePlaylists.length} migratable playlists selected`
                   : `${selectedItemCount} items selected across playlists, albums, and artists`}
               </p>
@@ -1635,7 +1843,7 @@ export default function App() {
               >
                 Deselect all
               </button>
-              {!isLocalSource ? (
+              {!isRecordImportSource ? (
                 <>
                   <button
                     className="secondary compact"
@@ -1662,6 +1870,8 @@ export default function App() {
           <p className="cache-guidance">
             {isLocalSource
               ? "This preview preserves file order and metadata. Unsupported local audio entries remain visible but are not selected for migration."
+              : isUrlSource || isTextSource
+                ? "This preview preserves source order and metadata. Unsupported or duplicate entries remain visible but are not selected for migration."
               : "Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only for new playlists or changed snapshots; songs are cached per playlist until Spotify reports a new snapshot."}
           </p>
           <div className="migration-top-stack">
@@ -1712,7 +1922,7 @@ export default function App() {
               </div>
             ) : null}
           </div>
-          {!isLocalSource ? (
+          {!isRecordImportSource ? (
           <div className="library-selection-grid">
             <section className="library-collection" aria-labelledby="saved-albums-heading">
               <div className="library-collection-heading">
@@ -1772,7 +1982,7 @@ export default function App() {
             </section>
           </div>
           ) : null}
-          {!isLocalSource && libraryError ? (
+          {!isRecordImportSource && libraryError ? (
             <p className="empty-guidance error-guidance">{libraryError}</p>
           ) : null}
           {playlistError && playlistErrorTitle ? (
@@ -1858,7 +2068,7 @@ export default function App() {
           )}
             </section>
           ) : null}
-          {jobId && isLocalSource && !sourceReady ? (
+          {jobId && isRecordImportSource && !sourceReady ? (
             <ProgressBoard
               className="progress-popover flow local-import-progress"
               jobId={jobId}
@@ -1944,6 +2154,10 @@ function playlistRefFromImport(playlist: Playlist): PlaylistRef {
   };
 }
 
+function sourceImportPlaylistRef(preview: SourceImportPreview): PlaylistRef {
+  return playlistRefFromImport(preview.playlist);
+}
+
 function getSelectedMigrationPlaylistIds(
   selectedPlaylists: Set<string>,
   playlistTracks: Record<string, Track[]>,
@@ -2024,6 +2238,16 @@ function isMigrationWarning(error: unknown): error is ApiError & { detail: Migra
   if (!error.detail || typeof error.detail !== "object") return false;
   const detail = error.detail as Partial<MigrationWarningsView>;
   return detail.code === "migration_warnings" && Array.isArray(detail.warnings);
+}
+
+function sourceConnectionRequiredDetail(error: unknown): SourceConnectionRequiredDetail | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  if (!error.detail || typeof error.detail !== "object") return null;
+  const detail = error.detail as Partial<SourceConnectionRequiredDetail>;
+  if (detail.code !== "source_connection_required" || typeof detail.provider !== "string") {
+    return null;
+  }
+  return detail as SourceConnectionRequiredDetail;
 }
 
 function preflightMessage(detail: MigrationWarningsView): string {

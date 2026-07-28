@@ -41,6 +41,7 @@ from app.core.adapter import (
     ProviderCredential,
     ProviderError,
     ProviderInfo,
+    PublicPlaylistRef,
     RateLimited,
     RemoveItemResult,
     RemoveTracksResult,
@@ -104,6 +105,7 @@ class YTMusicClient(Protocol):
 
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
+PublicClientFactory = Callable[[], YTMusicClient]
 
 _YTMUSIC_SCOPES = (
     "https://www.googleapis.com/auth/youtube",
@@ -157,6 +159,12 @@ def _default_client_factory(cred: ProviderCredential) -> YTMusicClient:
             ),
         )
     return YTMusic(auth)
+
+
+def _default_public_client_factory() -> YTMusicClient:
+    from ytmusicapi import YTMusic
+
+    return YTMusic()
 
 
 def _video_id(uri: str) -> str:
@@ -687,9 +695,15 @@ class YTMusicAdapter:
     )
     auth = YTMusicAuth()
 
-    def __init__(self, *, client_factory: ClientFactory | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        client_factory: ClientFactory | None = None,
+        public_client_factory: PublicClientFactory | None = None,
+    ) -> None:
         # Injecting a factory lets the conformance suite supply an in-memory client.
         self._client_factory = client_factory or _default_client_factory
+        self._public_client_factory = public_client_factory or _default_public_client_factory
 
     def _client(self, cred: ProviderCredential) -> YTMusicClient:
         return self._client_factory(cred)
@@ -754,39 +768,17 @@ class YTMusicAdapter:
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         client = self._client(cred)
         raw = await self._load_playlist(client, ref)
-        if not isinstance(raw, dict):
-            raise ProviderError("YouTube Music playlist response was invalid")
-        if raw.get("error"):
-            raise NotFound(ref.id)
-        raw_tracks = raw.get("tracks")
-        if not isinstance(raw_tracks, list):
-            raise ProviderError("ytmusic playlist response did not include tracks")
-        tracks = [
-            track
-            for position, item in enumerate(raw_tracks)
-            if isinstance(item, dict)
-            for track in [_track_from_video(item, position)]
-            if track is not None
-        ]
-        name = str(raw.get("title") or raw.get("name") or ref.name)
-        owner_id, owner_name = _playlist_owner(raw)
-        owned = raw.get("owned") if isinstance(raw.get("owned"), bool) else ref.is_owned
-        return Playlist(
-            id=ref.id,
-            name=_LIKED_SONGS_NAME
-            if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
-            else name,
-            description=raw.get("description") if isinstance(raw.get("description"), str) else None,
-            tracks=tracks,
-            owner_id=owner_id,
-            owner_name=owner_name,
-            is_owned=owned,
-            is_followed=None if owned is None else not owned,
-            collaborative=isinstance(raw.get("collaborators"), dict),
-            kind=PlaylistKind.LIKED_TRACKS
-            if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
-            else PlaylistKind.STANDARD,
+        return _playlist_from_raw(raw, ref, is_owned_fallback=ref.is_owned)
+
+    async def read_public_playlist(self, ref: PublicPlaylistRef) -> Playlist:
+        raw = await _run_client_call(
+            "read public playlist",
+            lambda: self._public_client_factory().get_playlist(
+                ref.id, limit=ref.max_items + 1
+            ),
+            playlist_id=ref.id,
         )
+        return _playlist_from_raw(raw, PlaylistRef(id=ref.id, name=ref.id))
 
     async def _load_playlist(
         self, client: YTMusicClient, ref: PlaylistRef
@@ -1008,6 +1000,44 @@ class YTMusicAdapter:
             results.append(AddItemResult(uri=uri, ok=True, position=position))
             position += 1
         return results
+
+
+def _playlist_from_raw(
+    raw: Any, ref: PlaylistRef, *, is_owned_fallback: bool | None = None
+) -> Playlist:
+    if not isinstance(raw, dict):
+        raise ProviderError("YouTube Music playlist response was invalid")
+    if raw.get("error"):
+        raise NotFound(ref.id)
+    raw_tracks = raw.get("tracks")
+    if not isinstance(raw_tracks, list):
+        raise ProviderError("ytmusic playlist response did not include tracks")
+    tracks = [
+        track
+        for position, item in enumerate(raw_tracks)
+        if isinstance(item, dict)
+        for track in [_track_from_video(item, position)]
+        if track is not None
+    ]
+    name = str(raw.get("title") or raw.get("name") or ref.name)
+    owner_id, owner_name = _playlist_owner(raw)
+    owned = raw.get("owned") if isinstance(raw.get("owned"), bool) else is_owned_fallback
+    return Playlist(
+        id=ref.id,
+        name=_LIKED_SONGS_NAME
+        if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
+        else name,
+        description=raw.get("description") if isinstance(raw.get("description"), str) else None,
+        tracks=tracks,
+        owner_id=owner_id,
+        owner_name=owner_name,
+        is_owned=owned,
+        is_followed=None if owned is None else not owned,
+        collaborative=isinstance(raw.get("collaborators"), dict),
+        kind=PlaylistKind.LIKED_TRACKS
+        if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
+        else PlaylistKind.STANDARD,
+    )
 
 
 def _build() -> YTMusicAdapter | None:

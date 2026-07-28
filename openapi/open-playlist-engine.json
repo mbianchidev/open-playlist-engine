@@ -3423,6 +3423,162 @@
         "title": "SharedTrack",
         "type": "object"
       },
+      "SourceConnectionRequiredDetail": {
+        "properties": {
+          "action": {
+            "const": "connect_source",
+            "default": "connect_source",
+            "title": "Action",
+            "type": "string"
+          },
+          "code": {
+            "const": "source_connection_required",
+            "default": "source_connection_required",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "provider"
+        ],
+        "title": "SourceConnectionRequiredDetail",
+        "type": "object"
+      },
+      "SourceConnectionRequiredResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/SourceConnectionRequiredDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "SourceConnectionRequiredResponse",
+        "type": "object"
+      },
+      "SourceImportIssue": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw"
+          },
+          "severity": {
+            "default": "warning",
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SourceImportIssue",
+        "type": "object"
+      },
+      "SourceImportPreview": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/SourceImportIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "playlist": {
+            "$ref": "#/components/schemas/Playlist"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_label": {
+            "title": "Source Label",
+            "type": "string"
+          },
+          "source_locator": {
+            "title": "Source Locator",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "track_count": {
+            "title": "Track Count",
+            "type": "integer"
+          },
+          "unsupported_count": {
+            "title": "Unsupported Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_kind",
+          "source_provider",
+          "source_label",
+          "source_locator",
+          "status",
+          "expires_at",
+          "playlist",
+          "track_count",
+          "unsupported_count"
+        ],
+        "title": "SourceImportPreview",
+        "type": "object"
+      },
       "StatusCounts": {
         "properties": {
           "failed": {
@@ -3715,6 +3871,30 @@
           "status"
         ],
         "title": "SyncRunView",
+        "type": "object"
+      },
+      "TextImportPreviewRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextImportPreviewRequest",
         "type": "object"
       },
       "Track": {
@@ -4107,6 +4287,30 @@
           }
         },
         "title": "UpdateSyncRule",
+        "type": "object"
+      },
+      "UrlImportPreviewRequest": {
+        "properties": {
+          "source_account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account Id"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "UrlImportPreviewRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -4702,7 +4906,120 @@
         },
         "summary": "Preview Import",
         "tags": [
-          "local imports"
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/text-preview": {
+      "post": {
+        "operationId": "preview_text_import_api_imports_text_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextImportPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The pasted text did not contain any valid tracks."
+          },
+          "413": {
+            "description": "The pasted text exceeds a configured import limit."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Text Import",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/url-preview": {
+      "post": {
+        "operationId": "preview_url_import_api_imports_url_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrlImportPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Unsupported or unsafe playlist URL."
+          },
+          "401": {
+            "description": "The connected source account's credentials expired."
+          },
+          "403": {
+            "description": "The playlist is not accessible."
+          },
+          "404": {
+            "description": "The playlist could not be found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceConnectionRequiredResponse"
+                }
+              }
+            },
+            "description": "Connect a source account to read this playlist URL."
+          },
+          "413": {
+            "description": "The playlist exceeds a configured import limit."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Url Import",
+        "tags": [
+          "imports"
         ]
       }
     },
@@ -4737,7 +5054,7 @@
         },
         "summary": "Delete Import",
         "tags": [
-          "local imports"
+          "imports"
         ]
       },
       "get": {
@@ -4777,7 +5094,7 @@
         },
         "summary": "Get Import Preview",
         "tags": [
-          "local imports"
+          "imports"
         ]
       }
     },

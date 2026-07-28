@@ -28,19 +28,25 @@ dependencies out of the installed/audited frontend dependency graph.
 
 ## Flow (maps to the phased design)
 1. Pick source/target providers from `/api/providers`, including the built-in
-   local playlist-file source.
-2. Connect provider accounts, or upload and validate a local playlist file.
+   local playlist-file, public playlist URL, and pasted-text sources.
+2. Connect provider accounts, upload and validate a local playlist file, or preview
+   a public URL/pasted-text source.
 3. Load source playlists from `/api/playlists` and saved albums/artists from
    `/api/library`, including target limitations and follow/favorite semantics, or
-   use the normalized preview returned by `/api/imports/preview`.
+   use the normalized preview returned by `/api/imports/preview` (local file),
+   `/api/imports/url-preview` (public URL), or `/api/imports/text-preview`
+   (pasted text).
 4. Without a target account, download selected playlists through `/api/exports` as
    JSON, CSV, TXT, M3U8, or XSPF (provider-backed sources only).
-5. Create a migration with selected playlist, track, album, and artist IDs. The
-   local source remains playlist-only. The preflight confirms per-entity counts;
-   warning popups guard slow defaults, semantic conversions, unsupported file
-   entries, and same-name target playlist conflicts.
+5. Create a migration with selected playlist, track, album, and artist IDs. Import
+   sources (local file, public URL, pasted text) remain playlist-only. The
+   preflight confirms per-entity counts; warning popups guard slow defaults,
+   semantic conversions, unsupported file entries, and same-name target playlist
+   conflicts.
 6. Render live job/item progress from SSE.
 7. Review low-confidence matches by approving a suggested target URI, pasting a
+   replacement URI/video ID, approving all suggested matches, skipping one item, or
+   denying all doubtful items.
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
 8. Create and manage recurring rules from completed full-playlist migrations in the
@@ -75,7 +81,12 @@ Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
 The local-file panel renders detected format/counts, parse findings, duplicates,
 unsupported entries, expiry, and playlist/track selection without exposing a
-server filesystem path.
+server filesystem path. The public URL and pasted-text panels share the same
+preview-then-select pattern: previewing returns a single-playlist snapshot with
+line-level parser warnings and an unsupported-item count, editing the
+URL/name/text invalidates the stale preview, and providers that cannot read a
+URL without a connected account surface a `source_connection_required` action
+that renders only the matching connect panel inline.
 
 ## Visual system
 

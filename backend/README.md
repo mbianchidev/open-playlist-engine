@@ -8,7 +8,9 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/imports/` — bounded local-file streaming, format registry, normalized
-  previews, source loading, and retention cleanup.
+  previews, source loading, and retention cleanup; the same `LocalPlaylistImport`
+  lease lifecycle also backs public-URL resolution (SSRF-safe fetching, share-link
+  resolvers) and pasted-text parsing.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker, import→match→review→write pipeline, persisted sync
   scheduler, local-import cleanup, and durable playlist-organizer jobs.
@@ -52,6 +54,11 @@ Album/artist support is independently structural: implement only the advertised
 | YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | ✅ owned-playlist delete + `setVideoId` song removal; no verified safe unfollow | injected in-memory client (`client_factory`) |
 | Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | read-only; MusicKit lacks delete/remove operations | recorded JSON fixtures via injected `httpx.MockTransport` |
 
+Public URL reads use adapter hooks for unauthenticated YouTube Music playlists and
+Apple Music catalog playlists. Spotify and TIDAL URL imports deliberately require
+the minimum matching source connection rather than scraping or bypassing provider
+access controls.
+
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
 the conformance suite instantiates the adapter classes directly with a seam, so CI
@@ -78,6 +85,19 @@ only normalized Open Playlist JSON with an expiry, and enter the same migration
 worker without a provider credential. Supported formats, CSV aliases, limits,
 retention, and API examples are in
 [`docs/LOCAL_FILE_IMPORTS.md`](../docs/LOCAL_FILE_IMPORTS.md).
+
+Public-URL and pasted-text imports reuse the identical `LocalPlaylistImport`
+table and lease lifecycle: `POST /api/imports/url-preview` and
+`POST /api/imports/text-preview` resolve the source (via the strict SSRF-safe
+fetcher, a provider's public-read adapter hook, or an owner's connected source
+credential as a fallback) and persist one normalized preview snapshot, keyed by
+`source_kind` (`local_file`/`public_url`/`pasted_text`) and an optional
+`source_provider`/`source_label`/`source_locator`/`source_fingerprint`. Migration
+jobs reference the import record's own ID as `source_account_id`, so queueing,
+claiming, failure handling, and cleanup are identical across all three import
+kinds. When a URL points at this deployment's own `/share/{token}` links, the
+public share snapshot is fetched and normalized directly instead of being
+treated as an arbitrary external page — no other scraping is supported.
 
 The worker also runs the playlist sync scheduler at startup and every minute.
 `sync_rule`, `sync_run`, and `sync_checkpoint` persist schedules, active-run leases,

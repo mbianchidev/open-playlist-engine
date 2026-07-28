@@ -65,7 +65,7 @@ from app.db.migration_history import (
 )
 from app.db.repositories import load_fresh_credential
 from app.exports.history import store_playlist_snapshot
-from app.imports import LOCAL_FILE_PROVIDER
+from app.imports import IMPORT_RECORD_PROVIDERS
 from app.imports.service import (
     delete_import_for_job,
     mark_import_failed,
@@ -127,7 +127,7 @@ async def _mark_job_failed(
         retention_days=get_settings().migration_history_retention_days,
     )
     job.error = error
-    if job.source_provider == LOCAL_FILE_PROVIDER:
+    if job.source_provider in IMPORT_RECORD_PROVIDERS:
         await mark_import_failed(
             session,
             import_id=job.source_account_id,
@@ -159,7 +159,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     local_source = None
     source_display_name: str | None = None
     if source_snapshot is None:
-        if job.source_provider == LOCAL_FILE_PROVIDER:
+        if job.source_provider in IMPORT_RECORD_PROVIDERS:
             local_source = await open_migration_source(
                 session,
                 provider=job.source_provider,
@@ -448,7 +448,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         status="done",
         retention_days=get_settings().migration_history_retention_days,
     )
-    if job.source_provider == LOCAL_FILE_PROVIDER:
+    if job.source_provider in IMPORT_RECORD_PROVIDERS:
         await delete_import_for_job(
             session,
             import_id=job.source_account_id,
@@ -557,7 +557,7 @@ async def _create_items(
 ) -> list[tuple[orm.JobItem, Track]]:
     pairs: list[tuple[orm.JobItem, Track]] = []
     existing_items: dict[int, orm.JobItem] = {}
-    if job.source_provider == LOCAL_FILE_PROVIDER:
+    if job.source_provider in IMPORT_RECORD_PROVIDERS:
         existing_items = {
             item.position: item
             for item in (

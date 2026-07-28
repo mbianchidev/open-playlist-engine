@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.core.capabilities import Capability
 from app.core.registry import all_adapters
 from app.core.sync import mirror_unavailable_reason
-from app.imports import LOCAL_FILE_PROVIDER
+from app.imports import LOCAL_FILE_PROVIDER, PASTED_TEXT_PROVIDER, PUBLIC_URL_PROVIDER
 
 router = APIRouter(prefix="/api", tags=["providers"])
 
@@ -66,7 +66,47 @@ async def list_providers() -> list[ProviderView]:
             max_remove_batch=0,
             saved_albums=LibraryCapabilityView(read=False, write=False),
             followed_artists=ArtistCapabilityView(read=False, write=False),
-        )
+        ),
+        ProviderView(
+            name=PUBLIC_URL_PROVIDER,
+            display_name="Public playlist URL",
+            auth_kind="url",
+            official=True,
+            stability="stable",
+            has_isrc=False,
+            can_source=True,
+            can_target=False,
+            can_mirror=False,
+            mirror_unavailable_reason=(
+                "Public URL imports are available for one-time playlist migrations."
+            ),
+            can_unfollow_playlist=False,
+            can_delete_playlist=False,
+            can_remove_tracks=False,
+            max_remove_batch=0,
+            saved_albums=LibraryCapabilityView(read=False, write=False),
+            followed_artists=ArtistCapabilityView(read=False, write=False),
+        ),
+        ProviderView(
+            name=PASTED_TEXT_PROVIDER,
+            display_name="Pasted playlist text",
+            auth_kind="text",
+            official=True,
+            stability="stable",
+            has_isrc=False,
+            can_source=True,
+            can_target=False,
+            can_mirror=False,
+            mirror_unavailable_reason=(
+                "Pasted-text imports are available for one-time playlist migrations."
+            ),
+            can_unfollow_playlist=False,
+            can_delete_playlist=False,
+            can_remove_tracks=False,
+            max_remove_batch=0,
+            saved_albums=LibraryCapabilityView(read=False, write=False),
+            followed_artists=ArtistCapabilityView(read=False, write=False),
+        ),
     ]
     for adapter in all_adapters():
         info = adapter.info

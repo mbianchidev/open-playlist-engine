@@ -288,6 +288,18 @@ class ProviderInfo(BaseModel):
             )
 
 
+class PublicPlaylistRef(BaseModel):
+    id: str
+    canonical_url: str
+    metadata: dict[str, str] = Field(default_factory=dict)
+    max_items: int = 1000
+
+
+@runtime_checkable
+class PublicPlaylistReader(Protocol):
+    async def read_public_playlist(self, ref: PublicPlaylistRef) -> Playlist: ...
+
+
 @runtime_checkable
 class ProviderAdapter(Protocol):
     info: ProviderInfo

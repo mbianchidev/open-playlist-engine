@@ -134,7 +134,13 @@ class CachedPlaylistTracks(Base):
 
 
 # --------------------------------------------------------------------------- #
-# Ephemeral normalized local-file imports (private)
+# Ephemeral normalized imports (private): local-file uploads, public URL
+# resolutions, and pasted-text snapshots all share this lease-backed table.
+# ``source_kind``/``source_provider``/``source_label``/``source_locator``/
+# ``source_fingerprint`` are only populated for URL/text records; the
+# required local-file columns (filename, detected_format, ...) are always
+# populated with synthetic values for those records so the rest of the
+# migration pipeline can treat every row uniformly.
 # --------------------------------------------------------------------------- #
 class LocalPlaylistImport(Base):
     __tablename__ = "local_playlist_import"
@@ -161,6 +167,14 @@ class LocalPlaylistImport(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # public-url/pasted-text metadata (nullable; unused by local-file imports)
+    source_kind: Mapped[str] = mapped_column(
+        String, server_default="local_file", default="local_file"
+    )
+    source_provider: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    source_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_locator: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
 
 # --------------------------------------------------------------------------- #

@@ -75,7 +75,7 @@ from app.db.repositories import (
     load_credential,
     load_fresh_credential,
 )
-from app.imports import LOCAL_FILE_PROVIDER
+from app.imports import IMPORT_RECORD_PROVIDERS
 from app.imports.service import (
     LocalImportExpired,
     LocalImportNotFound,
@@ -1098,7 +1098,7 @@ async def create_migration(
     )
     session.add(job)
     await session.flush()
-    if body.source_provider == LOCAL_FILE_PROVIDER:
+    if body.source_provider in IMPORT_RECORD_PROVIDERS:
         try:
             await queue_import(
                 session,
@@ -1159,11 +1159,11 @@ async def _validated_preflight(
         user_id=user_id,
     )
 
-    if body.source_provider == LOCAL_FILE_PROVIDER:
+    if body.source_provider in IMPORT_RECORD_PROVIDERS:
         if body.selection.saved_album_ids or body.selection.followed_artist_ids:
             raise HTTPException(
                 status_code=400,
-                detail="Local playlist files support playlist tracks only",
+                detail="Import sources support playlist tracks only",
             )
         source = await open_migration_source(
             session,

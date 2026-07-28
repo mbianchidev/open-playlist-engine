@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,3 +64,47 @@ class LocalImportPreview(ImportParseResult):
     status: str
     expires_at: datetime
     limits: ImportLimits
+
+
+# --------------------------------------------------------------------------- #
+# Public URL and pasted-text imports.
+#
+# These share the same ``LocalPlaylistImport`` lease-backed table and lifecycle
+# as local-file imports (see app.imports.service), but use a distinct issue
+# model since they are validated line-by-line rather than parsed from a file
+# format, and a distinct preview view since there is no uploaded filename.
+# --------------------------------------------------------------------------- #
+class SourceImportIssue(BaseModel):
+    line: int | None = None
+    code: str
+    message: str
+    severity: Literal["warning", "error"] = "warning"
+    raw: str | None = None
+
+
+class ParsedTextImport(BaseModel):
+    playlist: Playlist
+    issues: list[SourceImportIssue] = Field(default_factory=list)
+    fingerprint: str
+
+
+class ResolvedPlaylistUrl(BaseModel):
+    provider: str
+    resource_id: str
+    canonical_url: str
+    source_label: str
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class SourceImportPreview(BaseModel):
+    id: str
+    source_kind: str
+    source_provider: str
+    source_label: str
+    source_locator: str
+    status: str
+    expires_at: datetime
+    playlist: Playlist
+    issues: list[SourceImportIssue] = Field(default_factory=list)
+    track_count: int
+    unsupported_count: int

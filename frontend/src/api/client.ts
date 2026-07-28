@@ -32,6 +32,7 @@ import type {
   PublicShareView,
   ShareConfigView,
   ShareDetailView,
+  SourceImportPreview,
   SyncRuleView,
   SyncRunView,
   UpdateSyncRuleBody,
@@ -173,6 +174,32 @@ export async function discardPlaylistImport(importId: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) await json<never>(response);
+}
+
+export async function previewUrlImport(body: {
+  url: string;
+  source_account_id?: string | null;
+}): Promise<SourceImportPreview> {
+  return json<SourceImportPreview>(
+    await fetch("/api/imports/url-preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function previewTextImport(body: {
+  text: string;
+  name?: string | null;
+}): Promise<SourceImportPreview> {
+  return json<SourceImportPreview>(
+    await fetch("/api/imports/text-preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 export async function getOrganizerPlaylists(
