@@ -38,7 +38,8 @@ session tokens.
     the requested scopes.
 11. Spotify **Liked Songs** is shown as an owned playlist and uses Spotify's
     saved library. Reconnect accounts created before library writes so the app can
-    request both `user-library-read` and `user-library-modify`.
+    request `user-library-read`, `user-library-modify`, `user-follow-read`, and
+    `user-follow-modify`.
 12. Use **Test connection** after connecting. Spotify refresh tokens expire after
     six months; when Spotify returns `invalid_grant`, the app discards the stale
     account before asking you to reconnect. **Refresh accounts** also removes stale
@@ -62,6 +63,19 @@ playlists** only after adding or changing playlists so the app can discover new
 snapshot IDs. Use **Refresh songs** inside a playlist only when you need to force a
 track refresh; otherwise cached songs are reused until the playlist snapshot
 changes.
+
+### Spotify organizer behavior
+
+The Organizer's default **Remove from library** action uses Spotify's generic
+library removal endpoint and is non-destructive: the playlist can be followed again
+while it remains available. Spotify does not expose permanent playlist deletion, so
+that mode is never offered.
+
+**Remove songs** is available only for owned or collaborative playlists. It sends
+the exact selected positions with the current `snapshot_id` and is limited to 100
+entries per job. The limit prevents position drift across multiple Spotify
+snapshots. If the playlist changes after preflight, the job fails that playlist and
+asks for a refresh instead of removing a different occurrence.
 
 ## Tidal app setup
 
@@ -113,7 +127,14 @@ Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
 Tidal playlist writes create `UNLISTED` playlists by default unless a migration
 explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
 the maximum accepted by Tidal's playlist-items and My Collection endpoints. Tidal
-**My Collection** is exposed as a liked-tracks collection.
+**My Collection** is exposed as a liked-tracks collection. Saved albums and favorite
+artists use the official `userCollectionAlbums` and `userCollectionArtists`
+relationships with `collection.read`/`collection.write`.
+
+The Organizer can permanently delete playlists returned by Tidal's owner-filtered
+listing after typed confirmation. Tidal has no verified safe unfollow operation in
+this adapter. Song removal stays disabled because the public duplicate-occurrence
+semantics cannot yet be guaranteed.
 
 ## Apple MusicKit setup
 
@@ -165,6 +186,10 @@ The adapter retries a not-yet-visible playlist only immediately after creating i
 later writes fail normally instead of masking a bad playlist ID. New playlists or
 tracks may still take time to appear in the Apple Music app.
 
+Apple Music remains read-only in the Organizer. MusicKit supports playlist creation
+and additions but does not expose library playlist deletion or removal of selected
+playlist songs.
+
 ## YouTube Music device-code auth
 
 YouTube Music uses `ytmusicapi` with Google's TV/Limited Input OAuth device
@@ -200,6 +225,13 @@ can reuse the same YouTube Music account row by email when Google returns it.
 YouTube Music **Liked Songs** is backed by the native `LM` playlist. Writing into
 it uses YouTube Music's like action rather than creating a normal playlist.
 
+The Organizer verifies `owned=true` with a live playlist read before showing
+permanent deletion or song removal. Song removal preserves each `setVideoId`, so
+selecting one duplicate occurrence does not remove the others. The pinned
+`ytmusicapi` surface has no verified safe playlist-unsubscribe operation, so
+followed or ownership-unknown playlists remain unsupported. These destructive
+operations require typed confirmation and have no recovery guarantee.
+
 ## Liked-track collection mapping
 
 These sources always map to the target provider's native library:
@@ -213,6 +245,25 @@ These sources always map to the target provider's native library:
 The migration never creates a normal playlist as a fallback for these collections.
 If an older OAuth connection lacks a required library scope, preflight asks you to
 reconnect before creating the job.
+
+## Saved albums and artist-library mapping
+
+Spotify and Tidal expose these entities through official APIs:
+
+| Source concept | Spotify target | Tidal target |
+|---|---|---|
+| Saved album | Saved album | Favorite album |
+| Followed artist | Followed artist | Favorite artist |
+| Favorite artist | Followed artist (preflight warning) | Favorite artist |
+
+The UI labels follow versus favorite semantics and warns when they differ. Albums
+use provider identifiers and UPC evidence first. Artists have no stable
+cross-provider identifier, so name-only matches always enter review. Reruns check
+the native target library before writing and report already-present entities.
+
+YouTube Music and Apple Music do not advertise album/artist migration in this
+implementation. Their controls remain disabled, and unsupported entities are never
+converted into playlists.
 
 ## YouTube Music header-paste fallback
 

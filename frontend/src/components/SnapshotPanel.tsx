@@ -379,7 +379,12 @@ export default function SnapshotPanel({
       source_snapshot_id: restoreSnapshot.id,
       target_provider: restoreTargetProvider,
       target_account_id: restoreTargetAccountId,
-      selection: { playlist_ids: [...restoreCollections], tracks: {} },
+      selection: {
+        playlist_ids: [...restoreCollections],
+        tracks: {},
+        saved_album_ids: [],
+        followed_artist_ids: [],
+      },
     };
     await runAction(`restore-${restoreSnapshot.id}`, async () => {
       const preflight = await preflightMigration(body);

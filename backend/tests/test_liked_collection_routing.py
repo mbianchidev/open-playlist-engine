@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.migrations import _validate_target_capabilities
+from app.api.migrations import Selection, _validate_target_capabilities
 from app.core.adapter import (
     AccessDenied,
     AuthKind,
@@ -100,4 +100,17 @@ def test_preflight_requires_reconnect_for_missing_library_write_scope() -> None:
                     kind=PlaylistKind.LIKED_TRACKS,
                 )
             },
+            Selection(playlist_ids=["source:liked"]),
+        )
+
+
+def test_preflight_rejects_saved_albums_for_unsupported_target() -> None:
+    target = LibraryTarget()
+
+    with pytest.raises(Unsupported, match="saved albums"):
+        _validate_target_capabilities(
+            target,
+            _cred("library.read", "library.write"),
+            {},
+            Selection(saved_album_ids=["album-1"]),
         )

@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from arq import create_pool
-from arq.connections import RedisSettings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
-from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +19,7 @@ from app.core.capabilities import Capability
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session
+from app.jobs.queue import enqueue_or_inline
 from app.jobs.snapshot import run_snapshot
 from app.settings import get_settings
 from app.snapshots.bundle import (
@@ -40,7 +37,6 @@ from app.snapshots.service import (
     snapshot_storage,
 )
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/snapshots", tags=["snapshots"])
 
 
@@ -230,31 +226,12 @@ async def _owned_snapshot(
     for_update: bool = False,
 ) -> orm.LibrarySnapshot | None:
     stmt = select(orm.LibrarySnapshot).where(
-            orm.LibrarySnapshot.id == snapshot_id,
-            orm.LibrarySnapshot.user_id == user_id,
-        )
+        orm.LibrarySnapshot.id == snapshot_id,
+        orm.LibrarySnapshot.user_id == user_id,
+    )
     if for_update:
         stmt = stmt.with_for_update()
     return await session.scalar(stmt)
-
-
-async def _enqueue_or_inline(
-    background_tasks: BackgroundTasks,
-    snapshot_id: str,
-) -> None:
-    try:
-        redis = await create_pool(RedisSettings.from_dsn(get_settings().valkey_url))
-        try:
-            await redis.enqueue_job("run_snapshot", snapshot_id)
-        finally:
-            await redis.close(close_connection_pool=True)
-    except (ConnectionError, OSError, RedisError, TimeoutError) as exc:
-        logger.warning(
-            "queue unavailable; running snapshot inline snapshot_id=%s error=%s",
-            snapshot_id,
-            exc,
-        )
-        background_tasks.add_task(run_snapshot, {}, snapshot_id)
 
 
 @router.get("/profiles", response_model=list[SnapshotProfileView])
@@ -440,7 +417,13 @@ async def create_snapshot(
             status_code=409,
             detail="a snapshot is already pending or running for this profile",
         ) from exc
-    await _enqueue_or_inline(background_tasks, snapshot.id)
+    await enqueue_or_inline(
+        background_tasks,
+        function_name="run_snapshot",
+        fallback=run_snapshot,
+        job_id=snapshot.id,
+        job_label="snapshot",
+    )
     return _snapshot_view(snapshot, profile_name=profile.name)
 
 

@@ -41,9 +41,9 @@ def migration_source_history(
     provider: str,
 ) -> ColumnElement[bool]:
     """Keep live-provider history and snapshot-library history isolated."""
-    if current_source_kind == "snapshot":
+    if current_source_kind != "provider":
         return and_(
-            source_kind_column == "snapshot",
+            source_kind_column == current_source_kind,
             account_id_column == current_account_id,
         )
     return and_(

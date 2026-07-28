@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
 from app.core.migration_state import keys_from_metadata, track_keys
 from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
@@ -48,15 +49,19 @@ async def list_playlists(
     provider: str,
     account_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
     target_provider: str | None = None,
     target_account_id: str | None = None,
     refresh: bool = False,
-    user_id: str = "local",
 ) -> list[PlaylistRef]:
     try:
         adapter = get(provider)
         credential, _ = await load_fresh_credential(
-            session, account_id=account_id, adapter=adapter, provider=provider
+            session,
+            account_id=account_id,
+            adapter=adapter,
+            provider=provider,
+            user_id=user_id,
         )
         playlists = await _playlist_refs(
             session,
@@ -104,15 +109,19 @@ async def get_playlist(
     provider: str,
     account_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
     target_provider: str | None = None,
     target_account_id: str | None = None,
     refresh: bool = False,
-    user_id: str = "local",
 ) -> Playlist:
     try:
         adapter = get(provider)
         credential, _ = await load_fresh_credential(
-            session, account_id=account_id, adapter=adapter, provider=provider
+            session,
+            account_id=account_id,
+            adapter=adapter,
+            provider=provider,
+            user_id=user_id,
         )
         playlist = await _playlist_detail(
             session,
@@ -243,8 +252,14 @@ async def _playlist_detail(
                     name=playlist.name,
                     track_count=len(playlist.tracks),
                     owner_id=playlist.owner_id,
+                    owner_name=playlist.owner_name,
+                    is_owned=playlist.is_owned,
+                    is_followed=playlist.is_followed,
+                    collaborative=playlist.collaborative,
                     snapshot_id=playlist.snapshot_id or ref.snapshot_id,
                     tracks_href=ref.tracks_href,
+                    created_at=playlist.created_at,
+                    updated_at=playlist.updated_at,
                 )
             ],
         )
@@ -280,6 +295,8 @@ async def _cached_playlist_refs(
             PlaylistRef(
                 id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
                 name=_SPOTIFY_SAVED_TRACKS_NAME,
+                is_owned=True,
+                is_followed=False,
                 collaborative=False,
                 tracks_href="/me/tracks",
                 migration_note="Load songs to cache your Spotify Liked Songs",
@@ -308,9 +325,14 @@ def _playlist_ref_from_cache(row: orm.CachedPlaylistRef) -> PlaylistRef:
         name=row.name,
         track_count=row.track_count,
         owner_id=row.owner_id,
+        owner_name=row.owner_name,
+        is_owned=row.is_owned,
+        is_followed=row.is_followed,
         collaborative=row.collaborative,
         snapshot_id=row.snapshot_id,
         tracks_href=row.tracks_href,
+        created_at=row.provider_created_at,
+        updated_at=row.provider_updated_at,
         kind=_cached_playlist_kind(row.provider, row.playlist_id),
     )
 
@@ -341,18 +363,28 @@ async def _persist_playlist_refs(
                     name=ref.name,
                     track_count=ref.track_count,
                     owner_id=ref.owner_id,
+                    owner_name=ref.owner_name,
+                    is_owned=ref.is_owned,
+                    is_followed=ref.is_followed,
                     collaborative=ref.collaborative,
                     snapshot_id=ref.snapshot_id,
                     tracks_href=ref.tracks_href,
+                    provider_created_at=ref.created_at,
+                    provider_updated_at=ref.updated_at,
                 )
             )
             continue
         row.name = ref.name
         row.track_count = ref.track_count
         row.owner_id = ref.owner_id
+        row.owner_name = ref.owner_name
+        row.is_owned = ref.is_owned
+        row.is_followed = ref.is_followed
         row.collaborative = ref.collaborative
         row.snapshot_id = ref.snapshot_id
         row.tracks_href = ref.tracks_href
+        row.provider_created_at = ref.created_at
+        row.provider_updated_at = ref.updated_at
     await session.flush()
 
 
