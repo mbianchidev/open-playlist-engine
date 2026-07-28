@@ -1001,7 +1001,7 @@ export default function App() {
           className="workspace-tab"
           type="button"
           role="tab"
-          aria-label="Stats"
+          aria-label="History and stats"
           aria-selected={activeTab === "stats"}
           aria-controls="stats-panel"
           tabIndex={activeTab === "stats" ? 0 : -1}
@@ -1009,9 +1009,9 @@ export default function App() {
         >
           <span>
             <BarChart3 aria-hidden="true" />
-            Stats
+            History
           </span>
-          <small>Review history</small>
+          <small>Inspect results</small>
         </button>
       </div>
 
@@ -1578,7 +1578,12 @@ function isMigrationWarning(error: unknown): error is ApiError & { detail: Migra
 }
 
 function preflightMessage(detail: MigrationWarningsView): string {
-  const summary = detail.summary;
+  const summary = detail.summary ?? {
+    playlists: 0,
+    tracks: 0,
+    saved_albums: 0,
+    followed_artists: 0,
+  };
   return [
     "Migration preflight",
     "",

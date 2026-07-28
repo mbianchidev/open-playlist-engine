@@ -17,11 +17,14 @@ npm run build
 ```
 
 ## API types
-`src/api/types.ts` is hand-written for now. Once the backend is running, replace
-it with a generated client:
+The checked-in FastAPI contract is `../openapi/open-playlist-engine.json`.
+`src/api/schema.d.ts` is generated from it, while `src/api/types.ts` adds the few
+frontend-only filter/page shapes:
 ```bash
-npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/openapi.json
+npm run gen:api
 ```
+The script invokes a pinned code generator ephemerally, keeping codegen-only parser
+dependencies out of the installed/audited frontend dependency graph.
 
 ## Flow (maps to the phased design)
 1. Pick source/target providers from `/api/providers`.
@@ -35,6 +38,9 @@ npm run gen:api    # writes src/api/schema.d.ts from http://localhost:8000/opena
 6. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
+7. Reopen migrations in **History**, filter track/album/artist results, inspect prior
+   decisions and errors, follow entity-aware target links, and download filtered
+   all/problem CSV or JSON reports.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised

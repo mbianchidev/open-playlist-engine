@@ -5,9 +5,10 @@ from collections.abc import Sequence
 from app.core.adapter import AddItemResult, AuthKind, ProviderCredential, ProviderInfo
 from app.core.capabilities import Capability, CapabilityDescriptor
 from app.core.library_match import LibraryMatchResult
-from app.core.models import Album, ArtistCollectionSemantics, MigrationEntityType
+from app.core.models import Album, Artist, ArtistCollectionSemantics, MigrationEntityType
 from app.db import models as orm
 from app.jobs import migration
+from tests.conformance.fake_provider import FakeAdapter, fake_cred
 
 
 class FakeSession:
@@ -230,3 +231,83 @@ async def test_unmatched_library_item_remains_reviewable(monkeypatch) -> None:
     item = next(row for row in session.added if isinstance(row, orm.JobItem))
     assert item.status == "needs_review"
     assert item.target_uri is None
+
+
+async def test_prior_album_review_reuses_validated_target_without_reprompting() -> None:
+    album = Album(
+        id="album-1",
+        title="Album One",
+        artists=["Artist One"],
+        upc="0123456789012",
+        provider_uris={"source": "source:album:album-1"},
+    )
+    decision = orm.ReviewDecision(
+        job_id="old-job",
+        user_id="local",
+        source_provider="source",
+        target_provider="fake",
+        source_account_id="source-account",
+        target_account_id="target-account",
+        entity_type=MigrationEntityType.ALBUM,
+        source_entity_id="album-1",
+        source_entity_name="Album One",
+        target_entity_id="accepted",
+        title="Album One",
+        artist="Artist One",
+        source_metadata=album.model_dump(mode="json"),
+        target_uri="fake:album:accepted",
+        confidence=0.61,
+        status="written",
+        action="approve",
+    )
+    result = await migration._library_review_history_result(
+        MigrationEntityType.ALBUM,
+        album,
+        FakeAdapter(),
+        fake_cred("fake"),
+        [decision],
+    )
+
+    assert result is not None
+    assert result.candidate is not None
+    assert result.candidate.uri == "fake:album:accepted"
+    assert result.needs_review is False
+    assert result.source == "review_history"
+
+
+async def test_album_review_memory_never_matches_artist() -> None:
+    artist = Artist(id="artist-1", name="Album One")
+    decision = orm.ReviewDecision(
+        job_id="old-job",
+        user_id="local",
+        source_provider="source",
+        target_provider="target",
+        source_account_id="source-account",
+        target_account_id="target-account",
+        entity_type=MigrationEntityType.ALBUM,
+        source_entity_id="artist-1",
+        source_entity_name="Album One",
+        target_entity_id="accepted",
+        title="Album One",
+        artist="Artist One",
+        source_metadata={},
+        target_uri="target:album:accepted",
+        confidence=0.61,
+        status="written",
+        action="approve",
+    )
+    cred = ProviderCredential(
+        account_id="target",
+        provider="target",
+        auth_kind=AuthKind.LONG_LIVED_TOKEN,
+    )
+
+    result = await migration._library_review_history_result(
+        MigrationEntityType.ARTIST,
+        artist,
+        LibraryTarget(),
+        cred,
+        [decision],
+    )
+
+    assert result is None

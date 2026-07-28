@@ -61,10 +61,20 @@ applies Alembic migrations before starting the backend and worker. For local
 development, run `alembic upgrade head` before `uvicorn` and `arq`. Playlist
 detail and migration item review endpoints support track-level selection,
 partial-migration labels, duplicate skips, batch review actions, and low-confidence
-match correction in the UI. migration creation supports explicit album/artist job items, conservative matching,
-native contains checks, review, and entity-specific statistics. It performs a preflight that warns
+match correction in the UI. Migration creation supports explicit album/artist job
+items, conservative matching, native contains checks, review, and entity-specific
+statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+The existing migration stats API also exposes complete history details. Track,
+album, and artist rows support owner-scoped filters and optional paging, while
+`GET /api/migrations/{job_id}/report` streams versioned CSV or JSON exports without
+materializing the full result. Item detail defaults to 90-day retention; the ARQ
+worker snapshots per-entity summaries and removes expired job/operation rows in
+bounded hourly batches. Accepted mixed-entity review decisions remain available for
+future matching. See
+[`docs/MIGRATION_HISTORY.md`](../docs/MIGRATION_HISTORY.md).
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

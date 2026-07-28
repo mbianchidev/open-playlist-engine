@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from enum import StrEnum
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import (
+    AlbumCandidate,
+    ArtistCandidate,
     CreatePlaylistSpec,
     FollowedArtistReader,
     FollowedArtistWriter,
@@ -50,6 +52,13 @@ from app.core.registry import get
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
+from app.db.migration_history import (
+    TERMINAL_JOB_STATUSES,
+    collect_job_result_summary,
+    mark_job_started,
+    mark_job_terminal,
+    summary_playlists,
+)
 from app.db.repositories import load_fresh_credential
 from app.settings import get_settings
 
@@ -94,12 +103,19 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
     job = await session.get(orm.MigrationJob, job_id)
     if job is None:
         return
-    job.status = "failed"
+    job.result_summary = await collect_job_result_summary(session, job)
+    mark_job_terminal(
+        job,
+        status="failed",
+        retention_days=get_settings().migration_history_retention_days,
+    )
     job.error = error
     await session.commit()
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
+    mark_job_started(job)
+    await session.commit()
     source = get(job.source_provider)
     target = get(job.target_provider)
     source_cred, _ = await load_fresh_credential(
@@ -108,10 +124,6 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     target_cred, _ = await load_fresh_credential(
         session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
     )
-    job.status = "running"
-    job.error = None
-    await session.commit()
-
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
     saved_album_ids = list(selection.get("saved_album_ids") or [])
@@ -132,7 +144,10 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     review_threshold = get_settings().review_confidence_threshold
     matcher = MatchService(graph=None, review_threshold=review_threshold)
     reviewed_history = await _previous_reviewed_items(
-        session, job=job, review_threshold=review_threshold
+        session,
+        job=job,
+        entity_type=MigrationEntityType.TRACK,
+        review_threshold=review_threshold,
     )
     for playlist_id in playlist_ids:
         logger.info(
@@ -264,6 +279,12 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             target_albums = _require_saved_album_writer(target)
             source.info.require_saved_albums_source(source_cred)
             target.info.require_saved_albums_target(target_cred)
+            album_reviewed_history = await _previous_reviewed_items(
+                session,
+                job=job,
+                entity_type=MigrationEntityType.ALBUM,
+                review_threshold=review_threshold,
+            )
             await _migrate_library_entities(
                 session,
                 job=job,
@@ -275,12 +296,19 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 entity_ids=saved_album_ids,
                 read_entity=source_albums.read_saved_album,
                 resolve=library_matcher.resolve_album,
+                reviewed_history=album_reviewed_history,
             )
         if followed_artist_ids:
             source_artists = _require_followed_artist_reader(source)
             target_artists = _require_followed_artist_writer(target)
             source.info.require_followed_artists_source(source_cred)
             target.info.require_followed_artists_target(target_cred)
+            artist_reviewed_history = await _previous_reviewed_items(
+                session,
+                job=job,
+                entity_type=MigrationEntityType.ARTIST,
+                review_threshold=review_threshold,
+            )
             await _migrate_library_entities(
                 session,
                 job=job,
@@ -292,10 +320,16 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 entity_ids=followed_artist_ids,
                 read_entity=source_artists.read_followed_artist,
                 resolve=library_matcher.resolve_artist,
+                reviewed_history=artist_reviewed_history,
             )
 
     await commit_job_counts(session, job)
-    job.status = "done"
+    job.result_summary = await collect_job_result_summary(session, job)
+    mark_job_terminal(
+        job,
+        status="done",
+        retention_days=get_settings().migration_history_retention_days,
+    )
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
 
@@ -469,6 +503,7 @@ async def _migrate_library_entities(
     entity_ids: list[str],
     read_entity: LibraryReader,
     resolve: LibraryResolver,
+    reviewed_history: Sequence[orm.ReviewDecision] = (),
 ) -> None:
     items = [
         _pending_library_job_item(
@@ -521,7 +556,15 @@ async def _migrate_library_entities(
         _populate_library_job_item(item, entity_type, entity)
         await commit_job_counts(session, job)
         try:
-            result = await resolve(entity, target, target_cred)
+            result = await _library_review_history_result(
+                entity_type,
+                entity,
+                target,
+                target_cred,
+                reviewed_history,
+            )
+            if result is None:
+                result = await resolve(entity, target, target_cred)
         except ProviderError as exc:
             item.status = "failed"
             item.reason = str(exc)
@@ -794,7 +837,7 @@ async def _resolve_target_playlist(
 async def _previous_target_playlist_id(
     session: AsyncSession, *, job: orm.MigrationJob, playlist_id: str
 ) -> str | None:
-    return await session.scalar(
+    target_playlist_id = await session.scalar(
         select(orm.JobItem.target_playlist_id)
         .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
         .where(
@@ -820,10 +863,58 @@ async def _previous_target_playlist_id(
         .order_by(orm.JobItem.updated_at.desc())
         .limit(1)
     )
+    if target_playlist_id:
+        return target_playlist_id
+
+    prior_jobs = list(
+        (
+            await session.execute(
+                select(orm.MigrationJob)
+                .where(
+                    orm.MigrationJob.id != job.id,
+                    orm.MigrationJob.user_id == job.user_id,
+                    orm.MigrationJob.source_provider == job.source_provider,
+                    provider_account_history(
+                        orm.MigrationJob.source_account_id,
+                        current_account_id=job.source_account_id,
+                        user_id=job.user_id,
+                        provider=job.source_provider,
+                    ),
+                    orm.MigrationJob.target_provider == job.target_provider,
+                    provider_account_history(
+                        orm.MigrationJob.target_account_id,
+                        current_account_id=job.target_account_id,
+                        user_id=job.user_id,
+                        provider=job.target_provider,
+                    ),
+                    orm.MigrationJob.status.in_(TERMINAL_JOB_STATUSES),
+                )
+                .order_by(
+                    orm.MigrationJob.completed_at.desc().nullslast(),
+                    orm.MigrationJob.created_at.desc(),
+                    orm.MigrationJob.id.desc(),
+                )
+            )
+        ).scalars()
+    )
+    return _target_playlist_id_from_summaries(prior_jobs, playlist_id)
+
+
+def _target_playlist_id_from_summaries(
+    jobs: list[orm.MigrationJob], playlist_id: str
+) -> str | None:
+    for prior_job in jobs:
+        for playlist in summary_playlists(prior_job):
+            if str(playlist.get("source_playlist_id") or "") != playlist_id:
+                continue
+            target_playlist_id = str(playlist.get("target_playlist_id") or "")
+            if target_playlist_id:
+                return target_playlist_id
+    return None
 
 
 def _apply_review_history_bonus(
-    prior_items: list[orm.JobItem],
+    prior_items: list[orm.JobItem | orm.ReviewDecision],
     *,
     track: Track,
     result: MatchResult,
@@ -857,47 +948,51 @@ async def _previous_reviewed_items(
     session: AsyncSession,
     *,
     job: orm.MigrationJob,
+    entity_type: MigrationEntityType,
     review_threshold: float,
-) -> list[orm.JobItem]:
+) -> list[orm.ReviewDecision]:
+    conditions = [
+        orm.ReviewDecision.job_id != job.id,
+        orm.ReviewDecision.user_id == job.user_id,
+        orm.ReviewDecision.source_provider == job.source_provider,
+        provider_account_history(
+            orm.ReviewDecision.source_account_id,
+            current_account_id=job.source_account_id,
+            user_id=job.user_id,
+            provider=job.source_provider,
+        ),
+        orm.ReviewDecision.target_provider == job.target_provider,
+        provider_account_history(
+            orm.ReviewDecision.target_account_id,
+            current_account_id=job.target_account_id,
+            user_id=job.user_id,
+            provider=job.target_provider,
+        ),
+        orm.ReviewDecision.entity_type == entity_type.value,
+        orm.ReviewDecision.status.in_(["written", "skipped"]),
+        orm.ReviewDecision.action == "approve",
+    ]
+    if entity_type is MigrationEntityType.TRACK:
+        conditions.append(orm.ReviewDecision.confidence < review_threshold)
     stmt = (
-        select(orm.JobItem)
-        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
-        .where(
-            orm.MigrationJob.id != job.id,
-            orm.MigrationJob.user_id == job.user_id,
-            orm.MigrationJob.source_provider == job.source_provider,
-            provider_account_history(
-                orm.MigrationJob.source_account_id,
-                current_account_id=job.source_account_id,
-                user_id=job.user_id,
-                provider=job.source_provider,
-            ),
-            orm.MigrationJob.target_provider == job.target_provider,
-            provider_account_history(
-                orm.MigrationJob.target_account_id,
-                current_account_id=job.target_account_id,
-                user_id=job.user_id,
-                provider=job.target_provider,
-            ),
-            orm.JobItem.status.in_(["written", "skipped"]),
-            orm.JobItem.entity_type == MigrationEntityType.TRACK,
-            orm.JobItem.target_uri.is_not(None),
-            orm.JobItem.confidence.is_not(None),
-            orm.JobItem.confidence < review_threshold,
-        )
-        .order_by(orm.JobItem.updated_at.desc())
+        select(orm.ReviewDecision)
+        .where(*conditions)
+        .order_by(orm.ReviewDecision.created_at.desc())
     )
     return list((await session.execute(stmt)).scalars())
 
 
 def _prior_reviewed_item(
-    track: Track, prior_items: list[orm.JobItem], review_threshold: float
-) -> orm.JobItem | None:
+    track: Track, prior_items: list[orm.JobItem | orm.ReviewDecision], review_threshold: float
+) -> orm.JobItem | orm.ReviewDecision | None:
     keys = track_keys(track)
     if not keys:
         return None
     for item in prior_items:
-        if item.entity_type not in (None, MigrationEntityType.TRACK.value):
+        if getattr(item, "entity_type", None) not in (
+            None,
+            MigrationEntityType.TRACK.value,
+        ):
             continue
         if not item.target_uri or item.confidence is None or item.confidence >= review_threshold:
             continue
@@ -918,7 +1013,92 @@ def _is_non_track_uri(uri: str) -> bool:
     )
 
 
-def _candidate_from_reviewed_item(item: orm.JobItem) -> TrackCandidate:
+async def _library_review_history_result(
+    entity_type: MigrationEntityType,
+    entity: LibraryEntity,
+    target: LibraryTarget,
+    target_cred: ProviderCredential,
+    reviewed_history: Sequence[orm.ReviewDecision],
+) -> LibraryMatchResult | None:
+    decision = _prior_library_review_decision(entity_type, entity, reviewed_history)
+    if decision is None:
+        return None
+    if entity_type is MigrationEntityType.ALBUM:
+        if not isinstance(entity, Album):
+            return None
+        library = _require_saved_album_writer(target)
+        if not await library.validate_album_uri(target_cred, decision.target_uri):
+            return None
+        candidate = AlbumCandidate(
+            provider_album_id=decision.target_entity_id
+            or _provider_track_id(decision.target_uri),
+            uri=decision.target_uri,
+            title=entity.title,
+            artists=entity.artists,
+            upc=entity.upc,
+            release_date=(
+                str(entity.release_date)
+                if entity.release_date
+                else str(entity.release_year) if entity.release_year else None
+            ),
+            artwork_uri=entity.artwork_uri,
+        )
+    else:
+        if not isinstance(entity, Artist):
+            return None
+        library = _require_followed_artist_writer(target)
+        if not await library.validate_artist_uri(target_cred, decision.target_uri):
+            return None
+        candidate = ArtistCandidate(
+            provider_artist_id=decision.target_entity_id
+            or _provider_track_id(decision.target_uri),
+            uri=decision.target_uri,
+            name=entity.name,
+            artwork_uri=entity.artwork_uri,
+        )
+    return LibraryMatchResult(
+        candidate=candidate,
+        confidence=decision.confidence,
+        source="review_history",
+        needs_review=False,
+    )
+
+
+def _prior_library_review_decision(
+    entity_type: MigrationEntityType,
+    entity: LibraryEntity,
+    reviewed_history: Sequence[orm.ReviewDecision],
+) -> orm.ReviewDecision | None:
+    for decision in reviewed_history:
+        if decision.entity_type != entity_type.value:
+            continue
+        if entity.id and decision.source_entity_id == entity.id:
+            return decision
+        metadata = (
+            decision.source_metadata
+            if isinstance(decision.source_metadata, dict)
+            else {}
+        )
+        provider_uris = metadata.get("provider_uris")
+        source_uri = (
+            provider_uris.get(decision.source_provider)
+            if isinstance(provider_uris, dict)
+            else None
+        )
+        current_uri = entity.provider_uris.get(decision.source_provider)
+        if current_uri and source_uri == current_uri:
+            return decision
+        if (
+            entity_type is MigrationEntityType.ALBUM
+            and isinstance(entity, Album)
+            and entity.upc
+            and str(metadata.get("upc") or "").upper() == entity.upc.upper()
+        ):
+            return decision
+    return None
+
+
+def _candidate_from_reviewed_item(item: orm.JobItem | orm.ReviewDecision) -> TrackCandidate:
     target_uri = item.target_uri or ""
     return TrackCandidate(
         provider_track_id=_provider_track_id(target_uri),
@@ -936,7 +1116,7 @@ def _provider_track_id(uri: str) -> str:
     return keys[0] if keys else uri
 
 
-def _source_item_keys(item: orm.JobItem) -> set[str]:
+def _source_item_keys(item: orm.JobItem | orm.ReviewDecision) -> set[str]:
     return keys_from_metadata(
         item.source_metadata,
         title=item.title,

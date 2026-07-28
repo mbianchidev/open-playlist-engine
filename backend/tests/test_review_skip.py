@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from app.api import migrations
 from app.core.models import MigrationEntityType
 from app.db import models as orm
@@ -12,7 +14,7 @@ class FakeSession:
         self.added.append(row)
 
 
-async def test_review_skip_clears_target_uri(monkeypatch) -> None:
+async def test_review_skip_clears_target_uri_and_records_decision(monkeypatch) -> None:
     async def noop_commit(session, job) -> None:
         return None
 
@@ -33,7 +35,10 @@ async def test_review_skip_clears_target_uri(monkeypatch) -> None:
         target_playlist_id="target-playlist",
         target_uri="ytmusic:video:maybe",
         status="needs_review",
+        reason="Low confidence",
     )
+    reviewed_at = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(migrations, "_utcnow", lambda: reviewed_at)
 
     view = await migrations._apply_review(
         FakeSession(),
@@ -45,6 +50,10 @@ async def test_review_skip_clears_target_uri(monkeypatch) -> None:
     assert view.status == "skipped"
     assert view.target_uri is None
     assert item.target_uri is None
+    assert item.review_action == "skip"
+    assert item.review_original_status == "needs_review"
+    assert item.review_original_reason == "Low confidence"
+    assert item.reviewed_at == reviewed_at
 
 
 async def test_review_can_approve_album_without_playlist_target(monkeypatch) -> None:
@@ -92,3 +101,8 @@ async def test_review_can_approve_album_without_playlist_target(monkeypatch) -> 
     assert view.target_playlist_id is None
     assert view.target_entity_id == "AbC123"
     assert any(isinstance(row, orm.OperationLedger) for row in session.added)
+    decisions = [row for row in session.added if isinstance(row, orm.ReviewDecision)]
+    assert len(decisions) == 1
+    assert decisions[0].entity_type == MigrationEntityType.ALBUM
+    assert decisions[0].source_entity_id == "album-source"
+    assert decisions[0].target_entity_id == "AbC123"

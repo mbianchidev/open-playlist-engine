@@ -234,6 +234,51 @@ def test_mixed_migration_stats_distinguish_tracks_albums_and_artists() -> None:
     assert stats.followed_artist_count == 1
 
 
+def test_purged_mixed_migration_stats_restore_entity_counts() -> None:
+    job = _job(
+        "job",
+        total=3,
+        selection={
+            "playlist_ids": ["playlist-a"],
+            "tracks": {},
+            "saved_album_ids": ["album-a"],
+            "followed_artist_ids": ["artist-a"],
+        },
+    )
+    job.details_purged_at = migrations._utcnow()
+    summary = {
+        "counts": {"total": 3, "written": 1, "skipped": 1, "needs_review": 1},
+        "playlists": [
+            {
+                "source_playlist_id": "playlist-a",
+                "source_playlist_name": "Chill",
+                "target_playlist_id": "target-playlist-a",
+                "counts": {"total": 1, "written": 1},
+            }
+        ],
+        "entity_counts": {
+            "track": {"total": 1, "written": 1},
+            "album": {"total": 1, "skipped": 1},
+            "artist": {"total": 1, "needs_review": 1},
+        },
+    }
+
+    stats = migrations._build_migration_stats_from_summary(
+        job,
+        summary,
+        ["Chill"],
+        source_account=migrations.AccountHistoryView(id="source"),
+        target_account=migrations.AccountHistoryView(id="target"),
+        retention_days=90,
+    )
+
+    assert stats.entity_counts["track"].written == 1
+    assert stats.entity_counts["album"].skipped == 1
+    assert stats.entity_counts["artist"].needs_review == 1
+    assert stats.saved_album_count == 1
+    assert stats.followed_artist_count == 1
+
+
 def test_aggregate_stats_respect_source_and_target_filters() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
