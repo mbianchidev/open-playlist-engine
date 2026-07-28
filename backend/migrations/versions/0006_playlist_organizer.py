@@ -1,8 +1,8 @@
 """Add playlist organizer jobs and cached ownership metadata.
 
-Revision ID: 0003_playlist_organizer
-Revises: 0002_playlist_read_cache
-Create Date: 2026-07-14
+Revision ID: 0006_playlist_organizer
+Revises: 0005_merge_sharing_history
+Create Date: 2026-07-28
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0003_playlist_organizer"
-down_revision: str | None = "0002_playlist_read_cache"
+revision: str = "0006_playlist_organizer"
+down_revision: str | None = "0005_merge_sharing_history"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

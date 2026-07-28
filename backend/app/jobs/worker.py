@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import logging
 
+from arq import cron, func
 from arq.connections import RedisSettings
 
 import app.providers  # noqa: F401  (registers adapters in the worker process)
+from app.jobs.history_cleanup import cleanup_expired_migration_details
 from app.jobs.migration import run_migration
 from app.jobs.organizer import run_organizer
 from app.settings import get_settings
@@ -21,7 +23,11 @@ logging.basicConfig(
 
 
 class WorkerSettings:
-    functions = [run_migration, run_organizer]
+    functions = [
+        func(run_migration, timeout=get_settings().migration_worker_job_timeout_s),
+        func(run_organizer, timeout=get_settings().organizer_worker_job_timeout_s),
+    ]
+    cron_jobs = [cron(cleanup_expired_migration_details, minute=17)]
     redis_settings = RedisSettings.from_dsn(get_settings().valkey_url)
     job_timeout = max(
         get_settings().migration_worker_job_timeout_s,

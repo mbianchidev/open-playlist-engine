@@ -1,0 +1,6474 @@
+{
+  "components": {
+    "schemas": {
+      "AccountHistoryView": {
+        "properties": {
+          "connected": {
+            "default": false,
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AccountHistoryView",
+        "type": "object"
+      },
+      "AccountView": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider User Id"
+          }
+        },
+        "required": [
+          "id",
+          "provider"
+        ],
+        "title": "AccountView",
+        "type": "object"
+      },
+      "AggregateMigrationStatsView": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/StatusCounts"
+          },
+          "empty": {
+            "default": false,
+            "title": "Empty",
+            "type": "boolean"
+          },
+          "entity_counts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StatusCounts"
+            },
+            "title": "Entity Counts",
+            "type": "object"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "source_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Provider"
+          },
+          "target_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Provider"
+          },
+          "total_followed_artists": {
+            "default": 0,
+            "title": "Total Followed Artists",
+            "type": "integer"
+          },
+          "total_migrations": {
+            "default": 0,
+            "title": "Total Migrations",
+            "type": "integer"
+          },
+          "total_playlists": {
+            "default": 0,
+            "title": "Total Playlists",
+            "type": "integer"
+          },
+          "total_saved_albums": {
+            "default": 0,
+            "title": "Total Saved Albums",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "title": "AggregateMigrationStatsView",
+        "type": "object"
+      },
+      "Album": {
+        "properties": {
+          "added_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added At"
+          },
+          "artists": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Artists",
+            "type": "array"
+          },
+          "artwork_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Uri"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "provider_uris": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provider Uris",
+            "type": "object"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "release_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Year"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "upc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upc"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "Album",
+        "type": "object"
+      },
+      "Artist": {
+        "properties": {
+          "added_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added At"
+          },
+          "artwork_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Uri"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provider_uris": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provider Uris",
+            "type": "object"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Artist",
+        "type": "object"
+      },
+      "ArtistCapabilityView": {
+        "properties": {
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "semantics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantics"
+          },
+          "write": {
+            "title": "Write",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read",
+          "write"
+        ],
+        "title": "ArtistCapabilityView",
+        "type": "object"
+      },
+      "AuthChallenge": {
+        "properties": {
+          "form_schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Schema"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "poll_interval_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Interval S"
+          },
+          "redirect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Url"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ChallengeShape"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "user_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Code"
+          },
+          "verification_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Url"
+          }
+        },
+        "required": [
+          "shape"
+        ],
+        "title": "AuthChallenge",
+        "type": "object"
+      },
+      "BatchReview": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "skip"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "item_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "BatchReview",
+        "type": "object"
+      },
+      "ChallengeShape": {
+        "description": "The three UI shapes every auth flow collapses into.",
+        "enum": [
+          "redirect",
+          "device_code",
+          "form"
+        ],
+        "title": "ChallengeShape",
+        "type": "string"
+      },
+      "ConnectionTestView": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "provider",
+          "account_id",
+          "message"
+        ],
+        "title": "ConnectionTestView",
+        "type": "object"
+      },
+      "ConnectionView": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountView"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "provider",
+          "account"
+        ],
+        "title": "ConnectionView",
+        "type": "object"
+      },
+      "CreateExport": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/PlaylistSelection"
+          },
+          "source_account_id": {
+            "title": "Source Account Id",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_provider",
+          "source_account_id",
+          "format",
+          "selection"
+        ],
+        "title": "CreateExport",
+        "type": "object"
+      },
+      "CreateHistoryExport": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "CreateHistoryExport",
+        "type": "object"
+      },
+      "CreateMigration": {
+        "properties": {
+          "acknowledge_warnings": {
+            "default": false,
+            "title": "Acknowledge Warnings",
+            "type": "boolean"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/Selection"
+          },
+          "source_account_id": {
+            "title": "Source Account Id",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_provider",
+          "target_provider",
+          "source_account_id",
+          "target_account_id",
+          "selection"
+        ],
+        "title": "CreateMigration",
+        "type": "object"
+      },
+      "CreateShare": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/ShareVisibility",
+            "default": "unlisted"
+          }
+        },
+        "required": [
+          "provider",
+          "account_id",
+          "playlist_id"
+        ],
+        "title": "CreateShare",
+        "type": "object"
+      },
+      "Credit": {
+        "properties": {
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uri"
+          }
+        },
+        "required": [
+          "role",
+          "name"
+        ],
+        "title": "Credit",
+        "type": "object"
+      },
+      "DuplicateCandidateView": {
+        "properties": {
+          "normalized_name": {
+            "title": "Normalized Name",
+            "type": "string"
+          },
+          "overlap_count": {
+            "title": "Overlap Count",
+            "type": "integer"
+          },
+          "overlap_ratio": {
+            "title": "Overlap Ratio",
+            "type": "number"
+          },
+          "playlist_ids": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Playlist Ids",
+            "type": "array"
+          },
+          "playlist_names": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Playlist Names",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playlist_ids",
+          "playlist_names",
+          "normalized_name",
+          "overlap_count",
+          "overlap_ratio",
+          "reasons"
+        ],
+        "title": "DuplicateCandidateView",
+        "type": "object"
+      },
+      "ExportFormat": {
+        "enum": [
+          "csv",
+          "txt",
+          "m3u8",
+          "xspf",
+          "json"
+        ],
+        "title": "ExportFormat",
+        "type": "string"
+      },
+      "FollowedArtistsView": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Artist"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Limitation"
+          },
+          "source_semantics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Semantics"
+          },
+          "source_supported": {
+            "title": "Source Supported",
+            "type": "boolean"
+          },
+          "target_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Limitation"
+          },
+          "target_semantics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Semantics"
+          },
+          "target_supported": {
+            "title": "Target Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_supported",
+          "target_supported"
+        ],
+        "title": "FollowedArtistsView",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JobItemView": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "title": "Artist",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isrc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isrc"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "release_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Year"
+          },
+          "review_action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "approve",
+                  "skip"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Action"
+          },
+          "review_original_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Original Reason"
+          },
+          "review_original_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Original Status"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "source_entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Entity Id"
+          },
+          "source_entity_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Entity Name"
+          },
+          "source_metadata": {
+            "additionalProperties": true,
+            "title": "Source Metadata",
+            "type": "object"
+          },
+          "source_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Playlist Id"
+          },
+          "source_playlist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Playlist Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Entity Id"
+          },
+          "target_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Playlist Id"
+          },
+          "target_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Uri"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "entity_type",
+          "position",
+          "title",
+          "artist",
+          "status"
+        ],
+        "title": "JobItemView",
+        "type": "object"
+      },
+      "JobView": {
+        "properties": {
+          "done": {
+            "default": 0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "source_provider",
+          "target_provider"
+        ],
+        "title": "JobView",
+        "type": "object"
+      },
+      "LibraryCapabilityView": {
+        "properties": {
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "write": {
+            "title": "Write",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read",
+          "write"
+        ],
+        "title": "LibraryCapabilityView",
+        "type": "object"
+      },
+      "LibraryView": {
+        "properties": {
+          "followed_artists": {
+            "$ref": "#/components/schemas/FollowedArtistsView"
+          },
+          "saved_albums": {
+            "$ref": "#/components/schemas/SavedAlbumsView"
+          }
+        },
+        "required": [
+          "saved_albums",
+          "followed_artists"
+        ],
+        "title": "LibraryView",
+        "type": "object"
+      },
+      "MediaType": {
+        "enum": [
+          "track",
+          "episode",
+          "video",
+          "local_file",
+          "unknown"
+        ],
+        "title": "MediaType",
+        "type": "string"
+      },
+      "MigrationEntityType": {
+        "enum": [
+          "track",
+          "album",
+          "artist"
+        ],
+        "title": "MigrationEntityType",
+        "type": "string"
+      },
+      "MigrationOptionView": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "detail_available": {
+            "default": true,
+            "title": "Detail Available",
+            "type": "boolean"
+          },
+          "detail_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "playlist_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playlist Names",
+            "type": "array"
+          },
+          "selection_summary": {
+            "$ref": "#/components/schemas/MigrationSelectionSummary"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status",
+          "source_provider",
+          "target_provider"
+        ],
+        "title": "MigrationOptionView",
+        "type": "object"
+      },
+      "MigrationSelectionSummary": {
+        "properties": {
+          "followed_artists": {
+            "default": 0,
+            "title": "Followed Artists",
+            "type": "integer"
+          },
+          "playlists": {
+            "default": 0,
+            "title": "Playlists",
+            "type": "integer"
+          },
+          "saved_albums": {
+            "default": 0,
+            "title": "Saved Albums",
+            "type": "integer"
+          },
+          "tracks": {
+            "default": 0,
+            "title": "Tracks",
+            "type": "integer"
+          }
+        },
+        "title": "MigrationSelectionSummary",
+        "type": "object"
+      },
+      "MigrationStatsView": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/StatusCounts"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "detail_available": {
+            "default": true,
+            "title": "Detail Available",
+            "type": "boolean"
+          },
+          "detail_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Expires At"
+          },
+          "detail_purged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Purged At"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "empty": {
+            "default": false,
+            "title": "Empty",
+            "type": "boolean"
+          },
+          "entity_counts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StatusCounts"
+            },
+            "title": "Entity Counts",
+            "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "followed_artist_count": {
+            "default": 0,
+            "title": "Followed Artist Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "playlist_count": {
+            "default": 0,
+            "title": "Playlist Count",
+            "type": "integer"
+          },
+          "playlist_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playlist Names",
+            "type": "array"
+          },
+          "playlists": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistStatsView"
+            },
+            "title": "Playlists",
+            "type": "array"
+          },
+          "retention_days": {
+            "default": 0,
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "saved_album_count": {
+            "default": 0,
+            "title": "Saved Album Count",
+            "type": "integer"
+          },
+          "source_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountHistoryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountHistoryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status",
+          "source_provider",
+          "target_provider",
+          "counts"
+        ],
+        "title": "MigrationStatsView",
+        "type": "object"
+      },
+      "MigrationWarningsView": {
+        "properties": {
+          "code": {
+            "default": "migration_warnings",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "default": "Review and acknowledge migration warnings before starting.",
+            "title": "Message",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MigrationSelectionSummary"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "MigrationWarningsView",
+        "type": "object"
+      },
+      "OrganizerAction": {
+        "enum": [
+          "unfollow_playlist",
+          "delete_playlist",
+          "remove_tracks"
+        ],
+        "title": "OrganizerAction",
+        "type": "string"
+      },
+      "OrganizerIntent": {
+        "enum": [
+          "remove",
+          "delete",
+          "remove_tracks"
+        ],
+        "title": "OrganizerIntent",
+        "type": "string"
+      },
+      "OrganizerItemView": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
+          "destructive": {
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "request_payload": {
+            "additionalProperties": true,
+            "title": "Request Payload",
+            "type": "object"
+          },
+          "result_payload": {
+            "additionalProperties": true,
+            "title": "Result Payload",
+            "type": "object"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "playlist_id",
+          "playlist_name",
+          "action",
+          "destructive",
+          "ownership",
+          "status",
+          "attempts",
+          "retryable"
+        ],
+        "title": "OrganizerItemView",
+        "type": "object"
+      },
+      "OrganizerJobView": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "account_id",
+          "status",
+          "total",
+          "done",
+          "failed"
+        ],
+        "title": "OrganizerJobView",
+        "type": "object"
+      },
+      "OrganizerPlaylistView": {
+        "properties": {
+          "available_intents": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerIntent"
+            },
+            "title": "Available Intents",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "playlist": {
+            "$ref": "#/components/schemas/PlaylistRef"
+          },
+          "requires_ownership_check": {
+            "default": false,
+            "title": "Requires Ownership Check",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "playlist",
+          "ownership"
+        ],
+        "title": "OrganizerPlaylistView",
+        "type": "object"
+      },
+      "OrganizerPreflightGroupView": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OrganizerAction"
+          },
+          "destructive": {
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerPreflightItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "recovery": {
+            "title": "Recovery",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "label",
+          "destructive",
+          "recovery"
+        ],
+        "title": "OrganizerPreflightGroupView",
+        "type": "object"
+      },
+      "OrganizerPreflightItemView": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OrganizerAction"
+          },
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
+          "destructive": {
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "recovery": {
+            "title": "Recovery",
+            "type": "string"
+          },
+          "selected_track_count": {
+            "default": 0,
+            "title": "Selected Track Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "playlist_id",
+          "playlist_name",
+          "action",
+          "destructive",
+          "ownership",
+          "recovery"
+        ],
+        "title": "OrganizerPreflightItemView",
+        "type": "object"
+      },
+      "OrganizerPreflightView": {
+        "properties": {
+          "code": {
+            "default": "organizer_preflight",
+            "title": "Code",
+            "type": "string"
+          },
+          "confirmation_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Phrase"
+          },
+          "confirmation_required": {
+            "default": false,
+            "title": "Confirmation Required",
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerPreflightGroupView"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "total_playlists": {
+            "default": 0,
+            "title": "Total Playlists",
+            "type": "integer"
+          },
+          "total_tracks": {
+            "default": 0,
+            "title": "Total Tracks",
+            "type": "integer"
+          },
+          "unsupported": {
+            "items": {
+              "$ref": "#/components/schemas/UnsupportedOrganizerItem"
+            },
+            "title": "Unsupported",
+            "type": "array"
+          }
+        },
+        "title": "OrganizerPreflightView",
+        "type": "object"
+      },
+      "OrganizerRequest": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "confirmation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/OrganizerSelection"
+          }
+        },
+        "required": [
+          "provider",
+          "account_id"
+        ],
+        "title": "OrganizerRequest",
+        "type": "object"
+      },
+      "OrganizerSelection": {
+        "properties": {
+          "playlist_actions": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistActionSelection"
+            },
+            "title": "Playlist Actions",
+            "type": "array"
+          },
+          "track_removals": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistTrackSelection"
+            },
+            "title": "Track Removals",
+            "type": "array"
+          }
+        },
+        "title": "OrganizerSelection",
+        "type": "object"
+      },
+      "OwnerSessionLogin": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "OwnerSessionLogin",
+        "type": "object"
+      },
+      "OwnerSessionView": {
+        "properties": {
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "sharing_disabled_reason": {
+            "title": "Sharing Disabled Reason",
+            "type": "string"
+          },
+          "sharing_enabled": {
+            "title": "Sharing Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required",
+          "authenticated",
+          "sharing_enabled",
+          "sharing_disabled_reason"
+        ],
+        "title": "OwnerSessionView",
+        "type": "object"
+      },
+      "Playlist": {
+        "properties": {
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_followed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Followed"
+          },
+          "is_owned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Owned"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlaylistKind",
+            "default": "standard"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/Track"
+            },
+            "title": "Tracks",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Playlist",
+        "type": "object"
+      },
+      "PlaylistActionSelection": {
+        "properties": {
+          "intent": {
+            "$ref": "#/components/schemas/OrganizerIntent",
+            "default": "remove"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playlist_id"
+        ],
+        "title": "PlaylistActionSelection",
+        "type": "object"
+      },
+      "PlaylistKind": {
+        "enum": [
+          "standard",
+          "liked_tracks"
+        ],
+        "title": "PlaylistKind",
+        "type": "string"
+      },
+      "PlaylistRef": {
+        "description": "Lightweight handle returned while listing, before full read.",
+        "properties": {
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_followed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Followed"
+          },
+          "is_owned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Owned"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlaylistKind",
+            "default": "standard"
+          },
+          "migrated_track_count": {
+            "default": 0,
+            "title": "Migrated Track Count",
+            "type": "integer"
+          },
+          "migration_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Note"
+          },
+          "migration_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Status"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "remaining_track_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Track Count"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "track_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Count"
+          },
+          "tracks_href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracks Href"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PlaylistRef",
+        "type": "object"
+      },
+      "PlaylistSelection": {
+        "properties": {
+          "playlist_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playlist Ids",
+            "type": "array"
+          },
+          "tracks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Tracks",
+            "type": "object"
+          }
+        },
+        "title": "PlaylistSelection",
+        "type": "object"
+      },
+      "PlaylistStatsView": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/StatusCounts"
+          },
+          "source_playlist_id": {
+            "title": "Source Playlist Id",
+            "type": "string"
+          },
+          "source_playlist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Playlist Name"
+          },
+          "target_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Playlist Id"
+          }
+        },
+        "required": [
+          "source_playlist_id",
+          "counts"
+        ],
+        "title": "PlaylistStatsView",
+        "type": "object"
+      },
+      "PlaylistTrackSelection": {
+        "properties": {
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/TrackSelection"
+            },
+            "title": "Tracks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playlist_id"
+        ],
+        "title": "PlaylistTrackSelection",
+        "type": "object"
+      },
+      "PortableFormat": {
+        "enum": [
+          "json",
+          "csv",
+          "txt",
+          "m3u8",
+          "xspf"
+        ],
+        "title": "PortableFormat",
+        "type": "string"
+      },
+      "ProviderView": {
+        "properties": {
+          "auth_kind": {
+            "title": "Auth Kind",
+            "type": "string"
+          },
+          "can_delete_playlist": {
+            "title": "Can Delete Playlist",
+            "type": "boolean"
+          },
+          "can_remove_tracks": {
+            "title": "Can Remove Tracks",
+            "type": "boolean"
+          },
+          "can_source": {
+            "title": "Can Source",
+            "type": "boolean"
+          },
+          "can_target": {
+            "title": "Can Target",
+            "type": "boolean"
+          },
+          "can_unfollow_playlist": {
+            "title": "Can Unfollow Playlist",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "followed_artists": {
+            "$ref": "#/components/schemas/ArtistCapabilityView"
+          },
+          "has_isrc": {
+            "title": "Has Isrc",
+            "type": "boolean"
+          },
+          "max_remove_batch": {
+            "title": "Max Remove Batch",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "official": {
+            "title": "Official",
+            "type": "boolean"
+          },
+          "saved_albums": {
+            "$ref": "#/components/schemas/LibraryCapabilityView"
+          },
+          "stability": {
+            "title": "Stability",
+            "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "auth_kind",
+          "official",
+          "stability",
+          "has_isrc",
+          "can_source",
+          "can_target",
+          "can_unfollow_playlist",
+          "can_delete_playlist",
+          "can_remove_tracks",
+          "max_remove_batch",
+          "saved_albums",
+          "followed_artists"
+        ],
+        "title": "ProviderView",
+        "type": "object"
+      },
+      "PublicShareView": {
+        "properties": {
+          "download_formats": {
+            "items": {
+              "$ref": "#/components/schemas/PortableFormat"
+            },
+            "title": "Download Formats",
+            "type": "array"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SharedPlaylistSnapshot"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/ShareVisibility"
+          }
+        },
+        "required": [
+          "visibility",
+          "snapshot",
+          "download_formats"
+        ],
+        "title": "PublicShareView",
+        "type": "object"
+      },
+      "RecipientImport": {
+        "properties": {
+          "acknowledge_warnings": {
+            "default": false,
+            "title": "Acknowledge Warnings",
+            "type": "boolean"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_provider",
+          "target_account_id"
+        ],
+        "title": "RecipientImport",
+        "type": "object"
+      },
+      "ReviewItem": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "skip"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "target_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Uri"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "ReviewItem",
+        "type": "object"
+      },
+      "SavedAlbumsView": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Album"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Limitation"
+          },
+          "source_supported": {
+            "title": "Source Supported",
+            "type": "boolean"
+          },
+          "target_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Limitation"
+          },
+          "target_supported": {
+            "title": "Target Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_supported",
+          "target_supported"
+        ],
+        "title": "SavedAlbumsView",
+        "type": "object"
+      },
+      "Selection": {
+        "properties": {
+          "followed_artist_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Followed Artist Ids",
+            "type": "array"
+          },
+          "playlist_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playlist Ids",
+            "type": "array"
+          },
+          "saved_album_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Saved Album Ids",
+            "type": "array"
+          },
+          "tracks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Tracks",
+            "type": "object"
+          }
+        },
+        "title": "Selection",
+        "type": "object"
+      },
+      "ShareConfigView": {
+        "properties": {
+          "disabled_reason": {
+            "title": "Disabled Reason",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_expiry_days": {
+            "title": "Max Expiry Days",
+            "type": "integer"
+          },
+          "max_tracks": {
+            "title": "Max Tracks",
+            "type": "integer"
+          },
+          "public_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Base Url"
+          },
+          "supported_download_formats": {
+            "items": {
+              "$ref": "#/components/schemas/PortableFormat"
+            },
+            "title": "Supported Download Formats",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "disabled_reason",
+          "max_tracks",
+          "max_expiry_days",
+          "supported_download_formats"
+        ],
+        "title": "ShareConfigView",
+        "type": "object"
+      },
+      "ShareDetailView": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SharedPlaylistSnapshot"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/ShareVisibility"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "status",
+          "visibility",
+          "snapshot"
+        ],
+        "title": "ShareDetailView",
+        "type": "object"
+      },
+      "ShareVisibility": {
+        "enum": [
+          "public",
+          "unlisted"
+        ],
+        "title": "ShareVisibility",
+        "type": "string"
+      },
+      "SharedPlaylistSnapshot": {
+        "properties": {
+          "attribution": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 500,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SharedSource"
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/SharedTrack"
+            },
+            "title": "Tracks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "source"
+        ],
+        "title": "SharedPlaylistSnapshot",
+        "type": "object"
+      },
+      "SharedSource": {
+        "properties": {
+          "provider": {
+            "maxLength": 64,
+            "title": "Provider",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "SharedSource",
+        "type": "object"
+      },
+      "SharedTrack": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "maxLength": 500,
+            "title": "Artist",
+            "type": "string"
+          },
+          "artwork_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Url"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit"
+          },
+          "isrc": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isrc"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType",
+            "default": "track"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "release_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Year"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "title": {
+            "maxLength": 500,
+            "title": "Title",
+            "type": "string"
+          },
+          "unsupported_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsupported Reason"
+          }
+        },
+        "required": [
+          "position",
+          "title",
+          "artist"
+        ],
+        "title": "SharedTrack",
+        "type": "object"
+      },
+      "StatusCounts": {
+        "properties": {
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "matched": {
+            "default": 0,
+            "title": "Matched",
+            "type": "integer"
+          },
+          "needs_review": {
+            "default": 0,
+            "title": "Needs Review",
+            "type": "integer"
+          },
+          "other": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Other",
+            "type": "object"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "written": {
+            "default": 0,
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "title": "StatusCounts",
+        "type": "object"
+      },
+      "Track": {
+        "description": "A single playlist item in universal form.\n\nOnly ``title`` and ``artist`` are strictly required; ``isrc`` is the primary\ncross-provider match key when present.",
+        "properties": {
+          "added_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added At"
+          },
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "title": "Artist",
+            "type": "string"
+          },
+          "artwork_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Uri"
+          },
+          "composer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composer"
+          },
+          "credits": {
+            "items": {
+              "$ref": "#/components/schemas/Credit"
+            },
+            "title": "Credits",
+            "type": "array"
+          },
+          "disc_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disc Number"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_local": {
+            "default": false,
+            "title": "Is Local",
+            "type": "boolean"
+          },
+          "isrc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isrc"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType",
+            "default": "track"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "migrated_target_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migrated Target Playlist Id"
+          },
+          "migrated_target_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migrated Target Uri"
+          },
+          "migration_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Status"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "provider_uris": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provider Uris",
+            "type": "object"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "release_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Year"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "track_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Number"
+          },
+          "unsupported_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsupported Reason"
+          }
+        },
+        "required": [
+          "title",
+          "artist"
+        ],
+        "title": "Track",
+        "type": "object"
+      },
+      "TrackSelection": {
+        "properties": {
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          }
+        },
+        "required": [
+          "position"
+        ],
+        "title": "TrackSelection",
+        "type": "object"
+      },
+      "UnsupportedOrganizerItem": {
+        "properties": {
+          "intent": {
+            "$ref": "#/components/schemas/OrganizerIntent"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playlist_id",
+          "playlist_name",
+          "intent",
+          "reason"
+        ],
+        "title": "UnsupportedOrganizerItem",
+        "type": "object"
+      },
+      "UpdateShare": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareVisibility"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "UpdateShare",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Open Playlist Engine",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/auth/accounts": {
+      "get": {
+        "operationId": "accounts_api_auth_accounts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "check",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Check",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountView"
+                  },
+                  "title": "Response Accounts Api Auth Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accounts",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/accounts/{account_id}/test": {
+      "post": {
+        "operationId": "test_account_connection_api_auth_accounts__account_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Account Connection",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/{provider}/begin": {
+      "post": {
+        "operationId": "begin_api_auth__provider__begin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthChallenge"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Begin",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/{provider}/callback": {
+      "get": {
+        "operationId": "callback_api_auth__provider__callback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/{provider}/complete": {
+      "post": {
+        "operationId": "complete_api_auth__provider__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Callback",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/exports": {
+      "post": {
+        "operationId": "create_export_api_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/vnd.open-playlist+json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/xspf+xml": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A portable playlist file or multi-playlist ZIP archive.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Deterministic sanitized download filename.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Open-Playlist-Warning-Count": {
+                "description": "Number of warnings represented in the output.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/exports/migrations/{job_id}": {
+      "post": {
+        "operationId": "create_history_export_api_exports_migrations__job_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateHistoryExport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/vnd.open-playlist+json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/xspf+xml": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A portable playlist file or multi-playlist ZIP archive.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Deterministic sanitized download filename.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Open-Playlist-Warning-Count": {
+                "description": "Number of warnings represented in the output.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create History Export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/library": {
+      "get": {
+        "operationId": "get_library_api_library_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Library",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/migrations": {
+      "get": {
+        "operationId": "list_migrations_api_migrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationOptionView"
+                  },
+                  "title": "Response List Migrations Api Migrations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Migrations",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "post": {
+        "operationId": "create_migration_api_migrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMigration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Migration",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/preflight": {
+      "post": {
+        "operationId": "preflight_migration_api_migrations_preflight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMigration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationWarningsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preflight Migration",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/stats": {
+      "get": {
+        "operationId": "get_aggregate_migration_stats_api_migrations_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source_provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateMigrationStatsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Aggregate Migration Stats",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}": {
+      "get": {
+        "operationId": "get_migration_api_migrations__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Migration",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}/events": {
+      "get": {
+        "operationId": "migration_events_api_migrations__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Migration Events",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}/items": {
+      "get": {
+        "operationId": "get_migration_items_api_migrations__job_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_playlist_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Playlist Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationEntityType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Confidence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Confidence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "in": "query",
+            "name": "artist",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artist"
+            }
+          },
+          {
+            "in": "query",
+            "name": "problem_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Problem Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobItemView"
+                  },
+                  "title": "Response Get Migration Items Api Migrations  Job Id  Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Migration Items",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}/items/review": {
+      "post": {
+        "operationId": "review_migration_items_api_migrations__job_id__items_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobItemView"
+                  },
+                  "title": "Response Review Migration Items Api Migrations  Job Id  Items Review Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Migration Items",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}/items/{item_id}/review": {
+      "post": {
+        "operationId": "review_migration_item_api_migrations__job_id__items__item_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Migration Item",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}/report": {
+      "get": {
+        "operationId": "download_migration_report_api_migrations__job_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "csv",
+              "enum": [
+                "csv",
+                "json"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "problems"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_playlist_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Playlist Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationEntityType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Confidence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Confidence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "in": "query",
+            "name": "artist",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artist"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Migration Report",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/{job_id}/stats": {
+      "get": {
+        "operationId": "get_migration_stats_api_migrations__job_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationStatsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Migration Stats",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/organizer/duplicates": {
+      "post": {
+        "operationId": "analyze_duplicates_api_organizer_duplicates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DuplicateCandidateView"
+                  },
+                  "title": "Response Analyze Duplicates Api Organizer Duplicates Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Duplicates",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/jobs": {
+      "get": {
+        "operationId": "list_organizer_jobs_api_organizer_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizerJobView"
+                  },
+                  "title": "Response List Organizer Jobs Api Organizer Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Organizer Jobs",
+        "tags": [
+          "organizer"
+        ]
+      },
+      "post": {
+        "operationId": "create_organizer_job_api_organizer_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Organizer Job",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_organizer_job_api_organizer_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Organizer Job",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_organizer_job_api_organizer_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Organizer Job",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/playlists": {
+      "get": {
+        "operationId": "list_organizer_playlists_api_organizer_playlists_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizerPlaylistView"
+                  },
+                  "title": "Response List Organizer Playlists Api Organizer Playlists Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Organizer Playlists",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/preflight": {
+      "post": {
+        "operationId": "preflight_organizer_api_organizer_preflight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerPreflightView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preflight Organizer",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/playlists": {
+      "get": {
+        "operationId": "list_playlists_api_playlists_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaylistRef"
+                  },
+                  "title": "Response List Playlists Api Playlists Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Playlists",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/playlists/{playlist_id}": {
+      "get": {
+        "operationId": "get_playlist_api_playlists__playlist_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Playlist"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Playlist",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "operationId": "list_providers_api_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderView"
+                  },
+                  "title": "Response List Providers Api Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Providers",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/public/shares/{token}": {
+      "get": {
+        "operationId": "public_share_api_public_shares__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicShareView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Share",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/accounts": {
+      "get": {
+        "operationId": "recipient_accounts_api_public_shares__token__accounts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountView"
+                  },
+                  "title": "Response Recipient Accounts Api Public Shares  Token  Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recipient Accounts",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/auth/{provider}/begin": {
+      "post": {
+        "operationId": "begin_recipient_auth_api_public_shares__token__auth__provider__begin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthChallenge"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Begin Recipient Auth",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/auth/{provider}/complete": {
+      "post": {
+        "operationId": "complete_recipient_auth_api_public_shares__token__auth__provider__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Callback",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Recipient Auth",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/download": {
+      "get": {
+        "operationId": "download_share_api_public_shares__token__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PortableFormat",
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Share",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/imports": {
+      "post": {
+        "operationId": "import_shared_playlist_api_public_shares__token__imports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipientImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Shared Playlist",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/imports/{job_id}": {
+      "get": {
+        "operationId": "get_recipient_import_api_public_shares__token__imports__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recipient Import",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/imports/{job_id}/events": {
+      "get": {
+        "operationId": "recipient_import_events_api_public_shares__token__imports__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recipient Import Events",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/imports/{job_id}/items": {
+      "get": {
+        "operationId": "get_recipient_import_items_api_public_shares__token__imports__job_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobItemView"
+                  },
+                  "title": "Response Get Recipient Import Items Api Public Shares  Token  Imports  Job Id  Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recipient Import Items",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/imports/{job_id}/items/review": {
+      "post": {
+        "operationId": "review_recipient_import_items_api_public_shares__token__imports__job_id__items_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobItemView"
+                  },
+                  "title": "Response Review Recipient Import Items Api Public Shares  Token  Imports  Job Id  Items Review Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Recipient Import Items",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/public/shares/{token}/imports/{job_id}/items/{item_id}/review": {
+      "post": {
+        "operationId": "review_recipient_import_item_api_public_shares__token__imports__job_id__items__item_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Recipient Import Item",
+        "tags": [
+          "public shares"
+        ]
+      }
+    },
+    "/api/session": {
+      "delete": {
+        "operationId": "logout_api_session_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "session"
+        ]
+      },
+      "get": {
+        "operationId": "session_status_api_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Session Status",
+        "tags": [
+          "session"
+        ]
+      },
+      "post": {
+        "operationId": "login_api_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerSessionLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "session"
+        ]
+      }
+    },
+    "/api/shares": {
+      "get": {
+        "operationId": "list_shares_api_shares_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShareDetailView"
+                  },
+                  "title": "Response List Shares Api Shares Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Shares",
+        "tags": [
+          "shares"
+        ]
+      },
+      "post": {
+        "operationId": "create_share_api_shares_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShare"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Share",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/config": {
+      "get": {
+        "operationId": "share_config_api_shares_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Share Config",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/{share_id}": {
+      "get": {
+        "operationId": "get_share_api_shares__share_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "share_id",
+            "required": true,
+            "schema": {
+              "title": "Share Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Share",
+        "tags": [
+          "shares"
+        ]
+      },
+      "patch": {
+        "operationId": "update_share_api_shares__share_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "share_id",
+            "required": true,
+            "schema": {
+              "title": "Share Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShare"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Share",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/{share_id}/expire": {
+      "post": {
+        "operationId": "expire_share_api_shares__share_id__expire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "share_id",
+            "required": true,
+            "schema": {
+              "title": "Share Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Expire Share",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/{share_id}/revoke": {
+      "post": {
+        "operationId": "revoke_share_api_shares__share_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "share_id",
+            "required": true,
+            "schema": {
+              "title": "Share Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Share",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/share/{token}": {
+      "get": {
+        "operationId": "public_share_page_share__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Share Page",
+        "tags": [
+          "public shares"
+        ]
+      }
+    }
+  }
+}

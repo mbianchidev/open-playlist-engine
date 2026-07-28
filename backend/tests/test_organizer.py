@@ -731,7 +731,7 @@ async def test_rate_limited_item_retries_then_succeeds() -> None:
 
 
 def test_worker_registers_organizer_job() -> None:
-    assert any(function.__name__ == "run_organizer" for function in WorkerSettings.functions)
+    assert any(function.name == "run_organizer" for function in WorkerSettings.functions)
 
 
 def test_all_organizer_routes_require_current_user() -> None:
