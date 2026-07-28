@@ -25,12 +25,16 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
     PublicPlaylistRef,
     RateLimited,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
+    Unsupported,
 )
 from app.core.capabilities import (
     Capability,
@@ -357,7 +361,11 @@ def _playlist_ref(resource: dict[str, Any]) -> PlaylistRef:
         name=str(attrs.get("name") or ""),
         track_count=total if isinstance(total, int) else None,
         owner_id=_ACCOUNT_ID,
+        owner_name="Apple Music account",
+        is_owned=True,
+        is_followed=False,
         collaborative=False,
+        created_at=attrs.get("dateAdded"),
     )
 
 
@@ -804,6 +812,10 @@ class AppleMusicAdapter:
             photo=_artwork_uri(attrs),
             tracks=tracks,
             owner_id=_ACCOUNT_ID,
+            owner_name="Apple Music account",
+            is_owned=True,
+            is_followed=False,
+            collaborative=False,
             created_at=attrs.get("dateAdded"),
         )
 
@@ -1014,6 +1026,26 @@ class AppleMusicAdapter:
             else AddItemResult(uri=uris[position], ok=False, error="track was not processed")
             for position, result in enumerate(results)
         ]
+
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported("Apple Music does not expose playlist unfollow through MusicKit")
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported("Apple Music does not expose library playlist deletion through MusicKit")
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        raise Unsupported(
+            "Apple Music does not expose removal of songs from library playlists through MusicKit"
+        )
 
     async def _post_tracks(
         self,

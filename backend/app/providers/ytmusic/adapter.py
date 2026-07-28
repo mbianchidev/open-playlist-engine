@@ -28,6 +28,7 @@ from typing import Any, Protocol
 import httpx
 
 from app.core.adapter import (
+    AccessDenied,
     AddItemResult,
     AuthChallenge,
     AuthExpired,
@@ -36,12 +37,16 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
     PublicPlaylistRef,
     RateLimited,
+    RemoveItemResult,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
     Unsupported,
 )
 from app.core.capabilities import (
@@ -89,6 +94,14 @@ class YTMusicClient(Protocol):
     ) -> list[dict[str, Any]]: ...
 
     def rate_song(self, videoId: str, rating: str = "INDIFFERENT") -> dict[str, Any] | None: ...
+
+    def delete_playlist(self, playlistId: str) -> str | dict[str, Any]: ...
+
+    def remove_playlist_items(
+        self,
+        playlistId: str,
+        videos: list[dict[str, str]],
+    ) -> str | dict[str, Any]: ...
 
 
 ClientFactory = Callable[[ProviderCredential], YTMusicClient]
@@ -197,6 +210,20 @@ def _playlist_id(item: dict[str, Any]) -> str | None:
     return str(value) if value else None
 
 
+def _playlist_owner(item: dict[str, Any]) -> tuple[str | None, str | None]:
+    author = item.get("author")
+    if isinstance(author, dict):
+        owner_id = author.get("id")
+        owner_name = author.get("name")
+        return (
+            str(owner_id) if owner_id else None,
+            str(owner_name) if owner_name else None,
+        )
+    if isinstance(author, str) and author:
+        return None, author
+    return None, None
+
+
 def _is_auth_error_message(message: str) -> bool:
     normalized = message.lower()
     return (
@@ -258,6 +285,7 @@ def _track_from_video(item: dict[str, Any], position: int) -> Track | None:
         return None
     duration = item.get("duration_seconds") or _duration_s(item.get("duration"))
     uri = f"ytmusic:video:{video_id}"
+    set_video_id = item.get("setVideoId") or item.get("set_video_id")
     return Track(
         id=str(video_id),
         title=str(title),
@@ -268,8 +296,16 @@ def _track_from_video(item: dict[str, Any], position: int) -> Track | None:
         duration_s=duration,
         explicit=item.get("isExplicit"),
         provider_uris={"ytmusic": uri},
+        metadata={
+            key: value
+            for key, value in {
+                "ytmusic_video_id": str(video_id),
+                "ytmusic_set_video_id": str(set_video_id) if set_video_id else None,
+            }.items()
+            if value is not None
+        },
         position=position,
-        source_item_id=str(video_id),
+        source_item_id=str(set_video_id or video_id),
     )
 
 
@@ -300,6 +336,8 @@ def _auth_from_headers(raw: str) -> dict[str, Any]:
 
 
 def _succeeded(response: str | dict[str, Any]) -> bool:
+    if isinstance(response, str):
+        return "SUCCEEDED" in response
     return isinstance(response, dict) and "SUCCEEDED" in str(response.get("status", ""))
 
 
@@ -641,6 +679,8 @@ class YTMusicAdapter:
                 Capability.WRITE_LIBRARY,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
+                Capability.REMOVE_TRACKS,
+                Capability.DELETE_PLAYLIST,
                 Capability.SET_DESCRIPTION,
             },
             has_isrc=False,
@@ -682,10 +722,16 @@ class YTMusicAdapter:
             if not playlist_id:
                 continue
             count = item.get("count") or item.get("trackCount")
+            owner_id, owner_name = _playlist_owner(item)
+            owned = item.get("owned") if isinstance(item.get("owned"), bool) else None
             yield PlaylistRef(
                 id=playlist_id,
                 name=_playlist_title(item),
                 track_count=count if isinstance(count, int) else None,
+                owner_id=owner_id,
+                owner_name=owner_name,
+                is_owned=owned,
+                is_followed=None if owned is None else not owned,
             )
         liked = await _run_client_call(
             "list liked songs", lambda: client.get_liked_songs(limit=1)
@@ -722,7 +768,7 @@ class YTMusicAdapter:
     async def read_playlist(self, cred: ProviderCredential, ref: PlaylistRef) -> Playlist:
         client = self._client(cred)
         raw = await self._load_playlist(client, ref)
-        return _playlist_from_raw(raw, ref)
+        return _playlist_from_raw(raw, ref, is_owned_fallback=ref.is_owned)
 
     async def read_public_playlist(self, ref: PublicPlaylistRef) -> Playlist:
         raw = await _run_client_call(
@@ -844,6 +890,87 @@ class YTMusicAdapter:
                     )
         return results
 
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported(
+            "YouTube Music does not expose a verified safe playlist-unfollow operation"
+        )
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("YouTube Music Liked Songs cannot be deleted as a playlist")
+        if ref.is_owned is not True:
+            raise AccessDenied("YouTube Music playlist ownership must be confirmed before deletion")
+        response = await _run_client_call(
+            "delete playlist",
+            lambda: self._client(cred).delete_playlist(ref.id),
+            playlist_id=ref.id,
+        )
+        if not _succeeded(response):
+            raise ProviderError(f"YouTube Music delete playlist failed: {response}")
+        return PlaylistMutationResult()
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("Removing liked songs is not a playlist edit")
+        if ref.is_owned is not True:
+            raise AccessDenied(
+                "YouTube Music playlist ownership must be confirmed before removing songs"
+            )
+        removals = list(items)
+        if len(removals) > self.info.capabilities.max_remove_batch:
+            raise ProviderError(
+                "YouTube Music can remove at most "
+                f"{self.info.capabilities.max_remove_batch} selected songs per job"
+            )
+
+        payload: list[dict[str, str]] = []
+        invalid: set[int] = set()
+        for index, item in enumerate(removals):
+            video_id = _video_id(item.provider_uri)
+            set_video_id = item.source_item_id
+            if not video_id or not set_video_id or set_video_id == video_id:
+                invalid.add(index)
+                continue
+            payload.append({"videoId": video_id, "setVideoId": set_video_id})
+
+        response: str | dict[str, Any] = {"status": "STATUS_SUCCEEDED"}
+        if payload:
+            response = await _run_client_call(
+                "remove playlist items",
+                lambda: self._client(cred).remove_playlist_items(ref.id, payload),
+                playlist_id=ref.id,
+            )
+        succeeded = _succeeded(response)
+        return RemoveTracksResult(
+            items=[
+                RemoveItemResult(
+                    source_item_id=item.source_item_id,
+                    provider_uri=item.provider_uri,
+                    position=item.position,
+                    ok=index not in invalid and succeeded,
+                    error=(
+                        "YouTube Music did not provide a unique setVideoId for this item"
+                        if index in invalid
+                        else (
+                            None
+                            if succeeded
+                            else f"YouTube Music remove tracks failed: {response}"
+                        )
+                    ),
+                )
+                for index, item in enumerate(removals)
+            ]
+        )
+
     async def _like_tracks(
         self, cred: ProviderCredential, uris: Sequence[str]
     ) -> list[AddItemResult]:
@@ -875,7 +1002,9 @@ class YTMusicAdapter:
         return results
 
 
-def _playlist_from_raw(raw: Any, ref: PlaylistRef) -> Playlist:
+def _playlist_from_raw(
+    raw: Any, ref: PlaylistRef, *, is_owned_fallback: bool | None = None
+) -> Playlist:
     if not isinstance(raw, dict):
         raise ProviderError("YouTube Music playlist response was invalid")
     if raw.get("error"):
@@ -891,6 +1020,8 @@ def _playlist_from_raw(raw: Any, ref: PlaylistRef) -> Playlist:
         if track is not None
     ]
     name = str(raw.get("title") or raw.get("name") or ref.name)
+    owner_id, owner_name = _playlist_owner(raw)
+    owned = raw.get("owned") if isinstance(raw.get("owned"), bool) else is_owned_fallback
     return Playlist(
         id=ref.id,
         name=_LIKED_SONGS_NAME
@@ -898,6 +1029,11 @@ def _playlist_from_raw(raw: Any, ref: PlaylistRef) -> Playlist:
         else name,
         description=raw.get("description") if isinstance(raw.get("description"), str) else None,
         tracks=tracks,
+        owner_id=owner_id,
+        owner_name=owner_name,
+        is_owned=owned,
+        is_followed=None if owned is None else not owned,
+        collaborative=isinstance(raw.get("collaborators"), dict),
         kind=PlaylistKind.LIKED_TRACKS
         if ref.id == YTMUSIC_LIKED_SONGS_PLAYLIST_ID
         else PlaylistKind.STANDARD,

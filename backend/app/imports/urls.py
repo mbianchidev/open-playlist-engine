@@ -168,19 +168,21 @@ def _resolve_open_playlist(
     host: str,
     parts: list[str],
 ) -> ResolvedPlaylistUrl:
-    if len(parts) != 2 or parts[0] not in {"share", "open-playlists"}:
+    # Only the current OPE share link shape is accepted: ``/share/{token}``.
+    # The token is resolved through the public share API, never by scraping
+    # the HTML share page.
+    if len(parts) != 2 or parts[0] != "share":
         raise UnsafePlaylistUrl("unsupported Open Playlist Engine share URL")
-    playlist_id = parts[1]
-    if not _OPEN_PLAYLIST_ID.fullmatch(playlist_id):
-        raise UnsafePlaylistUrl("Open Playlist Engine share URL has an invalid playlist ID")
-    source_path = "share" if parts[0] == "share" else "open-playlists"
+    token = parts[1]
+    if not _OPEN_PLAYLIST_ID.fullmatch(token):
+        raise UnsafePlaylistUrl("Open Playlist Engine share URL has an invalid token")
     return ResolvedPlaylistUrl(
         provider="openplaylist",
-        resource_id=playlist_id,
-        canonical_url=f"https://{host}/{source_path}/{playlist_id}",
+        resource_id=token,
+        canonical_url=f"https://{host}/share/{token}",
         source_label=f"Open Playlist Engine ({host})",
         metadata={
-            "fetch_url": f"https://{host}/open-playlists/{playlist_id}",
+            "fetch_url": f"https://{host}/api/public/shares/{token}",
             "host": host,
         },
     )

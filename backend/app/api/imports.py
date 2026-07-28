@@ -2,89 +2,171 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import ClientDisconnect
 
 from app.api.dependencies import CurrentUserId
 from app.core.adapter import AccessDenied, AuthExpired, NotFound, ProviderError, RateLimited
-from app.core.models import Playlist
-from app.db import models as orm
 from app.db.base import get_session
+from app.imports.external import ImportContentError, SourceConnectionRequired
 from app.imports.http import SafeHttpError
-from app.imports.models import ImportIssue
-from app.imports.parser import ImportLimitExceeded
+from app.imports.models import LocalImportPreview, SourceImportPreview
+from app.imports.parsers import ImportLimitExceeded, PlaylistImportError
+from app.imports.registry import parse_playlist_file, sanitize_filename
 from app.imports.service import (
-    ImportContentError,
-    ImportService,
-    SourceConnectionRequired,
+    LocalImportExpired,
+    LocalImportNotFound,
+    LocalImportStateError,
+    cleanup_expired_imports,
+    create_import,
+    create_text_import,
+    create_url_import,
+    discard_import,
+    load_preview_import,
+    preview_from_record,
+    source_preview_from_record,
+    spool_upload,
 )
 from app.imports.urls import UnsafePlaylistUrl
+from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
 
+class ImportErrorDetail(BaseModel):
+    code: str
+    message: str
+    format: str | None = None
+
+
+class ImportErrorResponse(BaseModel):
+    detail: ImportErrorDetail
+
+
 class UrlImportPreviewRequest(BaseModel):
-    kind: Literal["url"]
     url: str
     source_account_id: str | None = None
 
 
 class TextImportPreviewRequest(BaseModel):
-    kind: Literal["text"]
     text: str
     name: str | None = None
 
 
-ImportPreviewRequest = Annotated[
-    UrlImportPreviewRequest | TextImportPreviewRequest,
-    Field(discriminator="kind"),
-]
-
-
-class ImportSourceView(BaseModel):
+class SourceConnectionRequiredDetail(BaseModel):
+    code: Literal["source_connection_required"] = "source_connection_required"
+    message: str
     provider: str
-    label: str
-    locator: str
+    action: Literal["connect_source"] = "connect_source"
 
 
-class ImportPreviewView(BaseModel):
-    import_id: str
-    source: ImportSourceView
-    playlist: Playlist
-    issues: list[ImportIssue] = Field(default_factory=list)
-    track_count: int
-    unsupported_count: int
+class SourceConnectionRequiredResponse(BaseModel):
+    detail: SourceConnectionRequiredDetail
 
 
-def get_import_service() -> ImportService:
-    return ImportService()
-
-
-@router.post("/preview", response_model=ImportPreviewView)
+@router.post(
+    "/preview",
+    response_model=LocalImportPreview,
+    status_code=status.HTTP_201_CREATED,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+        }
+    },
+    responses={
+        400: {"model": ImportErrorResponse, "description": "Invalid upload request."},
+        413: {"model": ImportErrorResponse, "description": "Upload-size limit exceeded."},
+        422: {"model": ImportErrorResponse, "description": "Playlist parsing failed."},
+    },
+)
 async def preview_import(
-    body: ImportPreviewRequest,
+    request: Request,
+    filename: Annotated[str, Query(min_length=1, max_length=255)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
     user_id: CurrentUserId,
-    service: Annotated[ImportService, Depends(get_import_service)],
-) -> ImportPreviewView:
+) -> LocalImportPreview:
+    limits = settings.local_import_limits
+    _validate_content_length(request, limits.max_upload_bytes)
+    await cleanup_expired_imports(session)
+    await session.commit()
+    spool = None
     try:
-        if isinstance(body, TextImportPreviewRequest):
-            row = await service.preview_text(
-                session,
-                user_id=user_id,
-                text=body.text,
-                name=body.name,
-            )
-        else:
-            row = await service.preview_url(
-                session,
-                user_id=user_id,
-                url=body.url,
-                source_account_id=body.source_account_id,
-            )
+        spool, _ = await spool_upload(request.stream(), limits)
+        result = await run_in_threadpool(
+            parse_playlist_file,
+            spool,
+            filename=sanitize_filename(filename),
+            limits=limits,
+        )
+        record = await create_import(
+            session,
+            user_id=user_id,
+            filename=filename,
+            result=result,
+            settings=settings,
+        )
         await session.commit()
-        return _preview_view(row)
+        return preview_from_record(record)
+    except ClientDisconnect as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "upload_interrupted", "message": "File upload was interrupted."},
+        ) from exc
+    except ImportLimitExceeded as exc:
+        raise HTTPException(
+            status_code=413 if exc.code == "upload_size_limit" else 422,
+            detail=_import_error(exc),
+        ) from exc
+    except PlaylistImportError as exc:
+        raise HTTPException(status_code=422, detail=_import_error(exc)) from exc
+    finally:
+        if spool is not None:
+            spool.close()
+
+
+@router.post(
+    "/url-preview",
+    response_model=SourceImportPreview,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Unsupported or unsafe playlist URL."},
+        401: {"description": "The connected source account's credentials expired."},
+        403: {"description": "The playlist is not accessible."},
+        404: {"description": "The playlist could not be found."},
+        409: {
+            "model": SourceConnectionRequiredResponse,
+            "description": "Connect a source account to read this playlist URL.",
+        },
+        413: {"description": "The playlist exceeds a configured import limit."},
+    },
+)
+async def preview_url_import(
+    body: UrlImportPreviewRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user_id: CurrentUserId,
+) -> SourceImportPreview:
+    await cleanup_expired_imports(session)
+    await session.commit()
+    try:
+        record = await create_url_import(
+            session,
+            user_id=user_id,
+            url=body.url,
+            source_account_id=body.source_account_id,
+            settings=settings,
+        )
+        await session.commit()
+        return source_preview_from_record(record)
     except SourceConnectionRequired as exc:
         raise HTTPException(
             status_code=409,
@@ -113,18 +195,108 @@ async def preview_import(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _preview_view(row: orm.ImportedPlaylist) -> ImportPreviewView:
-    playlist = Playlist.model_validate(row.playlist)
-    issues = [ImportIssue.model_validate(issue) for issue in row.issues or []]
-    return ImportPreviewView(
-        import_id=row.id,
-        source=ImportSourceView(
-            provider=row.source_provider,
-            label=row.source_label,
-            locator=row.source_locator,
-        ),
-        playlist=playlist,
-        issues=issues,
-        track_count=len(playlist.tracks),
-        unsupported_count=sum(not track.is_migratable for track in playlist.tracks),
-    )
+@router.post(
+    "/text-preview",
+    response_model=SourceImportPreview,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "The pasted text did not contain any valid tracks."},
+        413: {"description": "The pasted text exceeds a configured import limit."},
+    },
+)
+async def preview_text_import(
+    body: TextImportPreviewRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user_id: CurrentUserId,
+) -> SourceImportPreview:
+    await cleanup_expired_imports(session)
+    await session.commit()
+    try:
+        record = await create_text_import(
+            session,
+            user_id=user_id,
+            text=body.text,
+            name=body.name,
+            settings=settings,
+        )
+        await session.commit()
+        return source_preview_from_record(record)
+    except ImportLimitExceeded as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except ImportContentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{import_id}", response_model=LocalImportPreview)
+async def get_import_preview(
+    import_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
+) -> LocalImportPreview:
+    try:
+        record = await load_preview_import(session, import_id=import_id, user_id=user_id)
+        await session.commit()
+        return preview_from_record(record)
+    except LocalImportNotFound as exc:
+        raise HTTPException(status_code=404, detail="Local import not found") from exc
+    except LocalImportExpired as exc:
+        await session.commit()
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "import_expired",
+                "message": "This local import expired. Upload the file again.",
+            },
+        ) from exc
+    except LocalImportStateError as exc:
+        raise HTTPException(status_code=409, detail=_state_error(exc)) from exc
+
+
+@router.delete("/{import_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_import(
+    import_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user_id: CurrentUserId,
+) -> Response:
+    try:
+        await discard_import(session, import_id=import_id, user_id=user_id)
+        await session.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except LocalImportNotFound as exc:
+        raise HTTPException(status_code=404, detail="Local import not found") from exc
+    except LocalImportStateError as exc:
+        raise HTTPException(status_code=409, detail=_state_error(exc)) from exc
+
+
+def _validate_content_length(request: Request, max_bytes: int) -> None:
+    raw_length = request.headers.get("content-length")
+    if not raw_length:
+        return
+    try:
+        content_length = int(raw_length)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_content_length", "message": "Invalid Content-Length header."},
+        ) from exc
+    if content_length > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "upload_size_limit",
+                "message": f"Upload exceeds the configured {max_bytes}-byte limit.",
+            },
+        )
+
+
+def _import_error(exc: PlaylistImportError) -> dict[str, str | None]:
+    return {
+        "code": exc.code,
+        "message": str(exc),
+        "format": exc.format.value if exc.format else None,
+    }
+
+
+def _state_error(exc: LocalImportStateError) -> dict[str, str]:
+    return {"code": exc.code, "message": str(exc)}

@@ -44,7 +44,7 @@ def test_provider_playlist_url_shapes(
     assert resolved.canonical_url == canonical_url
 
 
-def test_open_playlist_share_url_maps_to_bounded_json_endpoint() -> None:
+def test_open_playlist_share_url_maps_to_public_share_api() -> None:
     resolved = resolve_playlist_url(
         "https://playlists.example/share/road-trip?utm_source=test",
         open_playlist_hosts={"playlists.example"},
@@ -54,7 +54,7 @@ def test_open_playlist_share_url_maps_to_bounded_json_endpoint() -> None:
     assert resolved.resource_id == "road-trip"
     assert resolved.canonical_url == "https://playlists.example/share/road-trip"
     assert resolved.metadata["fetch_url"] == (
-        "https://playlists.example/open-playlists/road-trip"
+        "https://playlists.example/api/public/shares/road-trip"
     )
 
 
@@ -62,9 +62,10 @@ def test_open_playlist_share_url_maps_to_bounded_json_endpoint() -> None:
     "url",
     [
         "http://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-        "https://localhost/open-playlists/test",
-        "https://127.0.0.1/open-playlists/test",
-        "https://user:pass@open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
+        "https://localhost/share/test",
+        "https://127.0.0.1/share/test",
+        "https://playlists.example/open-playlists/test",
+        "******open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
         "https://evil.example/playlist/37i9dQZF1DXcBWIGoYBM5M",
         "https://open.spotify.com/album/37i9dQZF1DXcBWIGoYBM5M",
     ],

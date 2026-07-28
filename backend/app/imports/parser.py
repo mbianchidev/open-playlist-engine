@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 from app.core.models import Playlist, Track
-from app.imports.models import ImportIssue, ParsedTextImport
+from app.imports.models import ParsedTextImport, SourceImportIssue
 
 _DASH_SEPARATOR = re.compile(r"\s+(?:-|–|—)\s+")
 _ISRC = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}\d{7}$")
@@ -70,12 +70,12 @@ def parse_track_text(
             f"pasted text exceeds the {limits.max_items} items input limit"
         )
 
-    issues: list[ImportIssue] = []
+    issues: list[SourceImportIssue] = []
     tracks: list[Track] = []
     for line_number, raw in data_rows:
         if len(raw) > limits.max_line_chars:
             issues.append(
-                ImportIssue(
+                SourceImportIssue(
                     line=line_number,
                     code="line_too_long",
                     message=(
@@ -170,7 +170,7 @@ def _track_from_fields(
     raw: str,
     position: int,
     limits: TextImportLimits,
-    issues: list[ImportIssue],
+    issues: list[SourceImportIssue],
 ) -> Track | None:
     title = fields.get("title", "").strip()
     artist = fields.get("artist", "").strip()
@@ -179,7 +179,7 @@ def _track_from_fields(
 
     if not title:
         issues.append(
-            ImportIssue(
+            SourceImportIssue(
                 line=line_number,
                 code="missing_title",
                 message="A track title is required.",
@@ -191,7 +191,7 @@ def _track_from_fields(
     for field_name, value in (("title", title), ("artist", artist), ("album", album or "")):
         if len(value) > limits.max_field_chars:
             issues.append(
-                ImportIssue(
+                SourceImportIssue(
                     line=line_number,
                     code="field_too_long",
                     message=(
@@ -205,7 +205,7 @@ def _track_from_fields(
             return None
     if not artist:
         issues.append(
-            ImportIssue(
+            SourceImportIssue(
                 line=line_number,
                 code="missing_artist",
                 message="Artist is missing; matching will rely on the title.",
@@ -214,7 +214,7 @@ def _track_from_fields(
         )
     if isrc and not _ISRC.fullmatch(isrc):
         issues.append(
-            ImportIssue(
+            SourceImportIssue(
                 line=line_number,
                 code="invalid_isrc",
                 message="ISRC must contain 12 letters or digits in standard ISRC form.",
@@ -240,7 +240,7 @@ def _duration(
     raw_duration: str,
     line_number: int,
     raw: str,
-    issues: list[ImportIssue],
+    issues: list[SourceImportIssue],
 ) -> int | None:
     value = raw_duration.strip()
     if not value:
@@ -251,7 +251,7 @@ def _duration(
         duration = -1
     if duration < 0:
         issues.append(
-            ImportIssue(
+            SourceImportIssue(
                 line=line_number,
                 code="invalid_duration",
                 message="Duration must be a non-negative number of seconds.",

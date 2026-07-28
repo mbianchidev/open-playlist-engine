@@ -20,14 +20,17 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.models import MigrationEntityType
 from app.db.base import Base
 
 
@@ -47,6 +50,9 @@ class ProviderAccount(Base):
     provider: Mapped[str] = mapped_column(String, index=True)
     provider_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    ephemeral_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     credentials: Mapped[list[ProviderCredential]] = relationship(
@@ -88,9 +94,18 @@ class CachedPlaylistRef(Base):
     name: Mapped[str] = mapped_column(String)
     track_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     owner_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    owner_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_owned: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_followed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     collaborative: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
     tracks_href: Mapped[str | None] = mapped_column(String, nullable=True)
+    provider_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    provider_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -119,21 +134,47 @@ class CachedPlaylistTracks(Base):
 
 
 # --------------------------------------------------------------------------- #
-# Imported source snapshots (private)
+# Ephemeral normalized imports (private): local-file uploads, public URL
+# resolutions, and pasted-text snapshots all share this lease-backed table.
+# ``source_kind``/``source_provider``/``source_label``/``source_locator``/
+# ``source_fingerprint`` are only populated for URL/text records; the
+# required local-file columns (filename, detected_format, ...) are always
+# populated with synthetic values for those records so the rest of the
+# migration pipeline can treat every row uniformly.
 # --------------------------------------------------------------------------- #
-class ImportedPlaylist(Base):
-    __tablename__ = "imported_playlist"
+class LocalPlaylistImport(Base):
+    __tablename__ = "local_playlist_import"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, index=True)
-    source_provider: Mapped[str] = mapped_column(String, index=True)
-    source_label: Mapped[str] = mapped_column(String)
-    source_locator: Mapped[str] = mapped_column(String)
-    source_fingerprint: Mapped[str] = mapped_column(String, index=True)
-    playlist_id: Mapped[str] = mapped_column(String, index=True)
-    playlist: Mapped[dict] = mapped_column(JSON)
+    filename: Mapped[str] = mapped_column(String)
+    detected_format: Mapped[str] = mapped_column(String)
+    encoding: Mapped[str | None] = mapped_column(String, nullable=True)
+    file_size: Mapped[int] = mapped_column(Integer)
+    # ready | queued | failed
+    status: Mapped[str] = mapped_column(String, default="ready", index=True)
+    queued_job_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    playlists: Mapped[list] = mapped_column(JSON, default=list)
     issues: Mapped[list] = mapped_column(JSON, default=list)
+    limits: Mapped[dict] = mapped_column(JSON, default=dict)
+    playlist_count: Mapped[int] = mapped_column(Integer, default=0)
+    track_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    malformed_count: Mapped[int] = mapped_column(Integer, default=0)
+    unsupported_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    # public-url/pasted-text metadata (nullable; unused by local-file imports)
+    source_kind: Mapped[str] = mapped_column(
+        String, server_default="local_file", default="local_file"
+    )
+    source_provider: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    source_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_locator: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -148,17 +189,71 @@ class MigrationJob(Base):
     target_provider: Mapped[str] = mapped_column(String)
     source_account_id: Mapped[str] = mapped_column(String)
     target_account_id: Mapped[str] = mapped_column(String)
+    source_share_id: Mapped[str | None] = mapped_column(
+        ForeignKey("playlist_share.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     selection: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String, default="pending", index=True)
     total: Mapped[int] = mapped_column(Integer, default=0)
     done: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    origin: Mapped[str] = mapped_column(String, default="manual", index=True)
+    sync_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sync_run.id", ondelete="CASCADE"), nullable=True, unique=True, index=True
+    )
+    warnings: Mapped[list] = mapped_column(JSON, default=list)
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    details_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    details_purged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     items: Mapped[list[JobItem]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+    sync_run: Mapped[SyncRun | None] = relationship(back_populates="migration_job")
+
+
+# --------------------------------------------------------------------------- #
+# Immutable public playlist shares
+# --------------------------------------------------------------------------- #
+class PlaylistShare(Base):
+    __tablename__ = "playlist_share"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    owner_user_id: Mapped[str] = mapped_column(String, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    enc_token: Mapped[bytes] = mapped_column(LargeBinary)
+    visibility: Mapped[str] = mapped_column(String, default="unlisted")
+    snapshot_schema_version: Mapped[str] = mapped_column(String, default="1.0")
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ShareRecipientAuthState(Base):
+    __tablename__ = "share_recipient_auth_state"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    share_id: Mapped[str] = mapped_column(
+        ForeignKey("playlist_share.id", ondelete="CASCADE"), index=True
+    )
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    recipient_user_id: Mapped[str] = mapped_column(String, index=True)
+    provider: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class JobItem(Base):
@@ -168,9 +263,15 @@ class JobItem(Base):
     job_id: Mapped[str] = mapped_column(
         ForeignKey("migration_job.id", ondelete="CASCADE"), index=True
     )
-    source_playlist_id: Mapped[str] = mapped_column(String)
+    entity_type: Mapped[str] = mapped_column(
+        String, default=MigrationEntityType.TRACK.value, index=True
+    )
+    source_playlist_id: Mapped[str | None] = mapped_column(String, nullable=True)
     source_playlist_name: Mapped[str | None] = mapped_column(String, nullable=True)
     target_playlist_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_entity_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     title: Mapped[str] = mapped_column(String)
     artist: Mapped[str] = mapped_column(String)
@@ -185,12 +286,52 @@ class JobItem(Base):
     # pending | matched | needs_review | written | skipped | failed
     status: Mapped[str] = mapped_column(String, default="pending", index=True)
     reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    review_action: Mapped[str | None] = mapped_column(String, nullable=True)
+    review_original_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    review_original_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
     job: Mapped[MigrationJob] = relationship(back_populates="items")
+
+
+class ReviewDecision(Base):
+    """Accepted low-confidence decisions retained after detailed job rows expire."""
+
+    __tablename__ = "review_decision"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("migration_job.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    source_provider: Mapped[str] = mapped_column(String)
+    target_provider: Mapped[str] = mapped_column(String)
+    source_account_id: Mapped[str] = mapped_column(String)
+    target_account_id: Mapped[str] = mapped_column(String)
+    entity_type: Mapped[str] = mapped_column(
+        String,
+        default=MigrationEntityType.TRACK.value,
+        server_default=MigrationEntityType.TRACK.value,
+        index=True,
+    )
+    source_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_entity_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    title: Mapped[str] = mapped_column(String)
+    artist: Mapped[str] = mapped_column(String)
+    album: Mapped[str | None] = mapped_column(String, nullable=True)
+    duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    isrc: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_uri: Mapped[str] = mapped_column(String)
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String)
+    action: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class OperationLedger(Base):
@@ -211,6 +352,168 @@ class OperationLedger(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# Organizer idempotency is stored on these rows. OperationLedger remains migration-only.
+class OrganizerJob(Base):
+    __tablename__ = "organizer_job"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    provider: Mapped[str] = mapped_column(String, index=True)
+    account_id: Mapped[str] = mapped_column(String, index=True)
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    items: Mapped[list[OrganizerItem]] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class OrganizerItem(Base):
+    __tablename__ = "organizer_item"
+    __table_args__ = (UniqueConstraint("job_id", "playlist_id", "action"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("organizer_job.id", ondelete="CASCADE"), index=True
+    )
+    playlist_id: Mapped[str] = mapped_column(String, index=True)
+    playlist_name: Mapped[str] = mapped_column(String)
+    action: Mapped[str] = mapped_column(String)
+    destructive: Mapped[bool] = mapped_column(Boolean, default=False)
+    ownership: Mapped[str] = mapped_column(String, default="unknown")
+    collaborative: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    job: Mapped[OrganizerJob] = relationship(back_populates="items")
+
+
+# --------------------------------------------------------------------------- #
+# Scheduled playlist synchronization (private)
+# --------------------------------------------------------------------------- #
+class SyncRule(Base):
+    __tablename__ = "sync_rule"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "source_provider",
+            "source_account_id",
+            "source_playlist_id",
+            "target_provider",
+            "target_account_id",
+            "target_playlist_id",
+            name="uq_sync_rule_endpoint_pair",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    source_provider: Mapped[str] = mapped_column(String)
+    source_account_id: Mapped[str] = mapped_column(String)
+    source_playlist_id: Mapped[str] = mapped_column(String)
+    source_playlist_name: Mapped[str] = mapped_column(String)
+    target_provider: Mapped[str] = mapped_column(String)
+    target_account_id: Mapped[str] = mapped_column(String)
+    target_playlist_id: Mapped[str] = mapped_column(String)
+    target_playlist_name: Mapped[str] = mapped_column(String)
+    mode: Mapped[str] = mapped_column(String, default="add_only")
+    cadence_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    timezone: Mapped[str] = mapped_column(String, default="UTC")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    status: Mapped[str] = mapped_column(String, default="idle", index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_added: Mapped[int] = mapped_column(Integer, default=0)
+    last_removed: Mapped[int] = mapped_column(Integer, default=0)
+    last_reordered: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    runs: Mapped[list[SyncRun]] = relationship(
+        back_populates="rule", cascade="all, delete-orphan"
+    )
+    checkpoint: Mapped[SyncCheckpoint | None] = relationship(
+        back_populates="rule", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_run"
+    __table_args__ = (
+        Index(
+            "uq_sync_run_active_rule",
+            "rule_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    rule_id: Mapped[str] = mapped_column(
+        ForeignKey("sync_rule.id", ondelete="CASCADE"), index=True
+    )
+    trigger: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="queued", index=True)
+    lease_token: Mapped[str] = mapped_column(String, default=_uuid)
+    queue_job_id: Mapped[str] = mapped_column(String, unique=True)
+    source_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_before: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_after: Mapped[dict] = mapped_column(JSON, default=dict)
+    added: Mapped[int] = mapped_column(Integer, default=0)
+    removed: Mapped[int] = mapped_column(Integer, default=0)
+    reordered: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    rule: Mapped[SyncRule] = relationship(back_populates="runs")
+    migration_job: Mapped[MigrationJob | None] = relationship(
+        back_populates="sync_run", uselist=False
+    )
+
+
+class SyncCheckpoint(Base):
+    __tablename__ = "sync_checkpoint"
+
+    rule_id: Mapped[str] = mapped_column(
+        ForeignKey("sync_rule.id", ondelete="CASCADE"), primary_key=True
+    )
+    source_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    mappings: Mapped[dict] = mapped_column(JSON, default=dict)
+    unresolved: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    rule: Mapped[SyncRule] = relationship(back_populates="checkpoint")
 
 
 # --------------------------------------------------------------------------- #

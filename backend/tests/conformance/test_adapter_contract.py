@@ -10,8 +10,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.adapter import NotFound, ProviderAdapter
-from app.core.models import Track
+from app.core.adapter import (
+    FollowedArtistReader,
+    FollowedArtistWriter,
+    NotFound,
+    ProviderAdapter,
+    SavedAlbumReader,
+    SavedAlbumWriter,
+)
+from app.core.models import Album, Artist, Track
 from tests.conformance.cases import Case, build_cases
 
 
@@ -22,6 +29,11 @@ def case(request: pytest.FixtureRequest) -> Case:
 
 def test_satisfies_protocol(case: Case) -> None:
     assert isinstance(case.adapter, ProviderAdapter)
+    if case.library:
+        assert isinstance(case.adapter, SavedAlbumReader)
+        assert isinstance(case.adapter, SavedAlbumWriter)
+        assert isinstance(case.adapter, FollowedArtistReader)
+        assert isinstance(case.adapter, FollowedArtistWriter)
 
 
 async def test_iter_and_read_roundtrip(case: Case) -> None:
@@ -68,3 +80,47 @@ def test_add_respects_batch_limit_metadata(case: Case) -> None:
         pytest.skip(f"{case.id}: write not in scope")
     # The capability descriptor must advertise a usable batch bound.
     assert case.adapter.info.capabilities.max_add_batch >= 1
+
+
+async def test_library_list_read_and_search(case: Case) -> None:
+    if not case.library:
+        pytest.skip(f"{case.id}: album/artist library not in scope")
+    adapter = case.adapter
+    assert isinstance(adapter, SavedAlbumReader)
+    assert isinstance(adapter, SavedAlbumWriter)
+    assert isinstance(adapter, FollowedArtistReader)
+    assert isinstance(adapter, FollowedArtistWriter)
+
+    albums = [album async for album in adapter.iter_saved_albums(case.cred)]
+    artists = [artist async for artist in adapter.iter_followed_artists(case.cred)]
+    assert albums and artists
+    assert await adapter.read_saved_album(case.cred, albums[0].id or "")
+    assert await adapter.read_followed_artist(case.cred, artists[0].id or "")
+
+    album_hits = await adapter.search_albums(
+        case.cred,
+        Album(title=albums[0].title, artists=albums[0].artists, upc=albums[0].upc),
+    )
+    artist_hits = await adapter.search_artists(case.cred, Artist(name=artists[0].name))
+    assert album_hits and album_hits[0].uri.startswith(case.album_uri_prefix)
+    assert artist_hits and artist_hits[0].uri.startswith(case.artist_uri_prefix)
+
+
+async def test_library_contains_and_writes_are_per_item(case: Case) -> None:
+    if not case.library:
+        pytest.skip(f"{case.id}: album/artist library not in scope")
+    adapter = case.adapter
+    assert isinstance(adapter, SavedAlbumReader)
+    assert isinstance(adapter, SavedAlbumWriter)
+    assert isinstance(adapter, FollowedArtistReader)
+    assert isinstance(adapter, FollowedArtistWriter)
+    album_uri = f"{case.album_uri_prefix}new-album"
+    artist_uri = f"{case.artist_uri_prefix}new-artist"
+
+    assert await adapter.contains_saved_albums(case.cred, [album_uri]) == [False]
+    assert await adapter.contains_followed_artists(case.cred, [artist_uri]) == [False]
+    album_results = await adapter.save_albums(case.cred, [album_uri])
+    artist_results = await adapter.follow_artists(case.cred, [artist_uri])
+    assert album_results[0].ok is True
+    assert artist_results[0].ok is True
+    assert adapter.info.capabilities.max_library_batch >= 1

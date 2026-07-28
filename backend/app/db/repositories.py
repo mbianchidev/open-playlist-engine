@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import ProviderAdapter, RefreshTokenExpired
@@ -69,6 +69,7 @@ async def save_credential(
     provider_user_id: str | None,
     display_name: str | None,
     credential: RuntimeCredential,
+    ephemeral_expires_at: datetime | None = None,
 ) -> orm.ProviderAccount:
     stmt = select(orm.ProviderAccount).where(
         orm.ProviderAccount.user_id == user_id,
@@ -82,11 +83,13 @@ async def save_credential(
             provider=provider,
             provider_user_id=provider_user_id,
             display_name=display_name,
+            ephemeral_expires_at=ephemeral_expires_at,
         )
         session.add(account)
         await session.flush()
     else:
         account.display_name = display_name or account.display_name
+        account.ephemeral_expires_at = ephemeral_expires_at
 
     persisted = credential.model_copy(update={"account_id": account.id, "provider": provider})
     blob = json.dumps(persisted.model_dump(mode="json"))
@@ -102,6 +105,29 @@ async def save_credential(
     )
     await session.flush()
     return account
+
+
+async def delete_expired_ephemeral_accounts(
+    session: AsyncSession,
+    *,
+    now: datetime | None = None,
+) -> int:
+    cutoff = now or datetime.now(UTC)
+    rows = list(
+        (
+            await session.execute(
+                select(orm.ProviderAccount).where(
+                    orm.ProviderAccount.ephemeral_expires_at.is_not(None),
+                    orm.ProviderAccount.ephemeral_expires_at <= cutoff,
+                )
+            )
+        ).scalars()
+    )
+    for account in rows:
+        await session.delete(account)
+    if rows:
+        await session.flush()
+    return len(rows)
 
 
 async def load_credential(
@@ -181,8 +207,32 @@ async def load_fresh_credential(
             provider_user_id=account.provider_user_id,
             display_name=account.display_name,
             credential=refreshed,
+            ephemeral_expires_at=account.ephemeral_expires_at,
         )
         credential = refreshed.model_copy(
             update={"account_id": account.id, "provider": account.provider}
         )
     return credential, account
+
+
+async def invalidate_playlist_cache(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    provider: str,
+    account_id: str,
+) -> None:
+    conditions = (
+        orm.CachedPlaylistRef.user_id == user_id,
+        orm.CachedPlaylistRef.provider == provider,
+        orm.CachedPlaylistRef.account_id == account_id,
+    )
+    await session.execute(
+        delete(orm.CachedPlaylistTracks).where(
+            orm.CachedPlaylistTracks.user_id == user_id,
+            orm.CachedPlaylistTracks.provider == provider,
+            orm.CachedPlaylistTracks.account_id == account_id,
+        )
+    )
+    await session.execute(delete(orm.CachedPlaylistRef).where(*conditions))
+    await session.flush()

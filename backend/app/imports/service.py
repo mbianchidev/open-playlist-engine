@@ -1,293 +1,558 @@
 from __future__ import annotations
 
-import hashlib
-import json
-from collections.abc import Callable
-from typing import Any
+import logging
+import tempfile
+from collections.abc import AsyncIterable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import BinaryIO
 
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.adapter import (
-    AccessDenied,
-    AuthExpired,
-    NotFound,
-    ProviderAdapter,
-    ProviderError,
-    PublicPlaylistReader,
-    PublicPlaylistRef,
-)
-from app.core.models import Playlist, PlaylistRef
+from app.core.migration_state import track_selected
+from app.core.models import Playlist
 from app.core.registry import get
 from app.db import models as orm
-from app.db.repositories import AccountNotFound, CredentialNotFound, load_fresh_credential
-from app.imports.http import SafeHttpFetcher
-from app.imports.models import ImportIssue, ResolvedPlaylistUrl
-from app.imports.parser import ImportLimitExceeded, TextImportLimits, parse_track_text
-from app.imports.urls import resolve_playlist_url
-from app.settings import Settings, get_settings
+from app.db.base import get_sessionmaker
+from app.imports import LOCAL_FILE_PROVIDER, PASTED_TEXT_PROVIDER, PUBLIC_URL_PROVIDER
+from app.imports.external import (
+    ExternalImportResult,
+    ImportContentError,
+    SourceConnectionRequired,
+    resolve_text_import,
+    resolve_url_import,
+)
+from app.imports.models import (
+    ImportFormat,
+    ImportIssue,
+    ImportLimits,
+    ImportParseResult,
+    LocalImportPreview,
+    SourceImportIssue,
+    SourceImportPreview,
+)
+from app.imports.parsers import ImportLimitExceeded
+from app.imports.registry import sanitize_filename
+from app.settings import Settings
+
+__all__ = [
+    "ImportContentError",
+    "LocalImportExpired",
+    "LocalImportNotFound",
+    "LocalImportStateError",
+    "SourceConnectionRequired",
+    "cleanup_expired_imports",
+    "cleanup_local_imports",
+    "create_import",
+    "create_text_import",
+    "create_url_import",
+    "delete_import_for_job",
+    "discard_import",
+    "load_import_for_job",
+    "load_preview_import",
+    "mark_import_failed",
+    "preview_from_record",
+    "queue_import",
+    "selected_import_playlists",
+    "source_preview_from_record",
+    "spool_upload",
+]
+
+logger = logging.getLogger(__name__)
 
 
-class ImportContentError(ValueError):
+class LocalImportNotFound(Exception):
     pass
 
 
-class SourceConnectionRequired(ProviderError):
-    def __init__(self, provider: str, message: str) -> None:
+class LocalImportExpired(Exception):
+    def __init__(self, import_id: str) -> None:
+        super().__init__(
+            f"Local import '{import_id}' expired before the migration could claim it."
+        )
+
+
+class LocalImportStateError(Exception):
+    def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
-        self.provider = provider
+        self.code = code
 
 
-class ImportService:
-    def __init__(
-        self,
-        *,
-        settings: Settings | None = None,
-        adapter_getter: Callable[[str], ProviderAdapter] = get,
-        fetcher_factory: Callable[[set[str]], SafeHttpFetcher] | None = None,
-    ) -> None:
-        self._settings = settings or get_settings()
-        self._adapter_getter = adapter_getter
-        self._fetcher_factory = fetcher_factory or self._safe_fetcher
-
-    async def preview_text(
-        self,
-        session: AsyncSession,
-        *,
-        user_id: str,
-        text: str,
-        name: str | None,
-    ) -> orm.ImportedPlaylist:
-        parsed = parse_track_text(
-            text,
-            name=name,
-            limits=TextImportLimits(
-                max_bytes=self._settings.import_max_text_bytes,
-                max_items=self._settings.import_max_items,
-                max_line_chars=self._settings.import_max_line_chars,
-                max_field_chars=self._settings.import_max_field_chars,
-            ),
-        )
-        if not parsed.playlist.tracks:
-            raise ImportContentError("pasted text did not contain any valid tracks")
-        return await self._persist(
-            session,
-            user_id=user_id,
-            source_provider="text",
-            source_label="Pasted text",
-            source_locator=f"text:{parsed.fingerprint}",
-            source_fingerprint=parsed.fingerprint,
-            playlist=parsed.playlist,
-            issues=parsed.issues,
-        )
-
-    async def preview_url(
-        self,
-        session: AsyncSession,
-        *,
-        user_id: str,
-        url: str,
-        source_account_id: str | None,
-    ) -> orm.ImportedPlaylist:
-        resolved = resolve_playlist_url(
-            url,
-            open_playlist_hosts=self._settings.open_playlist_import_hosts,
-            max_length=self._settings.import_max_url_chars,
-        )
-        if resolved.provider == "openplaylist":
-            playlist = await self._read_open_playlist(resolved)
-        else:
-            playlist = await self._read_provider_playlist(
-                session,
-                user_id=user_id,
-                resolved=resolved,
-                source_account_id=source_account_id,
-            )
-        playlist = self._normalize_playlist(playlist, resolved)
-        issues = self._unsupported_issues(playlist)
-        fingerprint = hashlib.sha256(
-            f"{resolved.provider}\0{resolved.canonical_url}".encode()
-        ).hexdigest()
-        return await self._persist(
-            session,
-            user_id=user_id,
-            source_provider=resolved.provider,
-            source_label=resolved.source_label,
-            source_locator=resolved.canonical_url,
-            source_fingerprint=fingerprint,
-            playlist=playlist,
-            issues=issues,
-        )
-
-    async def _read_provider_playlist(
-        self,
-        session: AsyncSession,
-        *,
-        user_id: str,
-        resolved: ResolvedPlaylistUrl,
-        source_account_id: str | None,
-    ) -> Playlist:
-        adapter = self._adapter_getter(resolved.provider)
-        if isinstance(adapter, PublicPlaylistReader):
-            try:
-                return await adapter.read_public_playlist(
-                    PublicPlaylistRef(
-                        id=resolved.resource_id,
-                        canonical_url=resolved.canonical_url,
-                        metadata=resolved.metadata,
-                        max_items=self._settings.import_max_items,
-                    )
+async def spool_upload(
+    chunks: AsyncIterable[bytes],
+    limits: ImportLimits,
+) -> tuple[BinaryIO, int]:
+    spool = tempfile.SpooledTemporaryFile(
+        max_size=limits.spool_memory_bytes,
+        mode="w+b",
+    )
+    total = 0
+    try:
+        async for chunk in chunks:
+            total += len(chunk)
+            if total > limits.max_upload_bytes:
+                raise ImportLimitExceeded(
+                    f"Upload exceeds the configured {limits.max_upload_bytes}-byte limit.",
+                    code="upload_size_limit",
                 )
-            except (AccessDenied, AuthExpired, NotFound) as exc:
-                if resolved.provider == "ytmusic" and not source_account_id:
-                    raise SourceConnectionRequired(
-                        resolved.provider,
-                        "This YouTube Music playlist is private or unavailable. "
-                        "Connect YouTube Music and retry.",
-                    ) from exc
-                if resolved.provider != "ytmusic":
-                    raise
-        if not source_account_id:
-            raise SourceConnectionRequired(
-                resolved.provider,
-                f"Connect {adapter.info.display_name} to read this playlist URL.",
-            )
-        try:
-            credential, _ = await load_fresh_credential(
-                session,
-                account_id=source_account_id,
-                adapter=adapter,
-                provider=resolved.provider,
-                user_id=user_id,
-            )
-        except (AccountNotFound, CredentialNotFound) as exc:
-            raise SourceConnectionRequired(
-                resolved.provider,
-                f"Connect {adapter.info.display_name} to read this playlist URL.",
-            ) from exc
-        return await adapter.read_playlist(
-            credential,
-            PlaylistRef(id=resolved.resource_id, name=resolved.resource_id),
+            spool.write(chunk)
+        spool.seek(0)
+        return spool, total
+    except BaseException:
+        spool.close()
+        raise
+
+
+async def create_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    filename: str,
+    result: ImportParseResult,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    created_at = now or datetime.now(UTC)
+    record = orm.LocalPlaylistImport(
+        user_id=user_id,
+        filename=sanitize_filename(filename),
+        detected_format=result.detected_format.value,
+        encoding=result.encoding,
+        file_size=result.file_size,
+        status="ready",
+        playlists=[
+            playlist.model_dump(mode="json", exclude_none=False) for playlist in result.playlists
+        ],
+        issues=[issue.model_dump(mode="json", exclude_none=False) for issue in result.issues],
+        limits=settings.local_import_limits.model_dump(mode="json"),
+        playlist_count=result.playlist_count,
+        track_count=result.track_count,
+        duplicate_count=result.duplicate_count,
+        malformed_count=result.malformed_count,
+        unsupported_count=result.unsupported_count,
+        expires_at=created_at + timedelta(seconds=settings.local_import_retention_s),
+        source_kind=LOCAL_FILE_PROVIDER,
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def create_source_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    source_kind: str,
+    result: ExternalImportResult,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    """Persist a resolved public URL/pasted-text playlist as a LocalPlaylistImport.
+
+    Reuses the same ephemeral lease-backed table and required local-file
+    columns as ``create_import`` (populated with synthetic values, since
+    there is no uploaded file) so the rest of the migration pipeline --
+    queueing, worker claims, retention cleanup -- can treat every import
+    record uniformly regardless of its source.
+    """
+    created_at = now or datetime.now(UTC)
+    playlist = result.playlist
+    unsupported_count = sum(not track.is_migratable for track in playlist.tracks)
+    record = orm.LocalPlaylistImport(
+        user_id=user_id,
+        filename=sanitize_filename(f"{result.source_label}.json"),
+        detected_format=ImportFormat.JSON.value,
+        encoding="utf-8",
+        file_size=len(playlist.model_dump_json().encode("utf-8")),
+        status="ready",
+        playlists=[playlist.model_dump(mode="json", exclude_none=False)],
+        issues=[issue.model_dump(mode="json", exclude_none=False) for issue in result.issues],
+        limits=settings.local_import_limits.model_dump(mode="json"),
+        playlist_count=1,
+        track_count=len(playlist.tracks),
+        duplicate_count=0,
+        malformed_count=0,
+        unsupported_count=unsupported_count,
+        expires_at=created_at + timedelta(seconds=settings.local_import_retention_s),
+        source_kind=source_kind,
+        source_provider=result.source_provider,
+        source_label=result.source_label,
+        source_locator=result.source_locator,
+        source_fingerprint=result.source_fingerprint,
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def create_url_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    url: str,
+    source_account_id: str | None,
+    settings: Settings,
+    adapter_getter: Callable[[str], object] = get,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    result = await resolve_url_import(
+        session,
+        user_id=user_id,
+        url=url,
+        source_account_id=source_account_id,
+        settings=settings,
+        adapter_getter=adapter_getter,
+    )
+    return await create_source_import(
+        session,
+        user_id=user_id,
+        source_kind=PUBLIC_URL_PROVIDER,
+        result=result,
+        settings=settings,
+        now=now,
+    )
+
+
+async def create_text_import(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    text: str,
+    name: str | None,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    result = await resolve_text_import(text, name=name, settings=settings)
+    return await create_source_import(
+        session,
+        user_id=user_id,
+        source_kind=PASTED_TEXT_PROVIDER,
+        result=result,
+        settings=settings,
+        now=now,
+    )
+
+
+async def load_preview_import(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    user_id: str,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    record = await _owned_import(session, import_id=import_id, user_id=user_id)
+    current_time = now or datetime.now(UTC)
+    if record.status != "ready":
+        raise LocalImportStateError(
+            "This import has already been queued for migration.",
+            code="import_queued",
         )
-
-    async def _read_open_playlist(self, resolved: ResolvedPlaylistUrl) -> Playlist:
-        hosts = self._settings.open_playlist_import_hosts
-        response = await self._fetcher_factory(hosts).fetch(resolved.metadata["fetch_url"])
-        if response.status_code == 404:
-            raise NotFound(resolved.canonical_url)
-        if response.status_code in {401, 403}:
-            raise AccessDenied("Open Playlist Engine share is not public")
-        if response.status_code != 200:
-            raise ProviderError(
-                f"Open Playlist Engine returned HTTP {response.status_code}"
-            )
-        content_type = response.headers.get("content-type", "").lower()
-        if "json" not in content_type:
-            raise ImportContentError("Open Playlist Engine response was not JSON")
-        try:
-            payload = json.loads(response.body)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ImportContentError(
-                "Open Playlist Engine response contained invalid JSON"
-            ) from exc
-        if isinstance(payload, dict) and isinstance(payload.get("playlist"), dict):
-            payload = payload["playlist"]
-        if not isinstance(payload, dict):
-            raise ImportContentError("Open Playlist Engine response did not contain a playlist")
-        raw_tracks = payload.get("tracks")
-        if not isinstance(raw_tracks, list):
-            raise ImportContentError("Open Playlist Engine playlist did not contain tracks")
-        if len(raw_tracks) > self._settings.import_max_items:
-            raise ImportLimitExceeded(
-                f"playlist exceeds the {self._settings.import_max_items} items input limit"
-            )
-        normalized = dict(payload)
-        normalized["tracks"] = [_normalize_open_track(item) for item in raw_tracks]
-        try:
-            return Playlist.model_validate(normalized)
-        except ValueError as exc:
-            raise ImportContentError(f"Open Playlist Engine playlist is invalid: {exc}") from exc
-
-    def _normalize_playlist(
-        self,
-        playlist: Playlist,
-        resolved: ResolvedPlaylistUrl,
-    ) -> Playlist:
-        if len(playlist.tracks) > self._settings.import_max_items:
-            raise ImportLimitExceeded(
-                f"playlist exceeds the {self._settings.import_max_items} items input limit"
-            )
-        playlist_id = resolved.resource_id
-        if resolved.provider == "openplaylist":
-            playlist_id = (
-                "openplaylist:"
-                + hashlib.sha256(resolved.canonical_url.encode()).hexdigest()[:32]
-            )
-        tracks = [
-            track.model_copy(
-                update={
-                    "position": track.position if track.position is not None else position,
-                    "source_item_id": track.source_item_id
-                    or track.id
-                    or f"{resolved.provider}:{resolved.resource_id}:{position}",
-                }
-            )
-            for position, track in enumerate(playlist.tracks)
-        ]
-        return playlist.model_copy(update={"id": playlist_id, "tracks": tracks})
-
-    def _unsupported_issues(self, playlist: Playlist) -> list[ImportIssue]:
-        return [
-            ImportIssue(
-                code="unsupported_item",
-                message=(
-                    f"{track.title}: "
-                    f"{track.unsupported_reason or 'unsupported playlist item'}"
-                ),
-                severity="warning",
-            )
-            for track in playlist.tracks
-            if not track.is_migratable
-        ]
-
-    async def _persist(
-        self,
-        session: AsyncSession,
-        *,
-        user_id: str,
-        source_provider: str,
-        source_label: str,
-        source_locator: str,
-        source_fingerprint: str,
-        playlist: Playlist,
-        issues: list[ImportIssue],
-    ) -> orm.ImportedPlaylist:
-        row = orm.ImportedPlaylist(
-            user_id=user_id,
-            source_provider=source_provider,
-            source_label=source_label,
-            source_locator=source_locator,
-            source_fingerprint=source_fingerprint,
-            playlist_id=playlist.id or source_fingerprint,
-            playlist=playlist.model_dump(mode="json"),
-            issues=[issue.model_dump(mode="json") for issue in issues],
-        )
-        session.add(row)
+    if _as_utc(record.expires_at) <= current_time:
+        await session.delete(record)
         await session.flush()
-        return row
+        raise LocalImportExpired(import_id)
+    return record
 
-    def _safe_fetcher(self, hosts: set[str]) -> SafeHttpFetcher:
-        return SafeHttpFetcher(
-            allowed_hosts=hosts,
-            max_redirects=self._settings.import_max_redirects,
-            max_response_bytes=self._settings.import_max_response_bytes,
-            timeout_s=self._settings.import_http_timeout_s,
+
+async def discard_import(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    user_id: str,
+) -> None:
+    result = await session.execute(
+        delete(orm.LocalPlaylistImport).where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.user_id == user_id,
+            orm.LocalPlaylistImport.status == "ready",
         )
+    )
+    if result.rowcount == 1:
+        await session.flush()
+        return
+    record = await session.scalar(
+        select(orm.LocalPlaylistImport).where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.user_id == user_id,
+        )
+    )
+    if record is None:
+        raise LocalImportNotFound(import_id)
+    if record.status != "ready":
+        raise LocalImportStateError(
+            "A queued import cannot be discarded while its migration is active.",
+            code="import_queued",
+        )
+    raise LocalImportStateError(
+        "The import changed state before it could be discarded.",
+        code="import_state_changed",
+    )
 
 
-def _normalize_open_track(value: Any) -> Any:
-    if not isinstance(value, dict):
-        return value
-    track = dict(value)
-    if "duration_s" not in track and "duration" in track:
-        track["duration_s"] = track.pop("duration")
-    return track
+async def queue_import(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    user_id: str,
+    job_id: str,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    current_time = now or datetime.now(UTC)
+    result = await session.execute(
+        update(orm.LocalPlaylistImport)
+        .where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.user_id == user_id,
+            orm.LocalPlaylistImport.status == "ready",
+            orm.LocalPlaylistImport.expires_at > current_time,
+        )
+        .values(
+            status="queued",
+            queued_job_id=job_id,
+            expires_at=current_time
+            + timedelta(seconds=settings.local_import_queued_retention_s),
+        )
+    )
+    if result.rowcount != 1:
+        record = await session.scalar(
+            select(orm.LocalPlaylistImport).where(
+                orm.LocalPlaylistImport.id == import_id,
+                orm.LocalPlaylistImport.user_id == user_id,
+            )
+        )
+        if record is None:
+            raise LocalImportNotFound(import_id)
+        if _as_utc(record.expires_at) <= current_time and record.status == "ready":
+            await session.delete(record)
+            await session.flush()
+            raise LocalImportExpired(import_id)
+        raise LocalImportStateError(
+            "This import is already queued for another migration.",
+            code="import_queued",
+        )
+    return await _owned_import(session, import_id=import_id, user_id=user_id)
+
+
+async def load_import_for_job(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    user_id: str,
+    job_id: str,
+    settings: Settings,
+    now: datetime | None = None,
+) -> orm.LocalPlaylistImport:
+    current_time = now or datetime.now(UTC)
+    result = await session.execute(
+        update(orm.LocalPlaylistImport)
+        .where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.user_id == user_id,
+            orm.LocalPlaylistImport.queued_job_id == job_id,
+            orm.LocalPlaylistImport.status.in_(["queued", "failed"]),
+            orm.LocalPlaylistImport.expires_at > current_time,
+        )
+        .values(
+            status="queued",
+            expires_at=current_time
+            + timedelta(seconds=settings.local_import_queued_retention_s),
+        )
+    )
+    if result.rowcount == 1:
+        return await _owned_import(session, import_id=import_id, user_id=user_id)
+    record = await session.scalar(
+        select(orm.LocalPlaylistImport).where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.user_id == user_id,
+        )
+    )
+    if record is None:
+        raise LocalImportNotFound(import_id)
+    if _as_utc(record.expires_at) <= current_time:
+        raise LocalImportExpired(import_id)
+    if record.queued_job_id != job_id or record.status not in {"queued", "failed"}:
+        raise LocalImportStateError(
+            "This local import is not assigned to the requested migration.",
+            code="import_job_mismatch",
+        )
+    raise LocalImportStateError(
+        "The local import changed state before the worker could claim it.",
+        code="import_state_changed",
+    )
+
+
+async def mark_import_failed(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    job_id: str,
+    settings: Settings,
+    now: datetime | None = None,
+) -> None:
+    record = await session.scalar(
+        select(orm.LocalPlaylistImport).where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.queued_job_id == job_id,
+        )
+    )
+    if record is None:
+        return
+    current_time = now or datetime.now(UTC)
+    record.status = "failed"
+    record.expires_at = current_time + timedelta(seconds=settings.local_import_failed_retention_s)
+    await session.flush()
+
+
+async def delete_import_for_job(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    job_id: str,
+) -> None:
+    record = await session.scalar(
+        select(orm.LocalPlaylistImport).where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.queued_job_id == job_id,
+        )
+    )
+    if record is not None:
+        await session.delete(record)
+        await session.flush()
+
+
+async def cleanup_expired_imports(
+    session: AsyncSession,
+    *,
+    now: datetime | None = None,
+) -> int:
+    current_time = now or datetime.now(UTC)
+    expired = list(
+        (
+            await session.execute(
+                select(orm.LocalPlaylistImport).where(
+                    orm.LocalPlaylistImport.expires_at <= current_time
+                )
+            )
+        ).scalars()
+    )
+    deleted = 0
+    for record in expired:
+        if record.status in {"ready", "failed"}:
+            await session.delete(record)
+            deleted += 1
+            continue
+        if record.status != "queued":
+            continue
+        job = (
+            await session.get(orm.MigrationJob, record.queued_job_id)
+            if record.queued_job_id
+            else None
+        )
+        if job is not None and job.status in {"pending", "running"}:
+            job.status = "failed"
+            job.error = (
+                "Local import lease expired before the migration completed. "
+                "Upload the file and start a new migration."
+            )
+        await session.delete(record)
+        deleted += 1
+    await session.flush()
+    return deleted
+
+
+async def cleanup_local_imports(ctx: dict) -> int:
+    del ctx
+    async with get_sessionmaker()() as session:
+        deleted = await cleanup_expired_imports(session)
+        await session.commit()
+        if deleted:
+            logger.info("deleted expired local playlist imports count=%s", deleted)
+        return deleted
+
+
+def preview_from_record(record: orm.LocalPlaylistImport) -> LocalImportPreview:
+    return LocalImportPreview(
+        id=record.id,
+        filename=record.filename,
+        detected_format=record.detected_format,
+        encoding=record.encoding,
+        file_size=record.file_size,
+        status=record.status,
+        expires_at=_as_utc(record.expires_at),
+        playlists=[Playlist.model_validate(value) for value in record.playlists or []],
+        issues=[ImportIssue.model_validate(value) for value in record.issues or []],
+        playlist_count=record.playlist_count,
+        track_count=record.track_count,
+        duplicate_count=record.duplicate_count,
+        malformed_count=record.malformed_count,
+        unsupported_count=record.unsupported_count,
+        limits=ImportLimits.model_validate(record.limits or {}),
+    )
+
+
+def source_preview_from_record(record: orm.LocalPlaylistImport) -> SourceImportPreview:
+    playlists = [Playlist.model_validate(value) for value in record.playlists or []]
+    playlist = playlists[0] if playlists else Playlist(name=record.filename, tracks=[])
+    return SourceImportPreview(
+        id=record.id,
+        source_kind=record.source_kind,
+        source_provider=record.source_provider or "",
+        source_label=record.source_label or "",
+        source_locator=record.source_locator or "",
+        status=record.status,
+        expires_at=_as_utc(record.expires_at),
+        playlist=playlist,
+        issues=[SourceImportIssue.model_validate(value) for value in record.issues or []],
+        track_count=len(playlist.tracks),
+        unsupported_count=record.unsupported_count,
+    )
+
+
+def selected_import_playlists(
+    record: orm.LocalPlaylistImport,
+    *,
+    playlist_ids: list[str],
+    track_filters: dict[str, list[str]],
+) -> dict[str, Playlist]:
+    available = {
+        playlist.id: playlist
+        for playlist in (Playlist.model_validate(value) for value in record.playlists or [])
+        if playlist.id
+    }
+    selected: dict[str, Playlist] = {}
+    for playlist_id in playlist_ids:
+        playlist = available.get(playlist_id)
+        if playlist is None:
+            raise LocalImportStateError(
+                f"Playlist '{playlist_id}' is not part of this local import.",
+                code="unknown_playlist",
+            )
+        wanted = set(track_filters.get(playlist_id) or [])
+        selected[playlist_id] = playlist.model_copy(
+            update={
+                "tracks": [track for track in playlist.tracks if track_selected(track, wanted)]
+            }
+        )
+    return selected
+
+
+async def _owned_import(
+    session: AsyncSession,
+    *,
+    import_id: str,
+    user_id: str,
+) -> orm.LocalPlaylistImport:
+    record = await session.scalar(
+        select(orm.LocalPlaylistImport).where(
+            orm.LocalPlaylistImport.id == import_id,
+            orm.LocalPlaylistImport.user_id == user_id,
+        )
+    )
+    if record is None:
+        raise LocalImportNotFound(import_id)
+    return record
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)

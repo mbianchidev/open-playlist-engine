@@ -16,8 +16,10 @@ from app.core.adapter import (
     ProviderCredential,
     RateLimited,
     RefreshTokenExpired,
+    TrackRemoval,
+    Unsupported,
 )
-from app.core.models import MediaType, PlaylistKind, Track
+from app.core.models import Album, Artist, MediaType, PlaylistKind, PlaylistRef, Track
 from app.providers.spotify.adapter import (
     SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
     SpotifyAdapter,
@@ -34,6 +36,19 @@ def _cred() -> ProviderCredential:
         provider="spotify",
         auth_kind=AuthKind.OAUTH_PKCE,
         access_token="token",
+    )
+
+
+def _library_cred() -> ProviderCredential:
+    return _cred().model_copy(
+        update={
+            "scopes": [
+                "user-library-read",
+                "user-library-modify",
+                "user-follow-read",
+                "user-follow-modify",
+            ]
+        }
     )
 
 
@@ -502,6 +517,8 @@ async def test_auth_begin_requests_library_write_scope(
 
     assert "user-library-read" in scopes
     assert "user-library-modify" in scopes
+    assert "user-follow-read" in scopes
+    assert "user-follow-modify" in scopes
 
     get_settings.cache_clear()
 
@@ -548,6 +565,94 @@ async def test_add_playlist_tracks_uses_items_endpoint() -> None:
     assert all(result.ok for result in results)
 
 
+async def test_unfollow_playlist_uses_generic_library_endpoint() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["uris"] = request.url.params.get("uris")
+        return httpx.Response(204)
+
+    cred = _cred().model_copy(update={"scopes": ["user-library-modify"]})
+    result = await SpotifyAdapter(transport=httpx.MockTransport(handler)).unfollow_playlist(
+        cred,
+        PlaylistRef(
+            id="playlist",
+            name="Roadtrip",
+            owner_id="other-user",
+            is_owned=False,
+            is_followed=True,
+        ),
+    )
+
+    assert result.ok is True
+    assert captured == {
+        "method": "DELETE",
+        "path": "/v1/me/library",
+        "uris": "spotify:playlist:playlist",
+    }
+
+
+async def test_unfollow_playlist_requires_library_modify_scope() -> None:
+    adapter = SpotifyAdapter(transport=spotify_transport())
+
+    with pytest.raises(AccessDenied, match="user-library-modify"):
+        await adapter.unfollow_playlist(
+            _cred(),
+            PlaylistRef(id="playlist", name="Roadtrip", is_followed=True),
+        )
+
+
+async def test_remove_tracks_uses_positions_and_snapshot() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = request.read()
+        return httpx.Response(200, json={"snapshot_id": "next-snapshot"})
+
+    result = await SpotifyAdapter(transport=httpx.MockTransport(handler)).remove_tracks(
+        _cred(),
+        PlaylistRef(
+            id="playlist",
+            name="Roadtrip",
+            snapshot_id="original-snapshot",
+            is_owned=True,
+        ),
+        [
+            TrackRemoval(
+                source_item_id="t1",
+                provider_uri="spotify:track:t1",
+                position=0,
+            ),
+            TrackRemoval(
+                source_item_id="t1",
+                provider_uri="spotify:track:t1",
+                position=3,
+            ),
+        ],
+    )
+
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/v1/playlists/playlist/items"
+    assert captured["body"] == (
+        b'{"items":[{"uri":"spotify:track:t1","positions":[0,3]}],'
+        b'"snapshot_id":"original-snapshot"}'
+    )
+    assert result.snapshot_id == "next-snapshot"
+    assert [item.ok for item in result.items] == [True, True]
+
+
+async def test_spotify_destructive_playlist_delete_is_unsupported() -> None:
+    with pytest.raises(Unsupported):
+        await SpotifyAdapter(transport=spotify_transport()).delete_playlist(
+            _cred(),
+            PlaylistRef(id="playlist", name="Roadtrip", is_owned=True),
+        )
+
+
 async def test_save_library_tracks_batches_at_current_limit() -> None:
     calls: list[list[str]] = []
 
@@ -577,6 +682,172 @@ async def test_save_library_tracks_requires_reconnect_for_old_scope() -> None:
             SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
             ["spotify:track:t1"],
         )
+
+
+async def test_saved_albums_and_followed_artists_roundtrip() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/me/albums"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "added_at": "2026-01-02T00:00:00Z",
+                            "album": {
+                                "id": "album1",
+                                "name": "Album One",
+                                "uri": "spotify:album:album1",
+                                "artists": [{"name": "Artist One"}],
+                                "external_ids": {"upc": "0123456789012"},
+                                "release_date": "2020-01-02",
+                                "release_date_precision": "day",
+                                "images": [{"url": "https://img.example.com/album1.jpg"}],
+                            },
+                        }
+                    ],
+                    "next": None,
+                },
+            )
+        if request.url.path.endswith("/me/following"):
+            return httpx.Response(
+                200,
+                json={
+                    "artists": {
+                        "items": [
+                            {
+                                "id": "artist1",
+                                "name": "Artist One",
+                                "uri": "spotify:artist:artist1",
+                                "images": [{"url": "https://img.example.com/artist1.jpg"}],
+                                "genres": ["rock"],
+                            }
+                        ],
+                        "next": None,
+                    }
+                },
+            )
+        if request.url.path.endswith("/albums/album1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "album1",
+                    "name": "Album One",
+                    "uri": "spotify:album:album1",
+                    "artists": [{"name": "Artist One"}],
+                    "external_ids": {"upc": "0123456789012"},
+                    "release_date": "2020-01-02",
+                    "release_date_precision": "day",
+                },
+            )
+        if request.url.path.endswith("/artists/artist1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "artist1",
+                    "name": "Artist One",
+                    "uri": "spotify:artist:artist1",
+                },
+            )
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    albums = [album async for album in adapter.iter_saved_albums(_library_cred())]
+    artists = [artist async for artist in adapter.iter_followed_artists(_library_cred())]
+
+    assert albums[0].title == "Album One"
+    assert albums[0].artists == ["Artist One"]
+    assert albums[0].upc == "0123456789012"
+    assert albums[0].artwork_uri == "https://img.example.com/album1.jpg"
+    assert artists[0].name == "Artist One"
+    assert artists[0].metadata["genres"] == ["rock"]
+    assert (await adapter.read_saved_album(_library_cred(), "album1")).id == "album1"
+    assert (await adapter.read_followed_artist(_library_cred(), "artist1")).id == "artist1"
+
+
+async def test_album_and_artist_search_map_candidates() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("type") == "album":
+            return httpx.Response(
+                200,
+                json={
+                    "albums": {
+                        "items": [
+                            {
+                                "id": "album1",
+                                "name": "Album One",
+                                "uri": "spotify:album:album1",
+                                "artists": [{"name": "Artist One"}],
+                                "external_ids": {"upc": "0123456789012"},
+                                "release_date": "2020-01-02",
+                            }
+                        ]
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "artists": {
+                    "items": [
+                        {
+                            "id": "artist1",
+                            "name": "Artist One",
+                            "uri": "spotify:artist:artist1",
+                        }
+                    ]
+                }
+            },
+        )
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    albums = await adapter.search_albums(
+        _library_cred(),
+        Album(title="Album One", artists=["Artist One"], upc="0123456789012"),
+    )
+    artists = await adapter.search_artists(_library_cred(), Artist(name="Artist One"))
+
+    assert albums[0].uri == "spotify:album:album1"
+    assert albums[0].upc == "0123456789012"
+    assert artists[0].uri == "spotify:artist:artist1"
+
+
+async def test_library_contains_and_writes_use_generic_spotify_endpoints() -> None:
+    writes: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/me/library/contains"):
+            return httpx.Response(200, json=[True, False])
+        if request.url.path.endswith("/me/library"):
+            writes.append(request.url.params["uris"].split(","))
+            return httpx.Response(204)
+        return httpx.Response(404, json={})
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    album_uris = ["spotify:album:album1", "spotify:album:album2"]
+    artist_uris = ["spotify:artist:artist1", "spotify:artist:artist2"]
+
+    assert await adapter.contains_saved_albums(_library_cred(), album_uris) == [True, False]
+    assert await adapter.contains_followed_artists(_library_cred(), artist_uris) == [True, False]
+    assert all(result.ok for result in await adapter.save_albums(_library_cred(), album_uris))
+    assert all(result.ok for result in await adapter.follow_artists(_library_cred(), artist_uris))
+    assert writes == [album_uris, artist_uris]
+
+
+async def test_saved_album_writes_use_spotify_generic_library_batch_limit() -> None:
+    calls: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.params["uris"].split(","))
+        return httpx.Response(204)
+
+    adapter = SpotifyAdapter(transport=httpx.MockTransport(handler))
+    results = await adapter.save_albums(
+        _library_cred(),
+        [f"spotify:album:album-{index}" for index in range(41)],
+    )
+
+    assert [len(call) for call in calls] == [40, 1]
+    assert all(result.ok for result in results)
 
 
 def _ref(playlist_id: str = SPOTIFY_PLAYLIST_ID, name: str = "Roadtrip"):

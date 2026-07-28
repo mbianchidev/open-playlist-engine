@@ -1,0 +1,11 @@
+{
+  "artists": {
+    "items": [
+      {
+        "id": "artist-1",
+        "name": "Artist One",
+        "uri": "spotify:artist:artist-1"
+      }
+    ]
+  }
+}
