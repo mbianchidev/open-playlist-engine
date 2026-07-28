@@ -24,6 +24,7 @@ from app.api.migrations import (
     BatchReview,
     JobItemView,
     JobView,
+    MigrationSelectionSummary,
     MigrationWarningsView,
     ReviewItem,
     _apply_review,
@@ -559,7 +560,7 @@ async def import_shared_playlist(
             provider=body.target_provider,
             user_id=user_id,
         )
-        warnings = await _public_import_warnings(
+        warnings, total_tracks = await _public_import_warnings(
             session,
             share=share,
             target=target,
@@ -573,7 +574,10 @@ async def import_shared_playlist(
             await session.commit()
             raise HTTPException(
                 status_code=409,
-                detail=MigrationWarningsView(warnings=warnings).model_dump(),
+                detail=MigrationWarningsView(
+                    warnings=warnings,
+                    summary=MigrationSelectionSummary(playlists=1, tracks=total_tracks),
+                ).model_dump(),
             )
         snapshot = _snapshot(share, max_bytes=settings.share_max_snapshot_bytes)
         job = orm.MigrationJob(
@@ -584,9 +588,15 @@ async def import_shared_playlist(
             source_snapshot=snapshot.model_dump(mode="json"),
             target_provider=body.target_provider,
             target_account_id=body.target_account_id,
-            selection={"playlist_ids": [share.id], "tracks": {}},
+            selection={
+                "playlist_ids": [share.id],
+                "tracks": {},
+                "saved_album_ids": [],
+                "followed_artist_ids": [],
+            },
             status="pending",
             total=len(snapshot.tracks),
+            warnings=warnings,
         )
         session.add(job)
         await session.commit()
@@ -610,7 +620,7 @@ async def _public_import_warnings(
     target_account_id: str,
     user_id: str,
     settings: Settings,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], int]:
     snapshot = _snapshot(share, max_bytes=settings.share_max_snapshot_bytes)
     playlist = snapshot_to_playlist(snapshot)
     total_tracks = len(playlist.tracks)
@@ -680,7 +690,7 @@ async def _public_import_warnings(
             )
         )
     warnings.extend(await _same_name_warnings(target, target_credential, selected))
-    return warnings
+    return warnings, total_tracks
 
 
 async def _recipient_job(

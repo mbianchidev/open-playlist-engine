@@ -1,7 +1,8 @@
 # Open Playlist Engine
 
-Any-to-any music **playlist migration** — move playlists between Spotify, YouTube
-Music, Tidal, Deezer, Apple Music and more, in any direction, through a sleek UI.
+Any-to-any music **playlist and library migration plus portable export** — move
+playlists, liked tracks, saved albums, and followed/favorite artists between supported
+providers, or download playlists as local files.
 
 This is the first reference implementation of the
 [`open-playlist`](https://github.com/mbianchidev/open-playlist) universal
@@ -13,9 +14,10 @@ instantly works with all the others — both as source and target.
 > implemented directions dynamically: Spotify OAuth/read/search/write, Tidal
 > OAuth/read/search/write, YouTube Music device/header auth/read/search/write, and
 > official Apple MusicKit library read/search/write. Persisted credentials,
-> playlist/track selection, partial-migration detection, migration jobs, review
-> actions, SSE progress, migration statistics, and opt-in immutable public
-> playlist shares are wired. Other provider
+> playlist/track/album/artist selection, CSV/TXT/M3U8/XSPF/JSON playlist exports,
+> partial-migration detection, migration jobs, review actions, SSE progress,
+> reopenable migration history, mixed-entity statistics, streamed CSV/JSON
+> reports, and opt-in immutable public playlist shares are wired. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -24,7 +26,8 @@ instantly works with all the others — both as source and target.
 
 ```
 source provider ─ read ─▶ [ Open Playlist hub ] ─ write ─▶ target provider
-                              (identity graph)
+                              │ (identity graph)
+                              └─ export ─▶ local CSV/TXT/M3U8/XSPF/JSON
 ```
 
 Pipeline: **import → match → review → write**, with durable, replayable progress.
@@ -38,7 +41,7 @@ for low-confidence matches.
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
 | `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
-| `docs/` | [`DESIGN.md`](docs/DESIGN.md) and [ADRs](docs/adr). |
+| `docs/` | Design, provider setup, portable export documentation, and ADRs. |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
 the generated OpenAPI client.
@@ -80,7 +83,8 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
-`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`. Public playlist sharing additionally uses
+`OPE_EXPORT_MAX_PLAYLISTS`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`, and
+`OPE_MIGRATION_HISTORY_RETENTION_DAYS`. Public playlist sharing additionally uses
 `OPE_PUBLIC_BASE_URL` and `OPE_OWNER_ACCESS_TOKEN`; it remains disabled while the
 public URL is empty.
 Self-host mode resolves the migration owner server-side as the local user. Hosted
@@ -90,7 +94,25 @@ Safe migration defaults are intentionally slow and can be overridden only after 
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
-ARQ's 5-minute default timeout.
+ARQ's 5-minute default timeout. Portable exports allow up to 100 playlists per
+download by default (`OPE_EXPORT_MAX_PLAYLISTS`) and do not impose a track cap.
+
+## Portable local exports
+
+Connect a source account, select one or more playlists or individual tracks, choose
+a file format, then use **Download export**. A target provider is not required.
+The **History** tab can also download the source playlist snapshot recorded by a
+completed or failed migration while its retained item details remain available.
+
+Single-playlist exports download directly. Multi-playlist exports use a deterministic
+ZIP with `manifest.json`; JSON archives contain one lossless, versioned Open Playlist
+bundle, while CSV, TXT, M3U8, and XSPF archives contain one collision-safe file per
+playlist. Output is generated through temporary files and streamed to the browser,
+then deleted after completion or cancellation.
+
+Format schemas, MIME types, encodings, warning behavior, filenames, limits, and API
+examples are documented in
+[`docs/EXPORTING_PLAYLISTS.md`](docs/EXPORTING_PLAYLISTS.md).
 
 ## Self-hosted playlist sharing
 
@@ -111,6 +133,17 @@ proxy, security, recipient credential retention, and usage details.
 
 ## Spotify, Tidal, YouTube Music and Apple Music
 
+| Provider | Playlists / liked tracks | Saved albums | Followed/favorite artists |
+|---|---|---|---|
+| Spotify | Read/write | Read/write | Read/write as follows |
+| Tidal | Read/write | Read/write | Read/write as favorites |
+| YouTube Music | Read/write | Unsupported | Unsupported |
+| Apple Music | Read/write | Unsupported in this implementation | Unsupported |
+
+Album/artist selections are shown only when the source exposes them. Target
+limitations remain visible and disabled; the engine never converts unsupported
+albums or artists into synthetic playlists.
+
 1. Create a Spotify app at <https://developer.spotify.com/dashboard> and set its
    redirect URI to `http://127.0.0.1:8000/api/auth/spotify/callback`.
 2. Create a Tidal app at <https://developer.tidal.com> and set its redirect URI to
@@ -129,12 +162,15 @@ proxy, security, recipient credential retention, and usage details.
    OAuth credentials are not set, use the guided browser-session header fallback
    shown in the connection panel. OAuth reconnects reuse the same YouTube Music
    account by Google email when Google returns it.
-7. Pick one playlist, optionally choose individual tracks, and start the migration.
+7. Pick playlists, optionally choose individual tracks, and select supported saved
+   albums or followed/favorite artists. The preflight shows counts for every entity
+   type before starting.
    Tidal **My Collection**, YouTube Music **Liked Songs**, and Spotify **Liked
    Songs** appear as the same `liked_tracks` collection type. Migrating one writes
    directly into the target provider's native liked/saved library instead of
    creating a normal playlist.
-   Reconnect older Spotify accounts for `user-library-modify`, and older Tidal
+   Reconnect older Spotify accounts for `user-library-modify`, `user-follow-read`,
+   and `user-follow-modify`, and older Tidal
    accounts for `collection.read` and `collection.write`.
    The UI warns before exceeding the safe defaults or before writing into a target
    playlist that has the same name but different songs.
@@ -150,13 +186,17 @@ proxy, security, recipient credential retention, and usage details.
 9. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-10. Open the **Stats** tab to inspect one migration from the playlist-name dropdown
-    or view all-time aggregate stats filtered by source and target provider. The
-    **Migration** tab keeps provider setup, playlist selection, review, and progress
-    in a separate workspace.
+10. Open the **History** tab to reopen completed, partial, or failed migrations.
+    Inspect accounts, collections, lifecycle timestamps, warnings, target links,
+    prior review decisions, and filtered item results; download all rows or only
+    problem rows as streamed CSV/JSON. Aggregate stats remain filterable by source
+    and target provider. Report fields and retention behavior are documented in
+    [`docs/MIGRATION_HISTORY.md`](docs/MIGRATION_HISTORY.md).
 11. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
-   notice instead of adding them twice.
+   notice instead of adding them twice. Saved albums and artists use native target
+   contains checks before writes, so reruns report already-present items instead of
+   issuing duplicate actions. Name-only artist matches always require review.
 
 Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).

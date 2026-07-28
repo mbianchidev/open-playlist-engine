@@ -5,9 +5,15 @@ import type {
   ConnectionView,
   CreateShareBody,
   ConnectionTestView,
+  CreateExportBody,
   CreateMigrationBody,
+  ExportDownloadResult,
+  ExportFormat,
   JobItemView,
   JobView,
+  LibraryView,
+  MigrationItemFilters,
+  MigrationItemPage,
   MigrationOptionView,
   MigrationStatsView,
   MigrationWarningsView,
@@ -34,10 +40,14 @@ export class ApiError extends Error {
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
-    throw new ApiError(res.status, res.statusText, body?.detail ?? null);
+    await throwApiError(res);
   }
   return (await res.json()) as T;
+}
+
+async function throwApiError(res: Response): Promise<never> {
+  const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+  throw new ApiError(res.status, res.statusText, body?.detail ?? null);
 }
 
 function errorDetailMessage(detail: unknown): string | null {
@@ -137,6 +147,40 @@ export async function getPlaylist(
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
 }
 
+export async function downloadPlaylistExport(
+  body: CreateExportBody,
+): Promise<ExportDownloadResult> {
+  return download(
+    await fetch("/api/exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function downloadMigrationExport(
+  jobId: string,
+  format: ExportFormat,
+): Promise<ExportDownloadResult> {
+  return download(
+    await fetch(`/api/exports/migrations/${encodeURIComponent(jobId)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ format }),
+    }),
+  );
+}
+
+export async function getLibrary(
+  provider: string,
+  accountId: string,
+  context?: PlaylistContext,
+): Promise<LibraryView> {
+  const params = playlistParams(provider, accountId, context);
+  return json<LibraryView>(await fetch(`/api/library?${params}`));
+}
+
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {
   return json<JobView>(
     await fetch("/api/migrations", {
@@ -184,8 +228,47 @@ export async function preflightMigration(
   );
 }
 
-export async function getMigrationItems(jobId: string): Promise<JobItemView[]> {
-  return json<JobItemView[]>(await fetch(`/api/migrations/${jobId}/items`));
+export async function getMigrationItems(
+  jobId: string,
+  filters: MigrationItemFilters = {},
+): Promise<JobItemView[]> {
+  const params = migrationItemParams(filters);
+  const suffix = params.size ? `?${params}` : "";
+  return json<JobItemView[]>(
+    await fetch(`/api/migrations/${encodeURIComponent(jobId)}/items${suffix}`),
+  );
+}
+
+export async function getMigrationItemPage(
+  jobId: string,
+  filters: MigrationItemFilters,
+  options: { limit: number; offset: number },
+): Promise<MigrationItemPage> {
+  const params = migrationItemParams(filters);
+  params.set("limit", String(options.limit));
+  params.set("offset", String(options.offset));
+  const response = await fetch(`/api/migrations/${encodeURIComponent(jobId)}/items?${params}`);
+  const items = await json<JobItemView[]>(response);
+  const totalHeader = response.headers.get("x-total-count");
+  const total = totalHeader === null ? items.length : Number(totalHeader);
+  return {
+    items,
+    total: Number.isFinite(total) ? total : items.length,
+    limit: options.limit,
+    offset: options.offset,
+  };
+}
+
+export function migrationReportUrl(
+  jobId: string,
+  format: "csv" | "json",
+  scope: "all" | "problems",
+  filters: MigrationItemFilters = {},
+): string {
+  const params = migrationItemParams(filters);
+  params.set("format", format);
+  params.set("scope", scope);
+  return `/api/migrations/${encodeURIComponent(jobId)}/report?${params}`;
 }
 
 export async function reviewMigrationItem(
@@ -194,11 +277,14 @@ export async function reviewMigrationItem(
   body: { action: "approve" | "skip"; target_uri?: string | null },
 ): Promise<JobItemView> {
   return json<JobItemView>(
-    await fetch(`/api/migrations/${jobId}/items/${itemId}/review`, {
+    await fetch(
+      `/api/migrations/${encodeURIComponent(jobId)}/items/${encodeURIComponent(itemId)}/review`,
+      {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
-    }),
+      },
+    ),
   );
 }
 
@@ -207,7 +293,7 @@ export async function reviewMigrationItems(
   body: { action: "approve" | "skip"; item_ids: string[] },
 ): Promise<JobItemView[]> {
   return json<JobItemView[]>(
-    await fetch(`/api/migrations/${jobId}/items/review`, {
+    await fetch(`/api/migrations/${encodeURIComponent(jobId)}/items/review`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -217,7 +303,7 @@ export async function reviewMigrationItems(
 
 // SSE stream of migration progress. Returns a disposer.
 export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) => void): () => void {
-  const source = new EventSource(`/api/migrations/${jobId}/events`);
+  const source = new EventSource(`/api/migrations/${encodeURIComponent(jobId)}/events`);
   source.addEventListener("progress", onMessage as EventListener);
   return () => source.close();
 }
@@ -379,4 +465,60 @@ export function recipientMigrationProgressApi(token: string): MigrationProgressA
       return () => source.close();
     },
   };
+}
+
+async function download(res: Response): Promise<ExportDownloadResult> {
+  if (!res.ok) await throwApiError(res);
+  const filename = downloadFilename(res.headers.get("content-disposition")) ?? "playlist-export";
+  const warningCount = Number.parseInt(
+    res.headers.get("x-open-playlist-warning-count") ?? "0",
+    10,
+  );
+  const objectUrl = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+  return {
+    filename,
+    warningCount: Number.isFinite(warningCount) ? warningCount : 0,
+  };
+}
+
+function downloadFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) return null;
+  const encoded = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+  return contentDisposition.match(/filename="?([^";]+)"?/i)?.[1] ?? null;
+}
+
+function migrationItemParams(filters: MigrationItemFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.sourcePlaylistId) params.set("source_playlist_id", filters.sourcePlaylistId);
+  for (const entityType of filters.entityTypes ?? []) params.append("entity_type", entityType);
+  for (const status of filters.statuses ?? []) params.append("status", status);
+  if (filters.minConfidence !== null && filters.minConfidence !== undefined) {
+    params.set("min_confidence", String(filters.minConfidence));
+  }
+  if (filters.maxConfidence !== null && filters.maxConfidence !== undefined) {
+    params.set("max_confidence", String(filters.maxConfidence));
+  }
+  if (filters.reason) params.set("reason", filters.reason);
+  if (filters.title) params.set("title", filters.title);
+  if (filters.artist) params.set("artist", filters.artist);
+  if (filters.problemOnly) params.set("problem_only", "true");
+  return params;
 }

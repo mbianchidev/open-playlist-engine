@@ -67,16 +67,18 @@ class _RedirectAdapter(FakeAdapter):
         self.auth = _RedirectAuth()
 
 
-def _settings() -> Settings:
-    return Settings(
-        public_base_url="https://music.example",
-        frontend_url="https://music.example",
-        secret_key="s" * 64,
-        owner_access_token="o" * 48,
-        migration_safe_min_job_gap_s=0,
-        share_rate_limit_capacity=100,
-        share_rate_limit_refill_per_s=100,
-    )
+def _settings(**updates) -> Settings:
+    values = {
+        "public_base_url": "https://music.example",
+        "frontend_url": "https://music.example",
+        "secret_key": "s" * 64,
+        "owner_access_token": "o" * 48,
+        "migration_safe_min_job_gap_s": 0,
+        "share_rate_limit_capacity": 100,
+        "share_rate_limit_refill_per_s": 100,
+    }
+    values.update(updates)
+    return Settings(**values)
 
 
 def _snapshot():
@@ -236,6 +238,56 @@ def test_redirect_callback_uses_persisted_recipient_state_without_owner_cookie(
         asyncio.run(engine.dispose())
 
 
+def test_public_import_warning_includes_mixed_entity_summary(monkeypatch) -> None:
+    settings = _settings(migration_safe_max_tracks_per_job=0)
+    adapter = FakeAdapter()
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    token, _ = asyncio.run(_seed_share_and_owner(engine, sessionmaker))
+
+    async def session_override() -> AsyncIterator[AsyncSession]:
+        async with sessionmaker() as session:
+            yield session
+
+    from app.api import auth as auth_api
+    from app.api import shares as shares_api
+
+    monkeypatch.setattr(shares_api, "get", lambda provider: adapter)
+    monkeypatch.setattr(auth_api, "get", lambda provider: adapter)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_session] = session_override
+    try:
+        with TestClient(app, base_url=settings.public_base_url) as client:
+            client.get(f"/api/public/shares/{token}/accounts")
+            completed = client.post(
+                f"/api/public/shares/{token}/auth/fake/complete",
+                json={"token": "recipient"},
+            )
+            account_id = completed.json()["account"]["id"]
+
+            response = client.post(
+                f"/api/public/shares/{token}/imports",
+                json={
+                    "target_provider": "fake",
+                    "target_account_id": account_id,
+                },
+            )
+
+            assert response.status_code == 409
+            detail = response.json()["detail"]
+            assert detail["summary"] == {
+                "playlists": 1,
+                "tracks": 1,
+                "saved_albums": 0,
+                "followed_artists": 0,
+            }
+            assert detail["warnings"][0]["code"] == "track_count"
+    finally:
+        app.dependency_overrides.clear()
+        asyncio.run(rate_limiter.clear())
+        asyncio.run(engine.dispose())
+
+
 @pytest.mark.asyncio
 async def test_snapshot_job_uses_recipient_target_without_loading_owner_source(
     monkeypatch,
@@ -275,7 +327,12 @@ async def test_snapshot_job_uses_recipient_target_without_loading_owner_source(
             source_snapshot=_snapshot().model_dump(mode="json"),
             target_provider="fake",
             target_account_id=account.id,
-            selection={"playlist_ids": [share.id], "tracks": {}},
+            selection={
+                "playlist_ids": [share.id],
+                "tracks": {},
+                "saved_album_ids": [],
+                "followed_artist_ids": [],
+            },
             status="pending",
             total=1,
         )
@@ -298,6 +355,10 @@ async def test_snapshot_job_uses_recipient_target_without_loading_owner_source(
         )
 
         assert job.status == "done"
+        assert job.started_at is not None
+        assert job.completed_at is not None
+        assert job.result_summary["counts"]["written"] == 1
+        assert share.id in job.selection["playlist_metadata"]
         assert len(items) == 1
         assert items[0].status == "written"
         assert adapter._created

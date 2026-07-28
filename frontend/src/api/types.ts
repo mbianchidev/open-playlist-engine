@@ -1,6 +1,8 @@
-// Hand-written until `npm run gen:api` produces schema.d.ts from the backend's
-// OpenAPI document. The frontend depends only on these shapes — never on backend
-// internals (monorepo, hard-separated).
+import type { components } from "./schema";
+
+type ApiSchema<Name extends keyof components["schemas"]> = Required<
+  components["schemas"][Name]
+>;
 
 export interface ProviderView {
   name: string;
@@ -11,6 +13,12 @@ export interface ProviderView {
   has_isrc: boolean;
   can_source: boolean;
   can_target: boolean;
+  saved_albums: { read: boolean; write: boolean };
+  followed_artists: {
+    read: boolean;
+    write: boolean;
+    semantics: "follow" | "favorite" | null;
+  };
   warning: string | null;
 }
 
@@ -117,103 +125,156 @@ export interface Playlist {
   kind: "standard" | "liked_tracks";
 }
 
+export interface PlaylistSelection {
+  playlist_ids: string[];
+  tracks: Record<string, string[]>;
+}
+
+export interface Album {
+  id: string | null;
+  title: string;
+  artists: string[];
+  upc: string | null;
+  release_date: string | null;
+  release_year: number | null;
+  artwork_uri: string | null;
+  provider_uris: Record<string, string>;
+  metadata: Record<string, unknown>;
+  source_item_id: string | null;
+  added_at: string | null;
+}
+
+export interface Artist {
+  id: string | null;
+  name: string;
+  artwork_uri: string | null;
+  provider_uris: Record<string, string>;
+  metadata: Record<string, unknown>;
+  source_item_id: string | null;
+  added_at: string | null;
+}
+
+export interface SavedAlbumsView {
+  source_supported: boolean;
+  target_supported: boolean;
+  count: number;
+  items: Album[];
+  source_limitation: string | null;
+  target_limitation: string | null;
+}
+
+export interface FollowedArtistsView {
+  source_supported: boolean;
+  target_supported: boolean;
+  source_semantics: "follow" | "favorite" | null;
+  target_semantics: "follow" | "favorite" | null;
+  count: number;
+  items: Artist[];
+  source_limitation: string | null;
+  target_limitation: string | null;
+}
+
+export interface LibraryView {
+  saved_albums: SavedAlbumsView;
+  followed_artists: FollowedArtistsView;
+}
+
 export interface CreateMigrationBody {
   source_provider: string;
   target_provider: string;
   source_account_id: string;
   target_account_id: string;
-  selection: { playlist_ids: string[]; tracks: Record<string, string[]> };
+  selection: {
+    playlist_ids: string[];
+    tracks: Record<string, string[]>;
+    saved_album_ids: string[];
+    followed_artist_ids: string[];
+  };
   acknowledge_warnings?: boolean;
 }
 
-export interface JobView {
-  id: string;
-  status: string;
+export type MigrationEntityType = "track" | "album" | "artist";
+
+export interface MigrationSelectionSummary {
+  playlists: number;
+  tracks: number;
+  saved_albums: number;
+  followed_artists: number;
+}
+
+export type ExportFormat = "csv" | "txt" | "m3u8" | "xspf" | "json";
+
+export interface CreateExportBody {
   source_provider: string;
-  target_provider: string;
-  total: number;
-  done: number;
-  failed: number;
-  error: string | null;
+  source_account_id: string;
+  format: ExportFormat;
+  selection: PlaylistSelection;
 }
 
-export interface StatusCounts {
-  total: number;
-  pending: number;
-  matched: number;
-  needs_review: number;
-  written: number;
-  skipped: number;
-  failed: number;
-  other: Record<string, number>;
+export interface ExportDownloadResult {
+  filename: string;
+  warningCount: number;
 }
 
-export interface MigrationOptionView {
-  id: string;
-  label: string;
-  playlist_names: string[];
-  status: string;
-  source_provider: string;
-  target_provider: string;
-  created_at: string | null;
-}
-
-export interface PlaylistStatsView {
-  source_playlist_id: string;
-  source_playlist_name: string | null;
-  target_playlist_id: string | null;
+export type JobView = ApiSchema<"JobView">;
+export type StatusCounts = ApiSchema<"StatusCounts">;
+export type MigrationOptionView = ApiSchema<"MigrationOptionView"> & {
+  selection_summary: MigrationSelectionSummary;
+};
+export type AccountHistoryView = ApiSchema<"AccountHistoryView">;
+export type PlaylistStatsView = Omit<ApiSchema<"PlaylistStatsView">, "counts"> & {
   counts: StatusCounts;
-}
-
-export interface MigrationStatsView {
-  id: string;
-  label: string;
-  playlist_names: string[];
-  status: string;
-  source_provider: string;
-  target_provider: string;
-  created_at: string | null;
+};
+export type MigrationStatsView = Omit<
+  ApiSchema<"MigrationStatsView">,
+  "counts" | "playlists" | "source_account" | "target_account" | "warnings"
+> & {
   counts: StatusCounts;
-  playlist_count: number;
+  saved_album_count: number;
+  followed_artist_count: number;
+  entity_counts: Record<MigrationEntityType, StatusCounts>;
   playlists: PlaylistStatsView[];
-  empty: boolean;
-  message: string | null;
-}
-
-export interface AggregateMigrationStatsView {
-  source_provider: string | null;
-  target_provider: string | null;
-  total_migrations: number;
-  total_playlists: number;
-  counts: StatusCounts;
-  empty: boolean;
-  message: string | null;
-}
-
-export interface MigrationWarningsView {
-  code: string;
-  message: string;
+  source_account: AccountHistoryView | null;
+  target_account: AccountHistoryView | null;
   warnings: { code: string; message: string }[];
+};
+export type AggregateMigrationStatsView = Omit<
+  ApiSchema<"AggregateMigrationStatsView">,
+  "counts"
+> & {
+  counts: StatusCounts;
+  total_saved_albums: number;
+  total_followed_artists: number;
+  entity_counts: Record<MigrationEntityType, StatusCounts>;
+};
+export type MigrationWarningsView = Omit<ApiSchema<"MigrationWarningsView">, "warnings"> & {
+  warnings: { code: string; message: string }[];
+  summary: MigrationSelectionSummary;
+};
+export type JobItemView = ApiSchema<"JobItemView"> & {
+  entity_type: MigrationEntityType;
+  source_entity_id: string | null;
+  source_entity_name: string | null;
+  target_entity_id: string | null;
+};
+
+export interface MigrationItemFilters {
+  sourcePlaylistId?: string | null;
+  entityTypes?: MigrationEntityType[];
+  statuses?: string[];
+  minConfidence?: number | null;
+  maxConfidence?: number | null;
+  reason?: string | null;
+  title?: string | null;
+  artist?: string | null;
+  problemOnly?: boolean;
 }
 
-export interface JobItemView {
-  id: string;
-  source_playlist_id: string;
-  source_playlist_name: string | null;
-  target_playlist_id: string | null;
-  position: number;
-  title: string;
-  artist: string;
-  album: string | null;
-  duration_s: number | null;
-  release_year: number | null;
-  explicit: boolean | null;
-  isrc: string | null;
-  source_metadata: Record<string, unknown>;
-  target_uri: string | null;
-  confidence: number | null;
-  status: string;
-  reason: string | null;
+export interface MigrationItemPage {
+  items: JobItemView[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface ProgressEvent {
