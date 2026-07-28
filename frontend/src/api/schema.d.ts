@@ -362,6 +362,299 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/shares/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Share */
+        get: operations["public_share_api_public_shares__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recipient Accounts */
+        get: operations["recipient_accounts_api_public_shares__token__accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/auth/{provider}/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Begin Recipient Auth */
+        post: operations["begin_recipient_auth_api_public_shares__token__auth__provider__begin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/auth/{provider}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Recipient Auth */
+        post: operations["complete_recipient_auth_api_public_shares__token__auth__provider__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Share */
+        get: operations["download_share_api_public_shares__token__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Shared Playlist */
+        post: operations["import_shared_playlist_api_public_shares__token__imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/imports/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Recipient Import */
+        get: operations["get_recipient_import_api_public_shares__token__imports__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/imports/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recipient Import Events */
+        get: operations["recipient_import_events_api_public_shares__token__imports__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/imports/{job_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Recipient Import Items */
+        get: operations["get_recipient_import_items_api_public_shares__token__imports__job_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/imports/{job_id}/items/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Recipient Import Items */
+        post: operations["review_recipient_import_items_api_public_shares__token__imports__job_id__items_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/shares/{token}/imports/{job_id}/items/{item_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Recipient Import Item */
+        post: operations["review_recipient_import_item_api_public_shares__token__imports__job_id__items__item_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Status */
+        get: operations["session_status_api_session_get"];
+        put?: never;
+        /** Login */
+        post: operations["login_api_session_post"];
+        /** Logout */
+        delete: operations["logout_api_session_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Shares */
+        get: operations["list_shares_api_shares_get"];
+        put?: never;
+        /** Create Share */
+        post: operations["create_share_api_shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shares/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Share Config */
+        get: operations["share_config_api_shares_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Share */
+        get: operations["get_share_api_shares__share_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Share */
+        patch: operations["update_share_api_shares__share_id__patch"];
+        trace?: never;
+    };
+    "/api/shares/{share_id}/expire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Expire Share */
+        post: operations["expire_share_api_shares__share_id__expire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shares/{share_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Share */
+        post: operations["revoke_share_api_shares__share_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -371,6 +664,23 @@ export interface paths {
         };
         /** Health */
         get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/share/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Share Page */
+        get: operations["public_share_page_share__token__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -591,6 +901,21 @@ export interface components {
             target_account_id: string;
             /** Target Provider */
             target_provider: string;
+        };
+        /** CreateShare */
+        CreateShare: {
+            /** Account Id */
+            account_id: string;
+            /** Attribution */
+            attribution?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Playlist Id */
+            playlist_id: string;
+            /** Provider */
+            provider: string;
+            /** @default unlisted */
+            visibility: components["schemas"]["ShareVisibility"];
         };
         /** Credit */
         Credit: {
@@ -888,6 +1213,22 @@ export interface components {
                 [key: string]: string;
             }[];
         };
+        /** OwnerSessionLogin */
+        OwnerSessionLogin: {
+            /** Access Token */
+            access_token: string;
+        };
+        /** OwnerSessionView */
+        OwnerSessionView: {
+            /** Authenticated */
+            authenticated: boolean;
+            /** Required */
+            required: boolean;
+            /** Sharing Disabled Reason */
+            sharing_disabled_reason: string;
+            /** Sharing Enabled */
+            sharing_enabled: boolean;
+        };
         /** Playlist */
         Playlist: {
             /** Created At */
@@ -968,6 +1309,11 @@ export interface components {
             /** Target Playlist Id */
             target_playlist_id?: string | null;
         };
+        /**
+         * PortableFormat
+         * @enum {string}
+         */
+        PortableFormat: "json" | "csv" | "txt" | "m3u8" | "xspf";
         /** ProviderView */
         ProviderView: {
             /** Auth Kind */
@@ -990,6 +1336,27 @@ export interface components {
             stability: string;
             /** Warning */
             warning?: string | null;
+        };
+        /** PublicShareView */
+        PublicShareView: {
+            /** Download Formats */
+            download_formats: components["schemas"]["PortableFormat"][];
+            /** Expires At */
+            expires_at?: string | null;
+            snapshot: components["schemas"]["SharedPlaylistSnapshot"];
+            visibility: components["schemas"]["ShareVisibility"];
+        };
+        /** RecipientImport */
+        RecipientImport: {
+            /**
+             * Acknowledge Warnings
+             * @default false
+             */
+            acknowledge_warnings: boolean;
+            /** Target Account Id */
+            target_account_id: string;
+            /** Target Provider */
+            target_provider: string;
         };
         /** ReviewItem */
         ReviewItem: {
@@ -1031,6 +1398,98 @@ export interface components {
             tracks?: {
                 [key: string]: string[];
             };
+        };
+        /** ShareConfigView */
+        ShareConfigView: {
+            /** Disabled Reason */
+            disabled_reason: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Max Expiry Days */
+            max_expiry_days: number;
+            /** Max Tracks */
+            max_tracks: number;
+            /** Public Base Url */
+            public_base_url?: string | null;
+            /** Supported Download Formats */
+            supported_download_formats: components["schemas"]["PortableFormat"][];
+        };
+        /** ShareDetailView */
+        ShareDetailView: {
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: string;
+            /** Revoked At */
+            revoked_at?: string | null;
+            snapshot: components["schemas"]["SharedPlaylistSnapshot"];
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Url */
+            url: string;
+            visibility: components["schemas"]["ShareVisibility"];
+        };
+        /**
+         * ShareVisibility
+         * @enum {string}
+         */
+        ShareVisibility: "public" | "unlisted";
+        /** SharedPlaylistSnapshot */
+        SharedPlaylistSnapshot: {
+            /** Attribution */
+            attribution?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Schema Version
+             * @default 1.0
+             */
+            schema_version: string;
+            source: components["schemas"]["SharedSource"];
+            /** Tracks */
+            tracks?: components["schemas"]["SharedTrack"][];
+        };
+        /** SharedSource */
+        SharedSource: {
+            /** Provider */
+            provider: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** SharedTrack */
+        SharedTrack: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /** Artwork Url */
+            artwork_url?: string | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Explicit */
+            explicit?: boolean | null;
+            /** Isrc */
+            isrc?: string | null;
+            /** @default track */
+            media_type: components["schemas"]["MediaType"];
+            /** Position */
+            position: number;
+            /** Release Year */
+            release_year?: number | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Title */
+            title: string;
+            /** Unsupported Reason */
+            unsupported_reason?: string | null;
         };
         /** StatusCounts */
         StatusCounts: {
@@ -1144,6 +1603,12 @@ export interface components {
             /** Unsupported Reason */
             unsupported_reason?: string | null;
         };
+        /** UpdateShare */
+        UpdateShare: {
+            /** Expires At */
+            expires_at?: string | null;
+            visibility?: components["schemas"]["ShareVisibility"] | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1169,7 +1634,6 @@ export interface operations {
     accounts_api_auth_accounts_get: {
         parameters: {
             query?: {
-                user_id?: string;
                 provider?: string | null;
                 check?: boolean;
             };
@@ -1201,9 +1665,7 @@ export interface operations {
     };
     test_account_connection_api_auth_accounts__account_id__test_post: {
         parameters: {
-            query?: {
-                user_id?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 account_id: string;
@@ -1234,9 +1696,7 @@ export interface operations {
     };
     begin_api_auth__provider__begin_post: {
         parameters: {
-            query?: {
-                user_id?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 provider: string;
@@ -1268,7 +1728,6 @@ export interface operations {
     callback_api_auth__provider__callback_get: {
         parameters: {
             query?: {
-                user_id?: string;
                 code?: string | null;
                 state?: string | null;
                 error?: string | null;
@@ -1303,9 +1762,7 @@ export interface operations {
     };
     complete_api_auth__provider__complete_post: {
         parameters: {
-            query?: {
-                user_id?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 provider: string;
@@ -1835,7 +2292,6 @@ export interface operations {
                 target_provider?: string | null;
                 target_account_id?: string | null;
                 refresh?: boolean;
-                user_id?: string;
             };
             header?: never;
             path?: never;
@@ -1871,7 +2327,6 @@ export interface operations {
                 target_provider?: string | null;
                 target_account_id?: string | null;
                 refresh?: boolean;
-                user_id?: string;
             };
             header?: never;
             path: {
@@ -1921,6 +2376,649 @@ export interface operations {
             };
         };
     };
+    public_share_api_public_shares__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicShareView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recipient_accounts_api_public_shares__token__accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    begin_recipient_auth_api_public_shares__token__auth__provider__begin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthChallenge"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_recipient_auth_api_public_shares__token__auth__provider__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_share_api_public_shares__token__download_get: {
+        parameters: {
+            query?: {
+                format?: components["schemas"]["PortableFormat"];
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_shared_playlist_api_public_shares__token__imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipientImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recipient_import_api_public_shares__token__imports__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recipient_import_events_api_public_shares__token__imports__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recipient_import_items_api_public_shares__token__imports__job_id__items_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobItemView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_recipient_import_items_api_public_shares__token__imports__job_id__items_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobItemView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_recipient_import_item_api_public_shares__token__imports__job_id__items__item_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewItem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobItemView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_status_api_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerSessionView"];
+                };
+            };
+        };
+    };
+    login_api_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerSessionLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_session_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerSessionView"];
+                };
+            };
+        };
+    };
+    list_shares_api_shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDetailView"][];
+                };
+            };
+        };
+    };
+    create_share_api_shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateShare"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_config_api_shares_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareConfigView"];
+                };
+            };
+        };
+    };
+    get_share_api_shares__share_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                share_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_share_api_shares__share_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                share_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateShare"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    expire_share_api_shares__share_id__expire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                share_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_share_api_shares__share_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                share_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
@@ -1939,6 +3037,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    public_share_page_share__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -64,4 +64,3 @@ class ExportManifest(BaseModel):
     playlist_count: int
     entries: list[ExportManifestEntry] = Field(default_factory=list)
     warnings: list[ExportWarning] = Field(default_factory=list)
-

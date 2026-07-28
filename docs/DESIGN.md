@@ -49,6 +49,10 @@ albums and followed/favorite artists as explicit library entities. Album/artist 
 never create synthetic playlists. Live playlist selections and playlist portions of
 terminal migration history can also be exported as CSV, tabular TXT, M3U8, XSPF, or
 versioned Open Playlist JSON.
+Self-hosted operators can also opt into immutable metadata-only playlist shares.
+The public page/download boundary is token-scoped, while recipient provider
+accounts and migration jobs use a signed share-recipient identity that cannot
+resolve the owner's local accounts.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -166,6 +170,9 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
 - migration ownership is resolved by a server-side dependency. Self-host returns
   the local user; hosted mode rejects migration requests until real authentication
   is wired, rather than trusting a query-string user ID.
+- configuring a public base URL turns on an owner-session gate for every private
+  self-host API. Public share reads are separate, and recipient writes require a
+  provider account connected under that recipient's signed share session.
 
 ---
 

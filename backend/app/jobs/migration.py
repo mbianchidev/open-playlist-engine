@@ -49,6 +49,7 @@ from app.core.models import (
     Track,
 )
 from app.core.registry import get
+from app.core.sharing import SharedPlaylistSnapshot, snapshot_to_playlist
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
@@ -117,18 +118,36 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     mark_job_started(job)
     await session.commit()
-    source = get(job.source_provider)
     target = get(job.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session, account_id=job.source_account_id, adapter=source, provider=job.source_provider
-    )
     target_cred, _ = await load_fresh_credential(
-        session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
+        session,
+        account_id=job.target_account_id,
+        adapter=target,
+        provider=job.target_provider,
+        user_id=job.user_id,
     )
+    source_snapshot = (
+        SharedPlaylistSnapshot.model_validate(job.source_snapshot)
+        if job.source_snapshot is not None
+        else None
+    )
+    source = None
+    source_cred = None
+    if source_snapshot is None:
+        source = get(job.source_provider)
+        source_cred, _ = await load_fresh_credential(
+            session,
+            account_id=job.source_account_id,
+            adapter=source,
+            provider=job.source_provider,
+            user_id=job.user_id,
+        )
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
     saved_album_ids = list(selection.get("saved_album_ids") or [])
     followed_artist_ids = list(selection.get("followed_artist_ids") or [])
+    if source_snapshot is not None and (saved_album_ids or followed_artist_ids):
+        raise ValueError("shared migrations support playlist tracks only")
     if not (playlist_ids or saved_album_ids or followed_artist_ids):
         raise ValueError("migration has no selected items")
     logger.info(
@@ -144,19 +163,32 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
 
     review_threshold = get_settings().review_confidence_threshold
     matcher = MatchService(graph=None, review_threshold=review_threshold)
-    reviewed_history = await _previous_reviewed_items(
-        session,
-        job=job,
-        entity_type=MigrationEntityType.TRACK,
-        review_threshold=review_threshold,
+    reviewed_history = (
+        []
+        if source_snapshot is not None
+        else await _previous_reviewed_items(
+            session,
+            job=job,
+            entity_type=MigrationEntityType.TRACK,
+            review_threshold=review_threshold,
+        )
     )
     for playlist_id in playlist_ids:
-        logger.info(
-            "migration job_id=%s reading source playlist playlist_id=%s", job.id, playlist_id
-        )
-        playlist = await source.read_playlist(
-            source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-        )
+        if source_snapshot is not None:
+            if playlist_id != (job.source_share_id or job.source_account_id):
+                raise ValueError("shared migration playlist does not match its snapshot")
+            playlist = snapshot_to_playlist(source_snapshot)
+        else:
+            logger.info(
+                "migration job_id=%s reading source playlist playlist_id=%s",
+                job.id,
+                playlist_id,
+            )
+            if source is None or source_cred is None:
+                raise ValueError("migration source is unavailable")
+            playlist = await source.read_playlist(
+                source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+            )
         store_playlist_snapshot(job, playlist, playlist_id=playlist_id)
         await session.commit()
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
@@ -179,7 +211,11 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             playlist_id=playlist_id,
             playlist_name=playlist.name,
             description=playlist.description
-            or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            or (
+                "Imported from a shared playlist by Open Playlist Engine."
+                if source_snapshot is not None
+                else f"Migrated from {source.info.display_name} by Open Playlist Engine."
+            ),
             playlist_kind=playlist.kind,
             source_tracks=tracks,
         )
@@ -276,6 +312,8 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         )
 
     if saved_album_ids or followed_artist_ids:
+        if source is None or source_cred is None:
+            raise ValueError("migration source is unavailable for library items")
         library_matcher = LibraryMatchService(review_threshold=review_threshold)
         if saved_album_ids:
             source_albums = _require_saved_album_reader(source)
@@ -847,12 +885,7 @@ async def _previous_target_playlist_id(
             orm.MigrationJob.id != job.id,
             orm.MigrationJob.user_id == job.user_id,
             orm.MigrationJob.source_provider == job.source_provider,
-            provider_account_history(
-                orm.MigrationJob.source_account_id,
-                current_account_id=job.source_account_id,
-                user_id=job.user_id,
-                provider=job.source_provider,
-            ),
+            _source_account_history(orm.MigrationJob.source_account_id, job),
             orm.MigrationJob.target_provider == job.target_provider,
             provider_account_history(
                 orm.MigrationJob.target_account_id,
@@ -877,12 +910,7 @@ async def _previous_target_playlist_id(
                     orm.MigrationJob.id != job.id,
                     orm.MigrationJob.user_id == job.user_id,
                     orm.MigrationJob.source_provider == job.source_provider,
-                    provider_account_history(
-                        orm.MigrationJob.source_account_id,
-                        current_account_id=job.source_account_id,
-                        user_id=job.user_id,
-                        provider=job.source_provider,
-                    ),
+                    _source_account_history(orm.MigrationJob.source_account_id, job),
                     orm.MigrationJob.target_provider == job.target_provider,
                     provider_account_history(
                         orm.MigrationJob.target_account_id,
@@ -958,12 +986,7 @@ async def _previous_reviewed_items(
         orm.ReviewDecision.job_id != job.id,
         orm.ReviewDecision.user_id == job.user_id,
         orm.ReviewDecision.source_provider == job.source_provider,
-        provider_account_history(
-            orm.ReviewDecision.source_account_id,
-            current_account_id=job.source_account_id,
-            user_id=job.user_id,
-            provider=job.source_provider,
-        ),
+        _source_account_history(orm.ReviewDecision.source_account_id, job),
         orm.ReviewDecision.target_provider == job.target_provider,
         provider_account_history(
             orm.ReviewDecision.target_account_id,
@@ -983,6 +1006,17 @@ async def _previous_reviewed_items(
         .order_by(orm.ReviewDecision.created_at.desc())
     )
     return list((await session.execute(stmt)).scalars())
+
+
+def _source_account_history(account_id_column, job: orm.MigrationJob):
+    if job.source_snapshot is not None:
+        return account_id_column == job.source_account_id
+    return provider_account_history(
+        account_id_column,
+        current_account_id=job.source_account_id,
+        user_id=job.user_id,
+        provider=job.source_provider,
+    )
 
 
 def _prior_reviewed_item(

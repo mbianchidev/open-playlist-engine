@@ -1126,10 +1126,16 @@ async def _validated_preflight(
     if body.selection.playlist_ids and not source_caps.can(Capability.READ_TRACKS):
         raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
     await load_credential(
-        session, account_id=body.source_account_id, provider=body.source_provider
+        session,
+        account_id=body.source_account_id,
+        provider=body.source_provider,
+        user_id=user_id,
     )
     await load_credential(
-        session, account_id=body.target_account_id, provider=body.target_provider
+        session,
+        account_id=body.target_account_id,
+        provider=body.target_provider,
+        user_id=user_id,
     )
     return await _preflight(session, body, user_id=user_id)
 
@@ -1148,12 +1154,14 @@ async def _preflight(
         account_id=body.source_account_id,
         adapter=source,
         provider=body.source_provider,
+        user_id=user_id,
     )
     target_cred, _ = await load_fresh_credential(
         session,
         account_id=body.target_account_id,
         adapter=target,
         provider=body.target_provider,
+        user_id=user_id,
     )
 
     selected = await _selected_playlists(source, source_cred, body.selection)
@@ -1842,6 +1850,7 @@ async def _apply_review(
             account_id=job.target_account_id,
             adapter=target,
             provider=job.target_provider,
+            user_id=job.user_id,
         )
         if not await target.validate_uri(target_cred, target_uri):
             raise HTTPException(

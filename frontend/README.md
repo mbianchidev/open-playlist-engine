@@ -46,6 +46,12 @@ dependencies out of the installed/audited frontend dependency graph.
 9. Download the source playlist snapshot from a completed/failed migration while its
    retained item details remain available.
 
+The owner-only **Sharing** tab publishes and manages immutable snapshots. Public
+`/share/:token` metadata pages redirect to the SPA `/shared/:token` route, where
+recipients can inspect tracks, download portable formats, connect only their own
+target account, and reuse the same progress/review component through the isolated
+public API client.
+
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised
 by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.
