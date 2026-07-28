@@ -333,6 +333,14 @@ class ProviderAdapter(Protocol):
         items: Sequence[TrackRemoval],
     ) -> RemoveTracksResult: ...
 
+
+@runtime_checkable
+class MirrorProviderAdapter(Protocol):
+    async def replace_playlist_tracks(
+        self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
+    ) -> None: ...
+
+
 @runtime_checkable
 class SavedAlbumReader(Protocol):
     info: ProviderInfo

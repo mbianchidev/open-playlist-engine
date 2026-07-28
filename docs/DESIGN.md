@@ -53,6 +53,9 @@ Self-hosted operators can also opt into immutable metadata-only playlist shares.
 The public page/download boundary is token-scoped, while recipient provider
 accounts and migration jobs use a signed share-recipient identity that cannot
 resolve the owner's local accounts.
+Persistent one-way sync rules reuse migration jobs for new-track matching and writes,
+store source/target checkpoints, catch up missed schedules in the self-hosted worker,
+and expose add-only plus capability-gated mirror controls.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -151,6 +154,21 @@ hiding successes, and retry only failed/retryable items. Duplicate analysis is a
 read-only review aid using normalized name, compatible owner identity, and track
 overlap; it never creates an organizer selection.
 
+### Scheduled synchronization
+
+A rule starts from one completed full-playlist migration, so the source/target account
+and playlist relationship is already proven. The worker evaluates due rules at startup
+and every minute. Each run stores deterministic source/target snapshots and creates a
+normal migration job for newly added tracks; add-only uses the existing duplicate
+reconciliation, while mirror uses a match-only job followed by one ordered target
+replacement. Review-required rules stop scheduling until the migration review is
+resolved and the sync finalizer commits the checkpoint.
+
+Only one queued/running run may exist per rule. A database partial unique index,
+transactional row locks and run lease tokens prevent overlaps and stale workers from
+committing. Transient failures receive a shorter retry schedule, expired credentials
+auto-pause the rule, and inverse endpoint rules are rejected to prevent feedback loops.
+
 ---
 
 ## 3. Architecture
@@ -245,6 +263,10 @@ class ProviderAdapter(Protocol):
     async def add_tracks(self, cred, playlist_id, uris) -> list[AddItemResult]: ...
 ```
 
+Adapters that advertise both `REMOVE_TRACKS` and `REORDER` may also implement the
+optional `MirrorProviderAdapter.replace_playlist_tracks(...)` contract. The scheduler
+checks both the capability descriptor and structural protocol before exposing mirror.
+Spotify is the initial mirror target; saved/liked collections remain add-only.
 Album and artist capabilities use four optional contracts:
 `SavedAlbumReader`/`SavedAlbumWriter` and
 `FollowedArtistReader`/`FollowedArtistWriter`. This keeps each entity and direction
@@ -348,7 +370,7 @@ scheduler need **constraints**, not just "can write":
 ### Honest matrix (verify per provider)
 | Provider | Playlists/tracks | Saved albums | Artists | Target lookup | Notes |
 |---|---|---|---|---|---|
-| Spotify | Read/write | Read/write | Follow read/write | ISRC, UPC, text | official |
+| Spotify | Read/write + mirror | Read/write | Follow read/write | ISRC, UPC, text | official |
 | Tidal | Read/write | Read/write | Favorite read/write | ISRC, UPC, text | official |
 | YT Music (`ytmusicapi`) | Read/write | — | — | text | unofficial |
 | Apple Music | Read/write | — | — | ISRC + text | library entities not advertised |
@@ -361,6 +383,8 @@ Playlist selections require track-read and playlist-write caps. Album/artist
 selections require their matching read/write caps, scopes, and operation-specific
 library protocol.
 Unsupported target types remain disabled and are rejected if submitted.
+`GET /providers` also returns `can_mirror` and an actionable reason when mirror is
+unavailable.
 
 ---
 
@@ -422,6 +446,13 @@ graph as an open dataset is deferred pending legal review.
 - **[rev] Durable, replayable progress.** Progress is derived from persisted
   `job_item` rows and streamed over **SSE**; a reconnecting client resumes via
   `Last-Event-ID`, so no events are lost on a dropped connection.
+- Sync-generated jobs carry `origin=sync` and a `sync_run_id`: they reuse matching,
+  review, duplicate handling and the operation ledger without cluttering manual
+  migration history/statistics.
+- Mirror replacements write an intended ledger row before the provider call, verify
+  the final ordered URI sequence, and leave ambiguous state retryable. Multi-batch
+  Spotify replacement restarts from the first `PUT` on every retry and attempts to
+  restore the previous sequence after a partial failure.
 
 ### Organizer jobs
 
@@ -450,6 +481,9 @@ graph as an open dataset is deferred pending legal review.
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
 | `migration_job`, `job_item` | jobs + per-track/album/artist status | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
+| `sync_rule` | endpoints, mode, cadence/timezone, enabled and last/next metadata | private |
+| `sync_run` | trigger, lease, snapshots, changed counts, status and error | private |
+| `sync_checkpoint` | latest applied snapshots, mappings and unresolved review items | private |
 | `organizer_job`, `organizer_item` | bulk organizer request + per-playlist action/result | private |
 | `review_decision` | retained accepted low-confidence matches | private |
 | `track_identity` | canonical track (UUID pk, ISRC as evidence) | global, no PII |
@@ -467,9 +501,9 @@ open-playlist-engine/
                    # match_service, rate_limit, security  (provider-agnostic hub)
       providers/   # spotify/, ytmusic/  (self-registering adapters)
       db/          # SQLAlchemy models (private data + identity graph)
-      jobs/        # arq worker + migration and playlist-organizer pipelines
+      jobs/        # arq worker + migration, sync, and playlist-organizer pipelines
       api/         # /providers /auth /playlists /library /migrations /organizer
-                   # /exports /shares and isolated public share routes
+                   # /syncs /exports /shares and isolated public share routes
     tests/conformance/   # fake provider + contract suite
     migrations/          # Alembic
   frontend/        # Vite + React + TS SPA (consumes generated OpenAPI client)
@@ -501,6 +535,9 @@ generated OpenAPI client.
 | Awkward auth (ytmusic, Apple) | 3 challenge shapes + per-provider lifecycle hooks |
 | Fuzzy mismatches | ISRC-first; review step; confirmations as overlays, promoted only on evidence |
 | Partial writes on retry | operation ledger: reconcile by reading target state |
+| Overlapping or orphaned sync runs | partial unique index + row lock + lease token + stale recovery |
+| Sync feedback loops | one-way endpoint identity and inverse-rule rejection |
+| Mirror replacement fails mid-batch | verify, retry from first replace call, and attempt rollback |
 | Accidental destructive organizer action | safe remove is a distinct capability; delete/remove-songs require typed confirmation |
 | Duplicate playlist false positive | suggestions require normalized name + owner compatibility + ≥50% overlap and are never auto-selected |
 | Provider API/ToS changes | capability descriptors + conformance suite catch regressions |
@@ -535,6 +572,8 @@ generated OpenAPI client.
 - ✅ Capability-gated Playlist Organizer with durable per-playlist results and
   provider-specific recovery warnings.
 - ✅ Self-host single-user v1 with SaaS-ready seams (`DEPLOYMENT_MODE` + `KeyProvider`).
+- ✅ Persistent worker-local playlist sync with restart catch-up, review finalization,
+  add-only mode and capability-gated Spotify mirror.
 
 ## 16. Open questions
 

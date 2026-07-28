@@ -77,6 +77,7 @@ from app.db.repositories import (
 )
 from app.jobs.migration import commit_job_counts, run_migration
 from app.jobs.queue import enqueue_or_inline
+from app.jobs.sync import finalize_sync_review, review_finalization_ready
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,9 @@ class JobView(BaseModel):
     done: int = 0
     failed: int = 0
     error: str | None = None
+    origin: str = "manual"
+    sync_run_id: str | None = None
+    match_only: bool = False
 
 
 class AccountHistoryView(BaseModel):
@@ -261,6 +265,9 @@ def _job_view(job: orm.MigrationJob) -> JobView:
         done=job.done,
         failed=job.failed,
         error=job.error,
+        origin=job.origin,
+        sync_run_id=job.sync_run_id,
+        match_only=bool((job.selection or {}).get("match_only")),
     )
 
 
@@ -818,7 +825,10 @@ def _build_aggregate_stats(
 def _migration_filter_conditions(
     *, user_id: str, source_provider: str | None = None, target_provider: str | None = None
 ) -> list:
-    conditions = [orm.MigrationJob.user_id == user_id]
+    conditions = [
+        orm.MigrationJob.user_id == user_id,
+        orm.MigrationJob.origin == "manual",
+    ]
     if source_provider:
         conditions.append(orm.MigrationJob.source_provider == source_provider)
     if target_provider:
@@ -993,7 +1003,10 @@ async def list_migrations(
         (
             await session.execute(
                 select(orm.MigrationJob)
-                .where(orm.MigrationJob.user_id == user_id)
+                .where(
+                    orm.MigrationJob.user_id == user_id,
+                    orm.MigrationJob.origin == "manual",
+                )
                 .order_by(orm.MigrationJob.created_at.desc(), orm.MigrationJob.id.desc())
             )
         ).scalars()
@@ -1750,6 +1763,7 @@ async def review_migration_item(
     job_id: str,
     item_id: str,
     body: ReviewItem,
+    background_tasks: BackgroundTasks,
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
 ) -> JobItemView:
@@ -1760,13 +1774,16 @@ async def review_migration_item(
     item = await session.get(orm.JobItem, item_id)
     if item is None or item.job_id != job_id:
         raise HTTPException(status_code=404, detail="migration item not found")
-    return await _apply_review(session, job, item, body)
+    view = await _apply_review(session, job, item, body)
+    await _maybe_finalize_sync_review(background_tasks, session, job)
+    return view
 
 
 @router.post("/{job_id}/items/review", response_model=list[JobItemView])
 async def review_migration_items(
     job_id: str,
     body: BatchReview,
+    background_tasks: BackgroundTasks,
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
 ) -> list[JobItemView]:
@@ -1795,6 +1812,7 @@ async def review_migration_items(
                 ReviewItem(action=body.action, target_uri=item.target_uri),
             )
         )
+    await _maybe_finalize_sync_review(background_tasks, session, job)
     return updated
 
 
@@ -1815,6 +1833,11 @@ async def _apply_review(
     item.reviewed_at = _utcnow()
 
     if body.action == "skip":
+        if job.origin == "sync" and (job.selection or {}).get("match_only"):
+            raise HTTPException(
+                status_code=400,
+                detail="mirror sync tracks cannot be skipped; provide a valid target URI",
+            )
         item.status = "skipped"
         item.target_uri = None
         item.target_entity_id = None
@@ -1850,6 +1873,12 @@ async def _apply_review(
             raise HTTPException(
                 status_code=400, detail="target_uri is not valid for target provider"
             )
+        if (job.selection or {}).get("match_only"):
+            item.target_uri = target_uri
+            item.status = "matched"
+            item.reason = None
+            await commit_job_counts(session, job)
+            return _item_view(item)
         existing_keys = await _target_playlist_keys(target, target_cred, item.target_playlist_id)
         duplicate_keys = _item_target_keys(item, target_uri)
         if duplicate_keys & existing_keys:
@@ -1894,6 +1923,32 @@ async def _apply_review(
         item.reason = (result.error if result else None) or "target rejected reviewed track"
     await commit_job_counts(session, job)
     return _item_view(item)
+
+
+async def _maybe_finalize_sync_review(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession,
+    job: orm.MigrationJob,
+) -> None:
+    if job.origin != "sync" or not job.sync_run_id:
+        return
+    items = list(
+        (
+            await session.execute(
+                select(orm.JobItem).where(orm.JobItem.job_id == job.id)
+            )
+        ).scalars()
+    )
+    if not review_finalization_ready(items):
+        return
+    await enqueue_or_inline(
+        background_tasks,
+        function_name="finalize_sync_review",
+        fallback=finalize_sync_review,
+        job_id=job.sync_run_id,
+        job_label="sync review finalization",
+        queue_job_id=f"sync-review:{job.sync_run_id}",
+    )
 
 
 def _review_decision(

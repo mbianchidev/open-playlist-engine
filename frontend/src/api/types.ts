@@ -13,6 +13,8 @@ export interface ProviderView {
   has_isrc: boolean;
   can_source: boolean;
   can_target: boolean;
+  can_mirror: boolean;
+  mirror_unavailable_reason: string | null;
   can_unfollow_playlist: boolean;
   can_delete_playlist: boolean;
   can_remove_tracks: boolean;
@@ -218,6 +220,60 @@ export interface CreateExportBody {
   source_account_id: string;
   format: ExportFormat;
   selection: PlaylistSelection;
+}
+
+export type SyncMode = "add_only" | "mirror";
+
+export interface CreateSyncRuleBody {
+  migration_job_id: string;
+  mode: SyncMode;
+  cadence_minutes: number;
+  timezone: string;
+}
+
+export interface UpdateSyncRuleBody {
+  mode?: SyncMode;
+  cadence_minutes?: number;
+  timezone?: string;
+}
+
+export interface SyncRunView {
+  id: string;
+  trigger: string;
+  status: string;
+  migration_job_id: string | null;
+  added: number;
+  removed: number;
+  reordered: number;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string | null;
+}
+
+export interface SyncRuleView {
+  id: string;
+  source_provider: string;
+  source_account_id: string;
+  source_playlist_id: string;
+  source_playlist_name: string;
+  target_provider: string;
+  target_account_id: string;
+  target_playlist_id: string;
+  target_playlist_name: string;
+  mode: SyncMode;
+  cadence_minutes: number;
+  timezone: string;
+  enabled: boolean;
+  status: string;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  next_run_at: string | null;
+  last_error: string | null;
+  last_added: number;
+  last_removed: number;
+  last_reordered: number;
+  latest_run: SyncRunView | null;
 }
 
 export interface ExportDownloadResult {

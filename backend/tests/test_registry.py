@@ -45,4 +45,8 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert rows["applemusic"]["can_delete_playlist"] is False
     assert rows["applemusic"]["can_remove_tracks"] is False
     assert rows["applemusic"]["auth_kind"] == "developer_user_token"
+    assert rows["spotify"]["can_mirror"] is True
+    assert rows["spotify"]["mirror_unavailable_reason"] is None
+    assert rows["tidal"]["can_mirror"] is False
+    assert rows["tidal"]["mirror_unavailable_reason"]
     assert rows["applemusic"]["saved_albums"] == {"read": False, "write": False}

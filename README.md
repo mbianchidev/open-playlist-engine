@@ -20,7 +20,9 @@ instantly works with all the others — both as source and target.
 > reports, opt-in immutable public playlist shares, and a capability-gated Playlist
 > Organizer are wired. Other provider
 > directions remain gated until
-> their adapters advertise implemented capabilities. See
+> their adapters advertise implemented capabilities. Persistent scheduled sync
+> rules can keep completed single-playlist migrations updated in add-only mode,
+> with capability-gated mirror mode for Spotify targets. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## How it works
@@ -33,7 +35,8 @@ source provider ─ read ─▶ [ Open Playlist hub ] ─ write ─▶ target pr
 
 Pipeline: **import → match → review → write**, with durable, replayable progress.
 Matching is ISRC-first with a self-enriching evidence graph and a human review step
-for low-confidence matches.
+for low-confidence matches. Scheduled rules reuse the same pipeline and operation
+ledger instead of maintaining a second migration engine.
 
 ## Layout
 
@@ -96,6 +99,9 @@ warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 second
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
 ARQ's 5-minute default timeout.
+The existing worker also evaluates persisted sync schedules at startup and every
+minute. Sync cadence bounds, retry delay, stale-run recovery and scheduler batch
+size use the `OPE_SYNC_*` settings shown in [`.env.example`](.env.example).
 Organizer pacing and retries use `OPE_ORGANIZER_RATE_LIMIT_CAPACITY`,
 `OPE_ORGANIZER_RATE_LIMIT_REFILL_PER_S`, `OPE_ORGANIZER_RETRY_ATTEMPTS`,
 `OPE_ORGANIZER_RETRY_MAX_DELAY_S`, and
@@ -210,9 +216,16 @@ albums or artists into synthetic playlists.
    notice instead of adding them twice. Saved albums and artists use native target
    contains checks before writes, so reruns report already-present items instead of
    issuing duplicate actions. Name-only artist matches always require review.
+13. Open the **Sync** tab after a completed full-playlist migration to create a
+   recurring rule. Choose add-only or an available mirror mode, cadence and IANA
+   timezone; then run now, pause/resume, edit, delete or inspect the latest result.
+   Rules and checkpoints survive restarts. A rule waits when tracks need review
+   and resumes its schedule after those items are resolved.
 
 Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
+Scheduled synchronization behavior and recovery details are in
+[`docs/SYNCHRONIZATION.md`](docs/SYNCHRONIZATION.md).
 
 ## Adding a provider
 

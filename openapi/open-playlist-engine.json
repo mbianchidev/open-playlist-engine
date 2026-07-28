@@ -657,6 +657,39 @@
         "title": "CreateShare",
         "type": "object"
       },
+      "CreateSyncRule": {
+        "properties": {
+          "cadence_minutes": {
+            "default": 60,
+            "minimum": 1.0,
+            "title": "Cadence Minutes",
+            "type": "integer"
+          },
+          "migration_job_id": {
+            "title": "Migration Job Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "add_only",
+            "enum": [
+              "add_only",
+              "mirror"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "migration_job_id"
+        ],
+        "title": "CreateSyncRule",
+        "type": "object"
+      },
       "Credit": {
         "properties": {
           "instrument": {
@@ -1153,6 +1186,16 @@
             "title": "Id",
             "type": "string"
           },
+          "match_only": {
+            "default": false,
+            "title": "Match Only",
+            "type": "boolean"
+          },
+          "origin": {
+            "default": "manual",
+            "title": "Origin",
+            "type": "string"
+          },
           "source_provider": {
             "title": "Source Provider",
             "type": "string"
@@ -1160,6 +1203,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "sync_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Run Id"
           },
           "target_provider": {
             "title": "Target Provider",
@@ -2500,6 +2554,10 @@
             "title": "Can Delete Playlist",
             "type": "boolean"
           },
+          "can_mirror": {
+            "title": "Can Mirror",
+            "type": "boolean"
+          },
           "can_remove_tracks": {
             "title": "Can Remove Tracks",
             "type": "boolean"
@@ -2530,6 +2588,17 @@
           "max_remove_batch": {
             "title": "Max Remove Batch",
             "type": "integer"
+          },
+          "mirror_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mirror Unavailable Reason"
           },
           "name": {
             "title": "Name",
@@ -2567,6 +2636,7 @@
           "has_isrc",
           "can_source",
           "can_target",
+          "can_mirror",
           "can_unfollow_playlist",
           "can_delete_playlist",
           "can_remove_tracks",
@@ -3150,6 +3220,252 @@
         "title": "StatusCounts",
         "type": "object"
       },
+      "SyncRuleView": {
+        "properties": {
+          "cadence_minutes": {
+            "title": "Cadence Minutes",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_added": {
+            "default": 0,
+            "title": "Last Added",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_removed": {
+            "default": 0,
+            "title": "Last Removed",
+            "type": "integer"
+          },
+          "last_reordered": {
+            "default": 0,
+            "title": "Last Reordered",
+            "type": "integer"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRunView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "source_account_id": {
+            "title": "Source Account Id",
+            "type": "string"
+          },
+          "source_playlist_id": {
+            "title": "Source Playlist Id",
+            "type": "string"
+          },
+          "source_playlist_name": {
+            "title": "Source Playlist Name",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_playlist_id": {
+            "title": "Target Playlist Id",
+            "type": "string"
+          },
+          "target_playlist_name": {
+            "title": "Target Playlist Name",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_provider",
+          "source_account_id",
+          "source_playlist_id",
+          "source_playlist_name",
+          "target_provider",
+          "target_account_id",
+          "target_playlist_id",
+          "target_playlist_name",
+          "mode",
+          "cadence_minutes",
+          "timezone",
+          "enabled",
+          "status"
+        ],
+        "title": "SyncRuleView",
+        "type": "object"
+      },
+      "SyncRunView": {
+        "properties": {
+          "added": {
+            "default": 0,
+            "title": "Added",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "migration_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Job Id"
+          },
+          "removed": {
+            "default": 0,
+            "title": "Removed",
+            "type": "integer"
+          },
+          "reordered": {
+            "default": 0,
+            "title": "Reordered",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "status"
+        ],
+        "title": "SyncRunView",
+        "type": "object"
+      },
       "Track": {
         "description": "A single playlist item in universal form.\n\nOnly ``title`` and ``artist`` are strictly required; ``isrc`` is the primary\ncross-provider match key when present.",
         "properties": {
@@ -3496,6 +3812,50 @@
           }
         },
         "title": "UpdateShare",
+        "type": "object"
+      },
+      "UpdateSyncRule": {
+        "properties": {
+          "cadence_minutes": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadence Minutes"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "add_only",
+                  "mirror"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "UpdateSyncRule",
         "type": "object"
       },
       "ValidationError": {
@@ -6402,6 +6762,321 @@
         "summary": "Revoke Share",
         "tags": [
           "shares"
+        ]
+      }
+    },
+    "/api/syncs": {
+      "get": {
+        "operationId": "list_syncs_api_syncs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SyncRuleView"
+                  },
+                  "title": "Response List Syncs Api Syncs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Syncs",
+        "tags": [
+          "syncs"
+        ]
+      },
+      "post": {
+        "operationId": "create_sync_api_syncs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSyncRule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRuleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Sync",
+        "tags": [
+          "syncs"
+        ]
+      }
+    },
+    "/api/syncs/{rule_id}": {
+      "delete": {
+        "operationId": "delete_sync_api_syncs__rule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Sync",
+        "tags": [
+          "syncs"
+        ]
+      },
+      "get": {
+        "operationId": "get_sync_api_syncs__rule_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRuleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sync",
+        "tags": [
+          "syncs"
+        ]
+      },
+      "patch": {
+        "operationId": "update_sync_api_syncs__rule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSyncRule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRuleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Sync",
+        "tags": [
+          "syncs"
+        ]
+      }
+    },
+    "/api/syncs/{rule_id}/pause": {
+      "post": {
+        "operationId": "pause_sync_api_syncs__rule_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRuleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Sync",
+        "tags": [
+          "syncs"
+        ]
+      }
+    },
+    "/api/syncs/{rule_id}/resume": {
+      "post": {
+        "operationId": "resume_sync_api_syncs__rule_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRuleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Sync",
+        "tags": [
+          "syncs"
+        ]
+      }
+    },
+    "/api/syncs/{rule_id}/run": {
+      "post": {
+        "operationId": "run_sync_now_api_syncs__rule_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Sync Now",
+        "tags": [
+          "syncs"
         ]
       }
     },

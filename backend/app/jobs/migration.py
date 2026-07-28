@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.adapter import (
     AlbumCandidate,
     ArtistCandidate,
+    AuthExpired,
     CreatePlaylistSpec,
     FollowedArtistReader,
     FollowedArtistWriter,
@@ -27,6 +28,7 @@ from app.core.adapter import (
     ProviderAdapter,
     ProviderCredential,
     ProviderError,
+    RateLimited,
     SavedAlbumReader,
     SavedAlbumWriter,
     TrackCandidate,
@@ -44,6 +46,7 @@ from app.core.models import (
     Album,
     Artist,
     MigrationEntityType,
+    Playlist,
     PlaylistKind,
     PlaylistRef,
     Track,
@@ -76,7 +79,7 @@ class Phase(StrEnum):
     DONE = "done"
 
 
-async def run_migration(ctx: dict, job_id: str) -> None:
+async def run_migration(ctx: dict, job_id: str, *, propagate: bool = False) -> None:
     """Entry point invoked by the arq worker.
 
     Runs one durable migration job. Progress is persisted on every meaningful item
@@ -99,6 +102,8 @@ async def run_migration(ctx: dict, job_id: str) -> None:
             await session.rollback()
             await _mark_job_failed(session, job_id, str(exc))
             logger.exception("migration job_id=%s failed", job_id)
+            if propagate:
+                raise
 
 
 async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> None:
@@ -186,9 +191,13 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             )
             if source is None or source_cred is None:
                 raise ValueError("migration source is unavailable")
-            playlist = await source.read_playlist(
-                source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-            )
+            snapshot_payload = (selection.get("playlist_snapshots") or {}).get(playlist_id)
+            if snapshot_payload:
+                playlist = Playlist.model_validate(snapshot_payload)
+            else:
+                playlist = await source.read_playlist(
+                    source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+                )
         store_playlist_snapshot(job, playlist, playlist_id=playlist_id)
         await session.commit()
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
@@ -218,6 +227,9 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             ),
             playlist_kind=playlist.kind,
             source_tracks=tracks,
+            forced_target_playlist_id=(selection.get("target_playlist_ids") or {}).get(
+                playlist_id
+            ),
         )
         logger.info(
             "migration job_id=%s using target playlist source_playlist_id=%s "
@@ -243,6 +255,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             len(item_pairs),
         )
         matched: list[orm.JobItem] = []
+        match_only = bool(selection.get("match_only"))
         for item, track in item_pairs:
             item.target_playlist_id = target_playlist_id
             if not track.is_migratable:
@@ -256,6 +269,8 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 item.status = "failed"
                 item.reason = str(exc)
                 await commit_job_counts(session, job)
+                if job.origin == "sync" and isinstance(exc, (AuthExpired, RateLimited)):
+                    raise
                 continue
             result = _apply_review_history_bonus(
                 reviewed_history,
@@ -278,6 +293,9 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 await commit_job_counts(session, job)
                 continue
             item.status = "matched"
+            if match_only:
+                await commit_job_counts(session, job)
+                continue
             matched.append(item)
             await commit_job_counts(session, job)
             await _flush_matched_chunk(
@@ -430,6 +448,8 @@ async def _write_matched_items(
             item.status = "failed"
             item.reason = str(exc)
         await commit_job_counts(session, job)
+        if job.origin == "sync" and isinstance(exc, (AuthExpired, RateLimited)):
+            raise
         return
     for item, result in zip(write_items, results, strict=False):
         session.add(
@@ -835,9 +855,14 @@ async def _resolve_target_playlist(
     description: str,
     playlist_kind: PlaylistKind,
     source_tracks: list[Track],
+    forced_target_playlist_id: str | None = None,
 ) -> str:
     if playlist_kind is PlaylistKind.LIKED_TRACKS:
         return target.info.require_liked_tracks_target(target_cred)
+    if forced_target_playlist_id:
+        if not await _target_playlist_exists(target, target_cred, forced_target_playlist_id):
+            raise NotFound(f"target playlist not found: {forced_target_playlist_id}")
+        return forced_target_playlist_id
 
     previous = await _previous_target_playlist_id(session, job=job, playlist_id=playlist_id)
     if previous and await _target_playlist_exists(target, target_cred, previous):

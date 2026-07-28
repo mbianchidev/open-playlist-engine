@@ -758,6 +758,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/syncs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Syncs */
+        get: operations["list_syncs_api_syncs_get"];
+        put?: never;
+        /** Create Sync */
+        post: operations["create_sync_api_syncs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/syncs/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sync */
+        get: operations["get_sync_api_syncs__rule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Sync */
+        delete: operations["delete_sync_api_syncs__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Sync */
+        patch: operations["update_sync_api_syncs__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/syncs/{rule_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Sync */
+        post: operations["pause_sync_api_syncs__rule_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/syncs/{rule_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Sync */
+        post: operations["resume_sync_api_syncs__rule_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/syncs/{rule_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Sync Now */
+        post: operations["run_sync_now_api_syncs__rule_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1020,6 +1108,27 @@ export interface components {
             /** @default unlisted */
             visibility: components["schemas"]["ShareVisibility"];
         };
+        /** CreateSyncRule */
+        CreateSyncRule: {
+            /**
+             * Cadence Minutes
+             * @default 60
+             */
+            cadence_minutes: number;
+            /** Migration Job Id */
+            migration_job_id: string;
+            /**
+             * Mode
+             * @default add_only
+             * @enum {string}
+             */
+            mode: "add_only" | "mirror";
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
+        };
         /** Credit */
         Credit: {
             /** Instrument */
@@ -1159,10 +1268,22 @@ export interface components {
             failed: number;
             /** Id */
             id: string;
+            /**
+             * Match Only
+             * @default false
+             */
+            match_only: boolean;
+            /**
+             * Origin
+             * @default manual
+             */
+            origin: string;
             /** Source Provider */
             source_provider: string;
             /** Status */
             status: string;
+            /** Sync Run Id */
+            sync_run_id?: string | null;
             /** Target Provider */
             target_provider: string;
             /**
@@ -1638,6 +1759,8 @@ export interface components {
             auth_kind: string;
             /** Can Delete Playlist */
             can_delete_playlist: boolean;
+            /** Can Mirror */
+            can_mirror: boolean;
             /** Can Remove Tracks */
             can_remove_tracks: boolean;
             /** Can Source */
@@ -1653,6 +1776,8 @@ export interface components {
             has_isrc: boolean;
             /** Max Remove Batch */
             max_remove_batch: number;
+            /** Mirror Unavailable Reason */
+            mirror_unavailable_reason?: string | null;
             /** Name */
             name: string;
             /** Official */
@@ -1859,6 +1984,95 @@ export interface components {
              */
             written: number;
         };
+        /** SyncRuleView */
+        SyncRuleView: {
+            /** Cadence Minutes */
+            cadence_minutes: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Last Added
+             * @default 0
+             */
+            last_added: number;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Last Removed
+             * @default 0
+             */
+            last_removed: number;
+            /**
+             * Last Reordered
+             * @default 0
+             */
+            last_reordered: number;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            latest_run?: components["schemas"]["SyncRunView"] | null;
+            /** Mode */
+            mode: string;
+            /** Next Run At */
+            next_run_at?: string | null;
+            /** Source Account Id */
+            source_account_id: string;
+            /** Source Playlist Id */
+            source_playlist_id: string;
+            /** Source Playlist Name */
+            source_playlist_name: string;
+            /** Source Provider */
+            source_provider: string;
+            /** Status */
+            status: string;
+            /** Target Account Id */
+            target_account_id: string;
+            /** Target Playlist Id */
+            target_playlist_id: string;
+            /** Target Playlist Name */
+            target_playlist_name: string;
+            /** Target Provider */
+            target_provider: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /** SyncRunView */
+        SyncRunView: {
+            /**
+             * Added
+             * @default 0
+             */
+            added: number;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Migration Job Id */
+            migration_job_id?: string | null;
+            /**
+             * Removed
+             * @default 0
+             */
+            removed: number;
+            /**
+             * Reordered
+             * @default 0
+             */
+            reordered: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Status */
+            status: string;
+            /** Trigger */
+            trigger: string;
+        };
         /**
          * Track
          * @description A single playlist item in universal form.
@@ -1951,6 +2165,15 @@ export interface components {
             /** Expires At */
             expires_at?: string | null;
             visibility?: components["schemas"]["ShareVisibility"] | null;
+        };
+        /** UpdateSyncRule */
+        UpdateSyncRule: {
+            /** Cadence Minutes */
+            cadence_minutes?: number | null;
+            /** Mode */
+            mode?: ("add_only" | "mirror") | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -3563,6 +3786,247 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_syncs_api_syncs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRuleView"][];
+                };
+            };
+        };
+    };
+    create_sync_api_syncs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSyncRule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_api_syncs__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_sync_api_syncs__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_sync_api_syncs__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSyncRule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_sync_api_syncs__rule_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_sync_api_syncs__rule_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_sync_now_api_syncs__rule_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRunView"];
                 };
             };
             /** @description Validation Error */

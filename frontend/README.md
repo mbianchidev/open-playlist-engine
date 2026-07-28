@@ -40,13 +40,17 @@ dependencies out of the installed/audited frontend dependency graph.
 7. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
-8. Use the Organizer tab to search/sort one provider library, choose a
+8. Create and manage recurring rules from completed full-playlist migrations in the
+   Sync workspace. The UI exposes add-only/mirror capability gating, cadence/timezone
+   editing, run now, pause/resume, delete, changed-track counts, errors and the latest
+   migration review panel.
+9. Use the Organizer tab to search/sort one provider library, choose a
    capability-gated action, review duplicate evidence, type destructive
    confirmations, and inspect or retry durable per-playlist job results.
-9. Reopen migrations in **History**, filter track/album/artist results, inspect prior
+10. Reopen migrations in **History**, filter track/album/artist results, inspect prior
    decisions and errors, follow entity-aware target links, and download filtered
    all/problem CSV or JSON reports.
-10. Download the source playlist snapshot from a completed/failed migration while its
+11. Download the source playlist snapshot from a completed/failed migration while its
    retained item details remain available.
 
 The owner-only **Sharing** tab publishes and manages immutable snapshots. Public
@@ -72,4 +76,5 @@ official MusicKit JS v3 browser authorization flow.
 `src/index.css` retains the established component and state selectors.
 `src/theme.css` owns the product tokens, provider-aware presentation, responsive
 layout, and motion overrides. Keep dynamic status classes and the ARIA tab
-relationships intact when changing presentation.
+relationships intact when changing presentation. The accessible workspace tab order
+is Migration, Sync, Stats.

@@ -8,11 +8,12 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
-- `app/jobs/` — arq worker + migration and durable playlist-organizer jobs.
+- `app/jobs/` — arq worker, import→match→review→write pipeline, persisted sync
+  scheduler, and durable playlist-organizer jobs.
 - `app/exports/` — versioned portable schemas, serializers, history reconstruction,
   and temporary-file-backed archive generation.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/library`,
-  `/migrations`, `/organizer`, `/exports`, owner `/shares`, and isolated
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
+  `/syncs`, `/library`, `/organizer`, `/exports`, owner `/shares`, and isolated
   `/public/shares`).
 
 ## Develop
@@ -70,6 +71,12 @@ statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
 
+The worker also runs the playlist sync scheduler at startup and every minute.
+`sync_rule`, `sync_run`, and `sync_checkpoint` persist schedules, active-run leases,
+source/target snapshots, target mappings, results and errors. Sync-created migration
+jobs are hidden from normal migration history/statistics but remain available through
+their progress/review endpoints. See
+[`docs/SYNCHRONIZATION.md`](../docs/SYNCHRONIZATION.md).
 Playlist Organizer uses separate `organizer_job` and `organizer_item` tables. The
 worker persists per-playlist results, skips successful items on retry, rate-limits
 provider/account writes, and invalidates playlist caches after successful work.

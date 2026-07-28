@@ -10,7 +10,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.core.capabilities import Capability
-from app.core.registry import all_info
+from app.core.registry import all_adapters
+from app.core.sync import mirror_unavailable_reason
 
 router = APIRouter(prefix="/api", tags=["providers"])
 
@@ -24,6 +25,8 @@ class ProviderView(BaseModel):
     has_isrc: bool
     can_source: bool
     can_target: bool
+    can_mirror: bool
+    mirror_unavailable_reason: str | None = None
     can_unfollow_playlist: bool
     can_delete_playlist: bool
     can_remove_tracks: bool
@@ -45,8 +48,10 @@ class ArtistCapabilityView(LibraryCapabilityView):
 @router.get("/providers", response_model=list[ProviderView])
 async def list_providers() -> list[ProviderView]:
     views: list[ProviderView] = []
-    for info in all_info():
+    for adapter in all_adapters():
+        info = adapter.info
         caps = info.capabilities
+        mirror_reason = mirror_unavailable_reason(adapter)
         views.append(
             ProviderView(
                 name=info.name,
@@ -86,6 +91,8 @@ async def list_providers() -> list[ProviderView]:
                         else None
                     ),
                 ),
+                can_mirror=mirror_reason is None,
+                mirror_unavailable_reason=mirror_reason,
                 warning=caps.warning,
             )
         )

@@ -20,6 +20,7 @@ from app.api import (
     playlists,
     providers,
     shares,
+    syncs,
 )
 from app.core.logging import configure_share_token_redaction
 from app.settings import get_settings
@@ -49,6 +50,7 @@ app.include_router(auth.router)
 app.include_router(playlists.router)
 app.include_router(library.router)
 app.include_router(migrations.router)
+app.include_router(syncs.router)
 app.include_router(organizer.router)
 app.include_router(exports.router)
 app.include_router(shares.router)

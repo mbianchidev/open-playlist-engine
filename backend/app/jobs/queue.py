@@ -20,11 +20,13 @@ async def enqueue_or_inline(
     fallback: Callable[[dict, str], Awaitable[None]],
     job_id: str,
     job_label: str,
+    queue_job_id: str | None = None,
 ) -> None:
     try:
         redis = await create_pool(RedisSettings.from_dsn(get_settings().valkey_url))
         try:
-            await redis.enqueue_job(function_name, job_id)
+            kwargs = {"_job_id": queue_job_id} if queue_job_id else {}
+            await redis.enqueue_job(function_name, job_id, **kwargs)
         finally:
             await redis.close(close_connection_pool=True)
     except (ConnectionError, OSError, RedisError, TimeoutError) as exc:

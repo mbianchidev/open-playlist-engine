@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, select
 
 from app.db import models as orm
 from app.db.base import get_sessionmaker
@@ -35,6 +35,7 @@ async def cleanup_expired_migration_details(ctx: dict) -> int:
                         orm.MigrationJob.status.in_(TERMINAL_JOB_STATUSES),
                         orm.MigrationJob.details_expires_at.is_(None),
                         orm.MigrationJob.details_purged_at.is_(None),
+                        _sync_review_not_pending(),
                     )
                     .with_for_update(skip_locked=True)
                     .order_by(orm.MigrationJob.created_at, orm.MigrationJob.id)
@@ -58,6 +59,7 @@ async def cleanup_expired_migration_details(ctx: dict) -> int:
                     .where(
                         orm.MigrationJob.details_expires_at <= now,
                         orm.MigrationJob.details_purged_at.is_(None),
+                        _sync_review_not_pending(),
                     )
                     .with_for_update(skip_locked=True)
                     .order_by(orm.MigrationJob.details_expires_at, orm.MigrationJob.id)
@@ -78,3 +80,12 @@ async def cleanup_expired_migration_details(ctx: dict) -> int:
     if expired_jobs:
         logger.info("purged item-level migration history jobs=%s", len(expired_jobs))
     return len(expired_jobs)
+
+
+def _sync_review_not_pending():
+    return ~exists(
+        select(orm.SyncRun.id).where(
+            orm.SyncRun.id == orm.MigrationJob.sync_run_id,
+            orm.SyncRun.status == "review_required",
+        )
+    )
