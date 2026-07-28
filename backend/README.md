@@ -11,8 +11,8 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
 - `app/exports/` — versioned portable schemas, serializers, history reconstruction,
   and temporary-file-backed archive generation.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
-  `/exports`).
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/library`,
+  `/migrations`, `/exports`).
 
 ## Develop
 ```bash
@@ -36,11 +36,15 @@ declare a `CapabilityDescriptor`, call `register(...)`, and pass the conformance
 suite in `tests/conformance/`. Adapters never touch the match graph — they only
 read/search/write; `MatchService` owns matching.
 
+Album/artist support is independently structural: implement only the advertised
+`SavedAlbumReader`/`SavedAlbumWriter` and
+`FollowedArtistReader`/`FollowedArtistWriter` contracts.
+
 ## Provider status
 | Provider | Read / Search | Write | Test seam |
 |---|---|---|---|
-| Spotify | ✅ OAuth + playlist/saved-library read/search | ✅ current playlist + saved-library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
-| Tidal | ✅ OAuth + playlist/My Collection read/search | ✅ playlist + My Collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
+| Spotify | ✅ playlists, liked tracks, saved albums, followed artists | ✅ native playlist/library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Tidal | ✅ playlists, liked tracks, saved albums, favorite artists | ✅ native playlist/collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
 | YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
 | Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
 
@@ -59,15 +63,27 @@ applies Alembic migrations before starting the backend and worker. For local
 development, run `alembic upgrade head` before `uvicorn` and `arq`. Playlist
 detail and migration item review endpoints support track-level selection,
 partial-migration labels, duplicate skips, batch review actions, and low-confidence
-match correction in the UI. Migration creation performs a preflight that warns
+match correction in the UI. Migration creation supports explicit album/artist job
+items, conservative matching, native contains checks, review, and entity-specific
+statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
 
 Portable exports read one playlist at a time and stream temporary CSV, TXT, M3U8,
 XSPF, JSON, or ZIP64 artifacts. Live selections use `POST /api/exports`; terminal
-migration history uses `POST /api/exports/migrations/{job_id}`. The default limit is
-100 playlists per request (`OPE_EXPORT_MAX_PLAYLISTS`) with no track cap. See
+migration history uses `POST /api/exports/migrations/{job_id}` while item details
+remain within retention. The default limit is 100 playlists per request
+(`OPE_EXPORT_MAX_PLAYLISTS`) with no track cap. See
 [`docs/EXPORTING_PLAYLISTS.md`](../docs/EXPORTING_PLAYLISTS.md).
+
+The existing migration stats API also exposes complete history details. Track,
+album, and artist rows support owner-scoped filters and optional paging, while
+`GET /api/migrations/{job_id}/report` streams versioned CSV or JSON exports without
+materializing the full result. Item detail defaults to 90-day retention; the ARQ
+worker snapshots per-entity summaries and removes expired job/operation rows in
+bounded hourly batches. Accepted mixed-entity review decisions remain available for
+future matching. See
+[`docs/MIGRATION_HISTORY.md`](../docs/MIGRATION_HISTORY.md).
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).

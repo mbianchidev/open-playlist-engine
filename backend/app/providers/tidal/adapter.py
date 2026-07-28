@@ -21,6 +21,8 @@ import httpx
 from app.core.adapter import (
     AccessDenied,
     AddItemResult,
+    AlbumCandidate,
+    ArtistCandidate,
     AuthChallenge,
     AuthExpired,
     AuthKind,
@@ -36,7 +38,16 @@ from app.core.adapter import (
     TrackCandidate,
 )
 from app.core.capabilities import Capability, CapabilityDescriptor, SearchMode, Stability
-from app.core.models import MediaType, Playlist, PlaylistKind, PlaylistRef, Track
+from app.core.models import (
+    Album,
+    Artist,
+    ArtistCollectionSemantics,
+    MediaType,
+    Playlist,
+    PlaylistKind,
+    PlaylistRef,
+    Track,
+)
 from app.core.registry import register
 from app.settings import get_settings
 
@@ -186,6 +197,13 @@ def _tidal_error_code(resp: httpx.Response) -> str | None:
             code = errors[0].get("code")
             return code if isinstance(code, str) and code else None
     return None
+
+
+def _is_duplicate_collection_response(resp: httpx.Response) -> bool:
+    if resp.status_code != 409:
+        return False
+    detail = f"{_tidal_error_code(resp) or ''} {_tidal_error_message(resp)}".upper()
+    return "DUPLICATE" in detail or "ALREADY" in detail
 
 
 def _require_scope(cred: ProviderCredential, scope: str, action: str) -> None:
@@ -409,6 +427,28 @@ def _track_id(uri: str) -> str | None:
     return uri or None
 
 
+def _album_id(uri: str) -> str | None:
+    uri = uri.strip()
+    if uri.startswith("tidal:album:"):
+        return uri.rsplit(":", 1)[-1] or None
+    for marker in ("/browse/album/", "/album/"):
+        if marker in uri:
+            tail = uri.split(marker, 1)[1]
+            return tail.split("?", 1)[0].split("/", 1)[0] or None
+    return uri if uri and ":" not in uri else None
+
+
+def _artist_id(uri: str) -> str | None:
+    uri = uri.strip()
+    if uri.startswith("tidal:artist:"):
+        return uri.rsplit(":", 1)[-1] or None
+    for marker in ("/browse/artist/", "/artist/"):
+        if marker in uri:
+            tail = uri.split(marker, 1)[1]
+            return tail.split("?", 1)[0].split("/", 1)[0] or None
+    return uri if uri and ":" not in uri else None
+
+
 def _playlist_ref(resource: dict[str, Any]) -> PlaylistRef:
     attrs = _attributes(resource)
     owners = _relationship_data(resource, "owners")
@@ -511,6 +551,96 @@ def _candidate(
         duration_s=track.duration_s,
         isrc=track.isrc,
         explicit=track.explicit,
+    )
+
+
+def _album_from_resource(
+    resource: dict[str, Any],
+    included: dict[tuple[str, str], dict[str, Any]],
+    *,
+    item_meta: dict[str, Any] | None = None,
+) -> Album:
+    attrs = _attributes(resource)
+    album_id = str(resource.get("id") or "")
+    release_date, release_year = _release_date(attrs.get("releaseDate"))
+    return Album(
+        id=album_id or None,
+        title=str(attrs.get("title") or album_id),
+        artists=[
+            str(name)
+            for artist in _related_resources(resource, included, "artists")
+            if (name := _attributes(artist).get("name"))
+        ],
+        upc=attrs.get("barcodeId") if isinstance(attrs.get("barcodeId"), str) else None,
+        release_date=release_date,
+        release_year=release_year,
+        provider_uris={"tidal": f"tidal:album:{album_id}"} if album_id else {},
+        metadata={
+            key: value
+            for key, value in {
+                "album_type": attrs.get("albumType") or attrs.get("type"),
+                "explicit": attrs.get("explicit"),
+                "number_of_items": attrs.get("numberOfItems"),
+                "number_of_volumes": attrs.get("numberOfVolumes"),
+            }.items()
+            if value is not None
+        },
+        source_item_id=album_id or None,
+        added_at=(item_meta or {}).get("addedAt"),
+    )
+
+
+def _artist_from_resource(
+    resource: dict[str, Any], *, item_meta: dict[str, Any] | None = None
+) -> Artist:
+    attrs = _attributes(resource)
+    artist_id = str(resource.get("id") or "")
+    return Artist(
+        id=artist_id or None,
+        name=str(attrs.get("name") or artist_id),
+        provider_uris={"tidal": f"tidal:artist:{artist_id}"} if artist_id else {},
+        metadata={
+            key: value
+            for key, value in {
+                "handle": attrs.get("handle"),
+                "popularity": attrs.get("popularity"),
+                "external_links": attrs.get("externalLinks"),
+            }.items()
+            if value is not None
+        },
+        source_item_id=artist_id or None,
+        added_at=(item_meta or {}).get("addedAt"),
+    )
+
+
+def _album_candidate(
+    resource: dict[str, Any], included: dict[tuple[str, str], dict[str, Any]]
+) -> AlbumCandidate:
+    album = _album_from_resource(resource, included)
+    album_id = album.id or ""
+    return AlbumCandidate(
+        provider_album_id=album_id,
+        uri=album.provider_uris.get("tidal") or f"tidal:album:{album_id}",
+        title=album.title,
+        artists=album.artists,
+        upc=album.upc,
+        release_date=(
+            str(album.release_date)
+            if album.release_date
+            else str(album.release_year) if album.release_year else None
+        ),
+        artwork_uri=album.artwork_uri,
+    )
+
+
+def _artist_candidate(resource: dict[str, Any]) -> ArtistCandidate:
+    artist = _artist_from_resource(resource)
+    artist_id = artist.id or ""
+    return ArtistCandidate(
+        provider_artist_id=artist_id,
+        uri=artist.provider_uris.get("tidal") or f"tidal:artist:{artist_id}",
+        name=artist.name,
+        artwork_uri=artist.artwork_uri,
     )
 
 
@@ -669,6 +799,10 @@ class TidalAdapter:
                 Capability.READ_TRACKS,
                 Capability.READ_LIBRARY,
                 Capability.WRITE_LIBRARY,
+                Capability.READ_SAVED_ALBUMS,
+                Capability.WRITE_SAVED_ALBUMS,
+                Capability.READ_FOLLOWED_ARTISTS,
+                Capability.WRITE_FOLLOWED_ARTISTS,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
                 Capability.SET_DESCRIPTION,
@@ -678,6 +812,7 @@ class TidalAdapter:
             official=True,
             stability=Stability.STABLE,
             max_add_batch=_MAX_ADD_BATCH,
+            max_library_batch=_MAX_ADD_BATCH,
             supports_duplicates=True,
             warning=(
                 "Requires a TIDAL developer app with collection.read, collection.write, "
@@ -687,6 +822,11 @@ class TidalAdapter:
         liked_tracks_playlist_id=TIDAL_COLLECTION_TRACKS_PLAYLIST_ID,
         library_read_scope=_COLLECTION_READ_SCOPE,
         library_write_scope=_COLLECTION_WRITE_SCOPE,
+        saved_albums_read_scope=_COLLECTION_READ_SCOPE,
+        saved_albums_write_scope=_COLLECTION_WRITE_SCOPE,
+        followed_artists_read_scope=_COLLECTION_READ_SCOPE,
+        followed_artists_write_scope=_COLLECTION_WRITE_SCOPE,
+        artist_collection_semantics=ArtistCollectionSemantics.FAVORITE,
     )
     auth = TidalAuth()
 
@@ -925,6 +1065,124 @@ class TidalAdapter:
         async with self._client(cred) as client:
             _raise_for_status(await _tidal_request(client, "GET", "/users/me"))
 
+    async def iter_saved_albums(self, cred: ProviderCredential) -> AsyncIterator[Album]:
+        self.info.require_saved_albums_source(cred)
+        async with self._client(cred) as client:
+            rows = await self._read_library_resources(
+                client,
+                cred,
+                "/userCollectionAlbums/me/relationships/items",
+                "albums",
+            )
+        for resource, included, meta in rows:
+            yield _album_from_resource(resource, included, item_meta=meta)
+
+    async def read_saved_album(self, cred: ProviderCredential, album_id: str) -> Album:
+        self.info.require_saved_albums_source(cred)
+        normalized = _album_id(album_id)
+        if not normalized:
+            raise NotFound(album_id)
+        async with self._client(cred) as client:
+            resource, included = await self._read_library_resource(
+                client, cred, "albums", normalized
+            )
+        return _album_from_resource(resource, included)
+
+    async def iter_followed_artists(self, cred: ProviderCredential) -> AsyncIterator[Artist]:
+        self.info.require_followed_artists_source(cred)
+        async with self._client(cred) as client:
+            rows = await self._read_library_resources(
+                client,
+                cred,
+                "/userCollectionArtists/me/relationships/items",
+                "artists",
+            )
+        for resource, _, meta in rows:
+            yield _artist_from_resource(resource, item_meta=meta)
+
+    async def read_followed_artist(self, cred: ProviderCredential, artist_id: str) -> Artist:
+        self.info.require_followed_artists_source(cred)
+        normalized = _artist_id(artist_id)
+        if not normalized:
+            raise NotFound(artist_id)
+        async with self._client(cred) as client:
+            resource, _ = await self._read_library_resource(
+                client, cred, "artists", normalized
+            )
+        return _artist_from_resource(resource)
+
+    async def _read_library_resources(
+        self,
+        client: httpx.AsyncClient,
+        cred: ProviderCredential,
+        url: str,
+        resource_type: str,
+    ) -> list[
+        tuple[
+            dict[str, Any],
+            dict[tuple[str, str], dict[str, Any]],
+            dict[str, Any],
+        ]
+    ]:
+        resp = _raise_for_status(
+            await _tidal_request(
+                client,
+                "GET",
+                url,
+                params=[("sort", "addedAt"), *_include_params("items")],
+            )
+        )
+        identifiers: list[tuple[str, dict[str, Any]]] = []
+        included: dict[tuple[str, str], dict[str, Any]] = {}
+        while True:
+            payload = resp.json()
+            included.update(_included_index(payload))
+            for item in _resources_from_payload(payload):
+                item_id = _resource_id(item)
+                if item.get("type") == resource_type and item_id:
+                    meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+                    identifiers.append((item_id, meta))
+            next_url = _next_url(payload)
+            if not next_url:
+                break
+            resp = _raise_for_status(await _tidal_request(client, "GET", next_url))
+
+        rows = []
+        for item_id, meta in identifiers:
+            resource = included.get((resource_type, item_id))
+            resource_included = included
+            if resource is None or (
+                resource_type == "albums" and not _related_resources(resource, included, "artists")
+            ):
+                resource, fetched_included = await self._read_library_resource(
+                    client, cred, resource_type, item_id
+                )
+                resource_included = {**included, **fetched_included}
+            rows.append((resource, resource_included, meta))
+        return rows
+
+    async def _read_library_resource(
+        self,
+        client: httpx.AsyncClient,
+        cred: ProviderCredential,
+        resource_type: str,
+        item_id: str,
+    ) -> tuple[dict[str, Any], dict[tuple[str, str], dict[str, Any]]]:
+        include = _include_params("artists") if resource_type == "albums" else []
+        resp = _raise_for_status(
+            await _tidal_request(
+                client,
+                "GET",
+                f"/{resource_type}/{item_id}",
+                params=_params(cred, include),
+            )
+        )
+        payload = resp.json()
+        resource = payload.get("data")
+        if not isinstance(resource, dict):
+            raise ProviderError(f"tidal {resource_type[:-1]} response omitted resource data")
+        return resource, _included_index(payload)
+
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
     ) -> list[TrackCandidate]:
@@ -1051,6 +1309,97 @@ class TidalAdapter:
         _raise_for_status(resp)
         return True
 
+    async def search_albums(
+        self, cred: ProviderCredential, album: Album, *, limit: int = 5
+    ) -> list[AlbumCandidate]:
+        query = " ".join([album.title, *album.artists]).strip()
+        resources, included = await self._search_library_resources(
+            cred, query, "albums", limit=limit
+        )
+        return [_album_candidate(resource, included) for resource in resources]
+
+    async def search_artists(
+        self, cred: ProviderCredential, artist: Artist, *, limit: int = 5
+    ) -> list[ArtistCandidate]:
+        resources, _ = await self._search_library_resources(
+            cred, artist.name, "artists", limit=limit
+        )
+        return [_artist_candidate(resource) for resource in resources]
+
+    async def _search_library_resources(
+        self,
+        cred: ProviderCredential,
+        query: str,
+        resource_type: str,
+        *,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], dict[str, Any]]]:
+        path = (
+            f"/searchResults/{urllib.parse.quote(query, safe='')}/relationships/{resource_type}"
+        )
+        async with self._client(cred) as client:
+            resp = _raise_for_status(
+                await _tidal_request(
+                    client,
+                    "GET",
+                    path,
+                    params=_params(
+                        cred,
+                        [
+                            ("explicitFilter", "INCLUDE"),
+                            *_include_params(resource_type),
+                        ],
+                    ),
+                )
+            )
+            payload = resp.json()
+            included = _included_index(payload)
+            ids = [
+                item_id
+                for item in _resources_from_payload(payload)
+                if item.get("type") == resource_type
+                and (item_id := _resource_id(item))
+            ][:limit]
+            resources = []
+            for item_id in ids:
+                resource = included.get((resource_type, item_id))
+                if resource is None or (
+                    resource_type == "albums"
+                    and not _related_resources(resource, included, "artists")
+                ):
+                    resource, fetched = await self._read_library_resource(
+                        client, cred, resource_type, item_id
+                    )
+                    included.update(fetched)
+                resources.append(resource)
+        return resources, included
+
+    async def validate_album_uri(self, cred: ProviderCredential, uri: str) -> bool:
+        album_id = _album_id(uri)
+        if not album_id:
+            return False
+        async with self._client(cred) as client:
+            resp = await _tidal_request(
+                client, "GET", f"/albums/{album_id}", params=_params(cred)
+            )
+        if resp.status_code == 404:
+            return False
+        _raise_for_status(resp)
+        return True
+
+    async def validate_artist_uri(self, cred: ProviderCredential, uri: str) -> bool:
+        artist_id = _artist_id(uri)
+        if not artist_id:
+            return False
+        async with self._client(cred) as client:
+            resp = await _tidal_request(
+                client, "GET", f"/artists/{artist_id}", params=_params(cred)
+            )
+        if resp.status_code == 404:
+            return False
+        _raise_for_status(resp)
+        return True
+
     async def create_playlist(self, cred: ProviderCredential, spec: CreatePlaylistSpec) -> str:
         attrs: dict[str, Any] = {
             "name": spec.name,
@@ -1095,6 +1444,216 @@ class TidalAdapter:
             f"/playlists/{playlist_id}/relationships/items",
             include_country=True,
         )
+
+    async def contains_saved_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]:
+        self.info.require_saved_albums_source(cred)
+        return await self._contains_library_items(
+            cred,
+            uris,
+            _album_id,
+            "/userCollectionAlbums/me/relationships/items",
+            "albums",
+        )
+
+    async def contains_followed_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]:
+        self.info.require_followed_artists_source(cred)
+        return await self._contains_library_items(
+            cred,
+            uris,
+            _artist_id,
+            "/userCollectionArtists/me/relationships/items",
+            "artists",
+        )
+
+    async def save_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        self.info.require_saved_albums_target(cred)
+        return await self._add_library_items(
+            cred,
+            uris,
+            _album_id,
+            "/userCollectionAlbums/me/relationships/items",
+            "albums",
+        )
+
+    async def follow_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        self.info.require_followed_artists_target(cred)
+        return await self._add_library_items(
+            cred,
+            uris,
+            _artist_id,
+            "/userCollectionArtists/me/relationships/items",
+            "artists",
+        )
+
+    async def _contains_library_items(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        normalizer,
+        url: str,
+        resource_type: str,
+    ) -> list[bool]:
+        async with self._client(cred) as client:
+            resp = _raise_for_status(await _tidal_request(client, "GET", url))
+            present: set[str] = set()
+            while True:
+                payload = resp.json()
+                present.update(
+                    item_id
+                    for item in _resources_from_payload(payload)
+                    if item.get("type") == resource_type
+                    and (item_id := _resource_id(item))
+                )
+                next_url = _next_url(payload)
+                if not next_url:
+                    break
+                resp = _raise_for_status(await _tidal_request(client, "GET", next_url))
+        return [
+            bool(item_id and item_id in present)
+            for uri in uris
+            for item_id in [normalizer(uri)]
+        ]
+
+    async def _add_library_items(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        normalizer,
+        url: str,
+        resource_type: str,
+    ) -> list[AddItemResult]:
+        originals = list(uris)
+        results: list[AddItemResult | None] = [None] * len(originals)
+        valid = []
+        for index, uri in enumerate(originals):
+            item_id = normalizer(uri)
+            if not item_id:
+                results[index] = AddItemResult(
+                    uri=uri,
+                    ok=False,
+                    error=f"invalid Tidal {resource_type[:-1]} URI",
+                )
+                continue
+            valid.append((index, item_id))
+        position = 0
+        async with self._client(cred) as client:
+            async def post_chunk(chunk: list[tuple[int, str]]) -> httpx.Response:
+                return await _tidal_request(
+                    client,
+                    "POST",
+                    url,
+                    json={
+                        "data": [
+                            {"type": resource_type, "id": item_id}
+                            for _, item_id in chunk
+                        ]
+                    },
+                    headers={"Idempotency-Key": uuid.uuid4().hex},
+                )
+
+            def apply_response(
+                response: httpx.Response, chunk: list[tuple[int, str]]
+            ) -> None:
+                nonlocal position
+                response = _raise_for_status(response)
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = {}
+                meta = payload.get("meta") if isinstance(payload, dict) else {}
+                skipped = meta.get("skipped") if isinstance(meta, dict) else []
+                skipped_by_id = {
+                    str(entry.get("id")): str(
+                        entry.get("reason")
+                        or entry.get("detail")
+                        or entry.get("error")
+                        or "target skipped item"
+                    )
+                    for entry in skipped
+                    if isinstance(entry, dict) and entry.get("id")
+                }
+                for index, item_id in chunk:
+                    reason = skipped_by_id.get(item_id)
+                    if reason:
+                        normalized_reason = reason.upper()
+                        already_present = (
+                            "ALREADY" in normalized_reason
+                            or "EXIST" in normalized_reason
+                        )
+                        results[index] = AddItemResult(
+                            uri=originals[index],
+                            ok=already_present,
+                            already_present=already_present,
+                            error=None if already_present else reason,
+                        )
+                        continue
+                    results[index] = AddItemResult(
+                        uri=originals[index],
+                        ok=True,
+                        position=position,
+                    )
+                    position += 1
+
+            for start in range(0, len(valid), self.info.capabilities.max_library_batch):
+                chunk = valid[start : start + self.info.capabilities.max_library_batch]
+                resp = await post_chunk(chunk)
+                if not _is_duplicate_collection_response(resp):
+                    apply_response(resp, chunk)
+                    continue
+                membership = await self._contains_library_items(
+                    cred,
+                    [originals[index] for index, _ in chunk],
+                    normalizer,
+                    url,
+                    resource_type,
+                )
+                if len(membership) != len(chunk):
+                    raise ProviderError(
+                        "tidal returned an invalid collection membership response"
+                    )
+                retry: list[tuple[int, str]] = []
+                for pair, already_present in zip(chunk, membership, strict=True):
+                    index, _ = pair
+                    if already_present:
+                        results[index] = AddItemResult(
+                            uri=originals[index],
+                            ok=True,
+                            already_present=True,
+                        )
+                        continue
+                    retry.append(pair)
+                for pair in retry:
+                    retry_resp = await post_chunk([pair])
+                    if _is_duplicate_collection_response(retry_resp):
+                        retry_membership = await self._contains_library_items(
+                            cred,
+                            [originals[pair[0]]],
+                            normalizer,
+                            url,
+                            resource_type,
+                        )
+                        if retry_membership == [True]:
+                            results[pair[0]] = AddItemResult(
+                                uri=originals[pair[0]],
+                                ok=True,
+                                already_present=True,
+                            )
+                            continue
+                    apply_response(retry_resp, [pair])
+        return [
+            result
+            if result is not None
+            else AddItemResult(uri=originals[index], ok=False, error="tidal write failed")
+            for index, result in enumerate(results)
+        ]
 
     async def _add_tracks_to_relationship(
         self,

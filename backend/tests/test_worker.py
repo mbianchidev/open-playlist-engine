@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.db import models as orm
 from app.jobs import migration
+from app.jobs.history_cleanup import cleanup_expired_migration_details
 from app.jobs.worker import WorkerSettings
 from app.settings import get_settings
 
@@ -27,7 +28,17 @@ def test_worker_timeout_uses_migration_setting() -> None:
     assert WorkerSettings.job_timeout >= 3600
 
 
-async def test_mark_job_failed_persists_timeout_error() -> None:
+def test_worker_schedules_history_cleanup() -> None:
+    assert any(
+        job.coroutine is cleanup_expired_migration_details for job in WorkerSettings.cron_jobs
+    )
+
+
+async def test_mark_job_failed_persists_timeout_error(monkeypatch) -> None:
+    async def collect_summary(session, job) -> dict:
+        return {"counts": {"total": 0}, "playlists": []}
+
+    monkeypatch.setattr(migration, "collect_job_result_summary", collect_summary)
     job = orm.MigrationJob(id="job", user_id="local", status="running", selection={})
     session = _JobSession(job)
 
@@ -35,4 +46,8 @@ async def test_mark_job_failed_persists_timeout_error() -> None:
 
     assert job.status == "failed"
     assert job.error == "migration cancelled or timed out"
+    assert job.result_summary == {"counts": {"total": 0}, "playlists": []}
+    assert job.completed_at is not None
+    assert job.details_expires_at is not None
+    assert job.details_expires_at > job.completed_at
     assert session.committed is True

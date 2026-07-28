@@ -23,6 +23,10 @@ from app.core.models import PlaylistRef, PlaylistSelection
 from app.core.registry import get
 from app.db import models as orm
 from app.db.base import get_session
+from app.db.migration_history import (
+    TERMINAL_JOB_STATUSES,
+    details_available,
+)
 from app.db.repositories import (
     AccountNotFound,
     CredentialNotFound,
@@ -159,6 +163,12 @@ async def create_history_export(
         raise
     except ExportGenerationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        logger.exception("could not coordinate historical playlist export job_id=%s", job_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Could not prepare the historical export",
+        ) from exc
     except OSError as exc:
         logger.exception("historical playlist export failed job_id=%s", job_id)
         raise HTTPException(
@@ -202,23 +212,48 @@ async def _build_history_export(
     statement = select(orm.MigrationJob).where(
         orm.MigrationJob.id == job_id,
         orm.MigrationJob.user_id == user_id,
-    )
+    ).with_for_update()
     job = (await session.execute(statement)).scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail="Migration not found")
-    if job.status not in {"done", "failed"}:
+    if job.status not in TERMINAL_JOB_STATUSES:
         raise HTTPException(
             status_code=409,
             detail="Only completed or failed migrations can be exported",
         )
+    settings = get_settings()
+    if not details_available(
+        job,
+        retention_days=settings.migration_history_retention_days,
+    ):
+        raise HTTPException(
+            status_code=410,
+            detail="Migration item details have expired and can no longer be exported",
+        )
     selection = PlaylistSelection.model_validate(job.selection or {})
-    return await build_export_artifact(
+    if not selection.playlist_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This migration has no playlists to export. "
+                "Use the migration report for saved albums and artists."
+            ),
+        )
+    artifact = await build_export_artifact(
         export_format=body.format,
         source_provider=job.source_provider,
         selection=selection,
         loader=HistoryPlaylistLoader(session, job),
-        max_playlists=get_settings().export_max_playlists,
+        max_playlists=settings.export_max_playlists,
     )
+    committed = False
+    try:
+        await session.commit()
+        committed = True
+    finally:
+        if not committed:
+            artifact.cleanup()
+    return artifact
 
 
 def _download_response(artifact: ExportArtifact) -> StreamingResponse:

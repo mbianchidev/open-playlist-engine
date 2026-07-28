@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Playlist, Track
+from app.core.models import MigrationEntityType, Playlist, Track
 from app.db import models as orm
 from app.exports.models import ExportWarning
 from app.exports.service import LoadedPlaylist
@@ -40,6 +40,7 @@ class HistoryPlaylistLoader:
             select(orm.JobItem)
             .where(
                 orm.JobItem.job_id == self._job.id,
+                orm.JobItem.entity_type == MigrationEntityType.TRACK.value,
                 orm.JobItem.source_playlist_id == playlist_id,
             )
             .order_by(orm.JobItem.position.asc(), orm.JobItem.id.asc())
@@ -155,4 +156,3 @@ def _fallback_track(item: orm.JobItem) -> Track:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
-

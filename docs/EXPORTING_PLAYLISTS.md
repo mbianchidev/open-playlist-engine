@@ -1,16 +1,17 @@
 # Exporting playlists
 
-Open Playlist Engine can download live source selections and the source snapshot from
-completed or failed migration history. Export generation stays on the local instance;
-it does not use email, cloud storage, or a hosted account.
+Open Playlist Engine can download live source selections and the source playlist
+snapshot from completed or failed migration history while item details remain within
+retention. Export generation stays on the local instance; it does not use email,
+cloud storage, or a hosted account.
 
 ## UI usage
 
 1. Choose and connect a source provider. A target provider is optional.
 2. Select one or more playlists. Load a playlist to export only selected tracks.
 3. Choose a format under **Local file**, then select **Download export**.
-4. To export migration history, open **Stats**, choose a completed or failed
-   migration, then use **Download history**.
+4. To export migration history, open **History**, choose a completed or failed
+   migration with retained item details, then use **Download playlists**.
 
 Warnings appear after the download and are represented in the exported fields,
 format comments/extensions, JSON bundle, or ZIP manifest.
@@ -99,11 +100,14 @@ Valid output can include:
 A single unreadable playlist returns an explicit HTTP error. A multi-playlist export
 continues for per-playlist access/not-found failures and records placeholders in the
 manifest; if every playlist fails, no archive is returned. Authentication expiry and
-rate limiting always abort immediately.
+rate limiting always abort immediately. Album/artist-only migrations use the separate
+mixed-entity report download. Expired or purged item details return HTTP 410 instead
+of producing a misleading empty playlist archive.
 
 ## Limits and resource handling
 
 - `OPE_EXPORT_MAX_PLAYLISTS` defaults to `100`.
+- Historical playlist exports follow `OPE_MIGRATION_HISTORY_RETENTION_DAYS`.
 - Track count is not capped.
 - Provider reads and serializers process one playlist at a time.
 - Output is written to a temporary file; ZIP entries are streamed with ZIP64 enabled.

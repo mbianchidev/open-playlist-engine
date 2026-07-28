@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import exports
 from app.api.dependencies import get_current_user_id
+from app.db import models as orm
 from app.db.base import get_session
 from app.exports.models import ExportWarning
 from app.exports.service import ExportArtifact
@@ -122,3 +125,145 @@ async def test_live_export_commits_refreshed_credentials_before_creating_temp_fi
         await exports._build_live_export(body, session, user_id="local")
 
     build.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_history_export_rejects_album_only_migration() -> None:
+    session = AsyncMock()
+    job = orm.MigrationJob(
+        id="album-job",
+        user_id="local",
+        source_provider="spotify",
+        target_provider="tidal",
+        source_account_id="source",
+        target_account_id="target",
+        selection={
+            "playlist_ids": [],
+            "tracks": {},
+            "saved_album_ids": ["album"],
+            "followed_artist_ids": [],
+        },
+        status="done",
+    )
+    session.execute = AsyncMock(
+        return_value=SimpleNamespace(scalar_one_or_none=lambda: job)
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await exports._build_history_export(
+            "album-job",
+            exports.CreateHistoryExport(format="json"),
+            session,
+            user_id="local",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "no playlists" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_history_export_rejects_purged_item_details() -> None:
+    session = AsyncMock()
+    job = orm.MigrationJob(
+        id="purged-job",
+        user_id="local",
+        source_provider="spotify",
+        target_provider="tidal",
+        source_account_id="source",
+        target_account_id="target",
+        selection={"playlist_ids": ["playlist"], "tracks": {}},
+        status="done",
+        details_purged_at=datetime.now(UTC),
+    )
+    session.execute = AsyncMock(
+        return_value=SimpleNamespace(scalar_one_or_none=lambda: job)
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await exports._build_history_export(
+            "purged-job",
+            exports.CreateHistoryExport(format="json"),
+            session,
+            user_id="local",
+        )
+
+    assert exc_info.value.status_code == 410
+    assert "expired" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_history_export_locks_job_until_artifact_is_built(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    session = AsyncMock()
+    job = orm.MigrationJob(
+        id="playlist-job",
+        user_id="local",
+        source_provider="spotify",
+        target_provider="tidal",
+        source_account_id="source",
+        target_account_id="target",
+        selection={"playlist_ids": ["playlist"], "tracks": {}},
+        status="done",
+    )
+    session.execute = AsyncMock(
+        return_value=SimpleNamespace(scalar_one_or_none=lambda: job)
+    )
+    artifact = ExportArtifact(
+        path=tmp_path / "history.json",
+        filename="history.json",
+        media_type="application/vnd.open-playlist+json",
+    )
+    build = AsyncMock(return_value=artifact)
+    monkeypatch.setattr(exports, "build_export_artifact", build)
+
+    result = await exports._build_history_export(
+        "playlist-job",
+        exports.CreateHistoryExport(format="json"),
+        session,
+        user_id="local",
+    )
+
+    statement = session.execute.await_args.args[0]
+    assert "FOR UPDATE" in str(statement)
+    build.assert_awaited_once()
+    session.commit.assert_awaited_once()
+    assert result is artifact
+
+
+@pytest.mark.asyncio
+async def test_history_export_cleans_artifact_when_lock_release_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    session.commit.side_effect = SQLAlchemyError("database unavailable")
+    job = orm.MigrationJob(
+        id="playlist-job",
+        user_id="local",
+        source_provider="spotify",
+        target_provider="tidal",
+        source_account_id="source",
+        target_account_id="target",
+        selection={"playlist_ids": ["playlist"], "tracks": {}},
+        status="done",
+    )
+    session.execute = AsyncMock(
+        return_value=SimpleNamespace(scalar_one_or_none=lambda: job)
+    )
+    artifact = SimpleNamespace(cleanup=Mock())
+    monkeypatch.setattr(
+        exports,
+        "build_export_artifact",
+        AsyncMock(return_value=artifact),
+    )
+
+    with pytest.raises(SQLAlchemyError, match="database unavailable"):
+        await exports._build_history_export(
+            "playlist-job",
+            exports.CreateHistoryExport(format="json"),
+            session,
+            user_id="local",
+        )
+
+    artifact.cleanup.assert_called_once()
