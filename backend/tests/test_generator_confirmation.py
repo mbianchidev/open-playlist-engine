@@ -52,14 +52,18 @@ def test_confirmation_snapshots_only_reviewed_real_tracks() -> None:
 
     assert draft.status == "confirmed"
     assert draft.confirmed_job_id == job.id
+    assert job.source_kind == "generated"
     assert job.source_provider == GENERATED_SOURCE_PROVIDER
     assert job.source_account_id == draft.id
     assert job.target_provider == "fake"
+    assert job.origin == "generator"
     assert job.selection["playlist_ids"] == [draft.id]
     assert job.selection["generated_playlist"]["name"] == "Generated playlist"
     assert [item.position for item in items] == [0, 1]
     assert [item.target_uri for item in items] == ["fake:track:0", "fake:track:1"]
     assert all(item.status == "matched" for item in items)
+    assert all(item.entity_type == "track" for item in items)
+    assert items[0].source_metadata["provider_uris"] == {"fake": "fake:track:0"}
 
 
 def test_confirmation_rejects_unresolved_or_unreviewed_items() -> None:
@@ -78,22 +82,40 @@ def test_confirmation_is_single_use() -> None:
         build_confirmed_job(draft, [_item("first", 0)])
 
 
-async def test_generated_jobs_fork_before_source_registry_or_credentials(
+async def test_generated_jobs_fork_before_opening_a_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     called: list[str] = []
+    target = object()
+    credential = ProviderCredential(
+        account_id="target-account",
+        provider="fake",
+        auth_kind=AuthKind.LONG_LIVED_TOKEN,
+    )
 
-    async def run_generated(session: object, job: orm.MigrationJob) -> None:
+    async def run_generated(
+        session: object,
+        job: orm.MigrationJob,
+        *,
+        target: object,
+        target_cred: ProviderCredential,
+    ) -> None:
         called.append(job.id)
 
-    def unexpected_registry(provider: str) -> object:
-        raise AssertionError(f"registry lookup should not run for {provider}")
+    async def load_credential(*args: object, **kwargs: object) -> tuple[ProviderCredential, object]:
+        return credential, object()
+
+    async def unexpected_source(*args: object, **kwargs: object) -> object:
+        raise AssertionError("generated jobs must not open a migration source")
 
     monkeypatch.setattr(migration, "_run_generated", run_generated)
-    monkeypatch.setattr(migration, "get", unexpected_registry)
+    monkeypatch.setattr(migration, "get", lambda provider: target)
+    monkeypatch.setattr(migration, "load_fresh_credential", load_credential)
+    monkeypatch.setattr(migration, "open_migration_source", unexpected_source)
     job = orm.MigrationJob(
         id="job-1",
         user_id="local",
+        source_kind="generated",
         source_provider=GENERATED_SOURCE_PROVIDER,
         source_account_id="draft-1",
         target_provider="fake",
@@ -102,7 +124,7 @@ async def test_generated_jobs_fork_before_source_registry_or_credentials(
         status="pending",
     )
 
-    await migration._run(object(), job)  # type: ignore[arg-type]
+    await migration._run(_GeneratedSession([]), job)  # type: ignore[arg-type]
 
     assert called == ["job-1"]
 
@@ -131,6 +153,7 @@ async def test_generated_worker_writes_confirmed_uris_without_rematching(
     job = orm.MigrationJob(
         id="job-1",
         user_id="local",
+        source_kind="generated",
         source_provider=GENERATED_SOURCE_PROVIDER,
         source_account_id="draft-1",
         target_provider="fake",
@@ -144,6 +167,7 @@ async def test_generated_worker_writes_confirmed_uris_without_rematching(
             },
         },
         status="pending",
+        origin="generator",
     )
     items = [
         orm.JobItem(
@@ -172,11 +196,6 @@ async def test_generated_worker_writes_confirmed_uris_without_rematching(
     )
     writes: list[list[str | None]] = []
 
-    monkeypatch.setattr(migration, "get", lambda provider: adapter)
-
-    async def load_credential(*args: object, **kwargs: object) -> tuple[ProviderCredential, object]:
-        return credential, object()
-
     async def resolve_target(*args: object, **kwargs: object) -> str:
         return "target-playlist"
 
@@ -200,14 +219,27 @@ async def test_generated_worker_writes_confirmed_uris_without_rematching(
     async def counts(session_arg: object, job_arg: orm.MigrationJob) -> None:
         return None
 
-    monkeypatch.setattr(migration, "load_fresh_credential", load_credential)
     monkeypatch.setattr(migration, "_resolve_target_playlist", resolve_target)
     monkeypatch.setattr(migration, "_target_playlist_keys", target_keys)
     monkeypatch.setattr(migration, "_write_matched_items", write_items)
     monkeypatch.setattr(migration, "commit_job_counts", counts)
+    monkeypatch.setattr(
+        migration,
+        "collect_job_result_summary",
+        lambda session_arg, job_arg: _async_value({}),
+    )
 
-    await migration._run_generated(session, job)  # type: ignore[arg-type]
+    await migration._run_generated(  # type: ignore[arg-type]
+        session,
+        job,
+        target=adapter,
+        target_cred=credential,
+    )
 
     assert writes == [["fake:track:1"]]
     assert items[0].target_playlist_id == "target-playlist"
     assert job.status == "done"
+
+
+async def _async_value(value: object) -> object:
+    return value

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.adapter import NotFound, ProviderAdapter, ProviderCredential, Unsupported
 from app.core.capabilities import Capability
 from app.core.migration_state import has_track_overlap
-from app.core.models import Playlist, PlaylistKind
+from app.core.models import MigrationEntityType, Playlist, PlaylistKind
 from app.db import models as orm
 from app.settings import Settings
 
@@ -162,6 +162,7 @@ async def tracks_migrated_today(
             orm.MigrationJob.target_provider == target_provider,
             orm.MigrationJob.target_account_id == target_account_id,
             orm.MigrationJob.created_at >= today,
+            orm.JobItem.entity_type == MigrationEntityType.TRACK.value,
         )
     )
     return int(count or 0)

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import CurrentUserId
+from app.api.migrations import JobView, _job_view
 from app.core.adapter import (
     AccessDenied,
     AuthExpired,
@@ -48,8 +49,9 @@ from app.db.repositories import (
     CredentialNotFound,
     load_fresh_credential,
 )
-from app.jobs.enqueue import enqueue_migration
 from app.jobs.generator import build_confirmed_job
+from app.jobs.migration import run_migration
+from app.jobs.queue import enqueue_or_inline
 from app.settings import GeneratorBackend, Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -158,17 +160,6 @@ class ReorderDraftItems(BaseModel):
 
 class ConfirmGenerationDraft(BaseModel):
     acknowledge_warnings: bool = False
-
-
-class ConfirmationView(BaseModel):
-    id: str
-    status: str
-    source_provider: str
-    target_provider: str
-    total: int = 0
-    done: int = 0
-    failed: int = 0
-    error: str | None = None
 
 
 @router.get("/config", response_model=GeneratorConfigView)
@@ -496,7 +487,7 @@ async def reorder_draft_items(
     return _draft_view(draft, ordered)
 
 
-@router.post("/drafts/{draft_id}/confirm", response_model=ConfirmationView)
+@router.post("/drafts/{draft_id}/confirm", response_model=JobView)
 async def confirm_draft(
     draft_id: str,
     body: ConfirmGenerationDraft,
@@ -504,7 +495,7 @@ async def confirm_draft(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
     settings: Annotated[Settings, Depends(get_settings)],
-) -> ConfirmationView:
+) -> JobView:
     draft = await _owned_draft(
         session,
         draft_id=draft_id,
@@ -560,17 +551,14 @@ async def confirm_draft(
     session.add(job)
     session.add_all(job_items)
     await session.commit()
-    await enqueue_migration(background_tasks, job.id)
-    return ConfirmationView(
-        id=job.id,
-        status=job.status,
-        source_provider=job.source_provider,
-        target_provider=job.target_provider,
-        total=job.total,
-        done=job.done,
-        failed=job.failed,
-        error=job.error,
+    await enqueue_or_inline(
+        background_tasks,
+        function_name="run_migration",
+        fallback=run_migration,
+        job_id=job.id,
+        job_label="generated playlist migration",
     )
+    return _job_view(job)
 
 
 async def _target_context(
@@ -582,14 +570,13 @@ async def _target_context(
 ) -> tuple[ProviderAdapter, ProviderCredential]:
     try:
         target = get(provider)
-        credential, account = await load_fresh_credential(
+        credential, _ = await load_fresh_credential(
             session,
             account_id=account_id,
             adapter=target,
             provider=provider,
+            user_id=user_id,
         )
-        if account.user_id != user_id:
-            raise HTTPException(status_code=404, detail="Target provider account not found")
         return target, credential
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

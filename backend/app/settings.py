@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.imports.models import ImportLimits
 
 
 class DeploymentMode(StrEnum):
@@ -33,9 +37,28 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://ope:ope@localhost:5432/ope"
     valkey_url: str = "redis://localhost:6379/0"
     frontend_url: str = "http://localhost:8080"
+    public_base_url: str = ""
 
     # Secrets. In hosted mode this should come from a KMS-backed KeyProvider.
     secret_key: str = "dev-only-change-me"
+    owner_access_token: str = ""
+    owner_session_ttl_s: int = 43_200
+
+    # Public playlist sharing. Disabled until public_base_url and strong secrets are set.
+    share_recipient_session_ttl_s: int = 86_400
+    share_recipient_credential_retention_s: int = 86_400
+    share_max_tracks: int = 1_000
+    share_max_snapshot_bytes: int = 2_000_000
+    share_max_download_bytes: int = 4_000_000
+    share_max_expiry_days: int = 365
+    share_rate_limit_capacity: int = 60
+    share_rate_limit_refill_per_s: float = 1.0
+    share_import_max_concurrent_jobs: int = 3
+    share_import_daily_track_limit: int = 1_000
+    share_artwork_hosts: str = (
+        "i.scdn.co,mosaic.scdn.co,i.ytimg.com,lh3.googleusercontent.com,"
+        "resources.tidal.com,mzstatic.com"
+    )
 
     # Provider write paths
     ytmusic_enabled: bool = True
@@ -56,6 +79,15 @@ class Settings(BaseSettings):
     migration_safe_daily_tracks: int = 250
     migration_safe_min_job_gap_s: int = 120
     migration_worker_job_timeout_s: int = 3600
+    sync_min_cadence_minutes: int = 5
+    sync_max_cadence_minutes: int = 10_080
+    sync_retry_delay_s: int = 300
+    sync_stale_run_after_s: int = 3900
+    sync_scheduler_batch_size: int = 20
+    export_max_playlists: int = 100
+    migration_history_retention_days: int = Field(default=90, ge=0)
+    migration_history_cleanup_batch_size: int = Field(default=100, ge=1, le=10_000)
+    migration_report_batch_size: int = Field(default=250, ge=1, le=5_000)
 
     # Playlist generation. Disabled until an administrator configures a model.
     generator_backend: GeneratorBackend = GeneratorBackend.OPENAI_COMPATIBLE
@@ -68,6 +100,46 @@ class Settings(BaseSettings):
     generator_max_output_chars: int = Field(default=32_000, ge=1_000, le=128_000)
     generator_max_output_tokens: int = Field(default=4_096, ge=256, le=16_384)
     generator_max_tracks: int = Field(default=25, ge=1, le=50)
+
+    # Organizer jobs use conservative per-account pacing and bounded in-worker retries.
+    organizer_worker_job_timeout_s: int = 3600
+    organizer_rate_limit_capacity: float = 2.0
+    organizer_rate_limit_refill_per_s: float = 1.0
+    organizer_retry_attempts: int = 3
+    organizer_retry_max_delay_s: float = 30.0
+
+    # Local playlist-file imports. Raw request bodies are never persisted.
+    local_import_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    local_import_max_playlists: int = Field(default=100, gt=0)
+    local_import_max_tracks: int = Field(default=5_000, gt=0)
+    local_import_max_issues: int = Field(default=200, gt=0)
+    local_import_spool_memory_bytes: int = Field(default=1024 * 1024, gt=0)
+    local_import_retention_s: int = Field(default=3600, gt=0)
+    local_import_queued_retention_s: int = Field(default=7200, gt=0)
+    local_import_failed_retention_s: int = Field(default=900, gt=0)
+
+    # Public URL and pasted-text imports
+    import_max_text_bytes: int = 262_144
+    import_max_items: int = 1000
+    import_max_line_chars: int = 2000
+    import_max_field_chars: int = 500
+    import_max_url_chars: int = 2048
+    import_max_response_bytes: int = 2_000_000
+    import_max_redirects: int = 3
+    import_http_timeout_s: float = 10.0
+    import_open_playlist_hosts: str = ""
+
+    # Local library snapshots
+    snapshot_dir: Path = Path("./data/snapshots")
+    snapshot_default_retention_count: int = 10
+    snapshot_default_retention_days: int = 90
+    snapshot_import_max_bytes: int = 1_073_741_824
+    snapshot_max_uncompressed_bytes: int = 4_294_967_296
+    snapshot_max_manifest_bytes: int = 67_108_864
+    snapshot_max_record_bytes: int = 2_097_152
+    snapshot_max_compression_ratio: int = 200
+    snapshot_stale_after_s: int = 86_400
+    snapshot_worker_job_timeout_s: int = 3600
 
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
@@ -94,6 +166,100 @@ class Settings(BaseSettings):
     def allow_header_paste(self) -> bool:
         """Pasting provider session headers/cookies is only safe when self-hosted."""
         return not self.is_hosted
+
+    @property
+    def open_playlist_import_hosts(self) -> set[str]:
+        hosts = {
+            host.strip().lower().rstrip(".")
+            for host in self.import_open_playlist_hosts.split(",")
+            if host.strip()
+        }
+        public_url = urlsplit(self.public_base_url_normalized)
+        if public_url.scheme == "https" and public_url.hostname:
+            hosts.add(public_url.hostname.lower().rstrip("."))
+        return hosts
+
+    @property
+    def local_import_limits(self) -> ImportLimits:
+        return ImportLimits(
+            max_upload_bytes=self.local_import_max_bytes,
+            max_playlists=self.local_import_max_playlists,
+            max_tracks=self.local_import_max_tracks,
+            max_issues=self.local_import_max_issues,
+            spool_memory_bytes=self.local_import_spool_memory_bytes,
+        )
+
+    @model_validator(mode="after")
+    def validate_local_import_lease(self) -> Settings:
+        if self.local_import_queued_retention_s <= self.migration_worker_job_timeout_s:
+            raise ValueError(
+                "local_import_queued_retention_s must exceed "
+                "migration_worker_job_timeout_s"
+            )
+        return self
+
+    @property
+    def public_base_url_normalized(self) -> str:
+        return self.public_base_url.strip().rstrip("/")
+
+    @property
+    def owner_auth_required(self) -> bool:
+        return bool(self.public_base_url_normalized)
+
+    @property
+    def sharing_enabled(self) -> bool:
+        return not self.sharing_disabled_reason
+
+    @property
+    def sharing_disabled_reason(self) -> str:
+        public_url = self.public_base_url_normalized
+        if not public_url:
+            return "Set OPE_PUBLIC_BASE_URL to enable public playlist sharing."
+        parsed = urlsplit(public_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return "OPE_PUBLIC_BASE_URL must be an absolute HTTP or HTTPS URL."
+        if len(self.owner_access_token) < 32:
+            return "Set OPE_OWNER_ACCESS_TOKEN to at least 32 characters."
+        if len(self.secret_key) < 32 or self.secret_key in {
+            "dev-only-change-me",
+            "change-me-please",
+        }:
+            return "Set OPE_SECRET_KEY to a strong value of at least 32 characters."
+        return ""
+
+    @property
+    def approved_share_artwork_hosts(self) -> set[str]:
+        return {
+            host.strip().lower().strip(".")
+            for host in self.share_artwork_hosts.split(",")
+            if host.strip()
+        }
+
+    @property
+    def secure_public_cookies(self) -> bool:
+        return urlsplit(self.public_base_url_normalized).scheme == "https"
+
+    def recipient_redirect_ready(self, provider: str) -> bool:
+        redirect_uri = {
+            "spotify": self.spotify_redirect_uri,
+            "tidal": self.tidal_redirect_uri,
+        }.get(provider)
+        if redirect_uri is None:
+            return True
+        public = urlsplit(self.public_base_url_normalized)
+        redirect = urlsplit(redirect_uri)
+        return (
+            public.scheme == redirect.scheme
+            and public.hostname == redirect.hostname
+            and _effective_port(public.scheme, public.port)
+            == _effective_port(redirect.scheme, redirect.port)
+        )
+
+
+def _effective_port(scheme: str, port: int | None) -> int | None:
+    if port is not None:
+        return port
+    return {"http": 80, "https": 443}.get(scheme)
 
 
 @lru_cache

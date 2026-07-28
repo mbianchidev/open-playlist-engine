@@ -118,9 +118,11 @@ def _provider_item_id(uri: str) -> str | None:
         video_id = urllib.parse.parse_qs(parsed.query).get("v")
         if video_id:
             return video_id[0]
-    if "/track/" in uri:
-        tail = uri.split("/track/", 1)[1]
-        return tail.split("?", 1)[0].split("/", 1)[0] or None
+    for item_type in ("track", "album", "artist"):
+        marker = f"/{item_type}/"
+        if marker in uri:
+            tail = uri.split(marker, 1)[1]
+            return tail.split("?", 1)[0].split("/", 1)[0] or None
     if ":" in uri and "//" not in uri:
         return uri.rsplit(":", 1)[-1] or None
     return uri or None

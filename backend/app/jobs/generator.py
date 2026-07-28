@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.generator import GENERATED_SOURCE_PROVIDER, GenerationDraftNotConfirmable
+from app.core.models import MigrationEntityType, Track
 from app.db import models as orm
 
 
@@ -35,6 +36,7 @@ def build_confirmed_job(
     job = orm.MigrationJob(
         id=job_id,
         user_id=draft.user_id,
+        source_kind="generated",
         source_provider=GENERATED_SOURCE_PROVIDER,
         target_provider=draft.target_provider,
         source_account_id=draft.id,
@@ -49,36 +51,51 @@ def build_confirmed_job(
             },
         },
         status="pending",
+        origin="generator",
     )
-    job_items = [
-        orm.JobItem(
-            id=str(uuid.uuid4()),
-            job_id=job_id,
-            source_playlist_id=draft.id,
-            source_playlist_name=draft.name,
-            position=item.position,
+    job_items = []
+    for item in sorted(draft_items, key=lambda value: value.position):
+        track = Track(
+            id=item.provider_track_id,
             title=item.resolved_title or item.intent_title,
             artist=item.resolved_artist or item.intent_artist,
             album=item.resolved_album or item.intent_album,
             duration_s=item.duration_s,
             explicit=item.explicit,
             isrc=item.isrc,
-            source_metadata={
+            provider_uris={draft.target_provider: item.target_uri or ""},
+            metadata={
                 "generator_intent": {
                     "title": item.intent_title,
                     "artist": item.intent_artist,
                     "album": item.intent_album,
                     "reason": item.intent_reason,
                 },
-                "provider_uris": {draft.target_provider: item.target_uri},
                 "provider_track_id": item.provider_track_id,
             },
-            target_uri=item.target_uri,
-            confidence=item.confidence,
-            status="matched",
+            position=item.position,
+            source_item_id=item.id,
         )
-        for item in sorted(draft_items, key=lambda value: value.position)
-    ]
+        job_items.append(
+            orm.JobItem(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                entity_type=MigrationEntityType.TRACK.value,
+                source_playlist_id=draft.id,
+                source_playlist_name=draft.name,
+                position=item.position,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                duration_s=track.duration_s,
+                explicit=track.explicit,
+                isrc=track.isrc,
+                source_metadata=track.model_dump(mode="json"),
+                target_uri=item.target_uri,
+                confidence=item.confidence,
+                status="matched",
+            )
+        )
     draft.status = "confirmed"
     draft.confirmed_job_id = job.id
     return job, job_items

@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Archive,
   ArrowRight,
   BarChart3,
   Check,
   CircleGauge,
+  Disc3,
+  ListChecks,
   ListMusic,
   Music2,
   Play,
   RefreshCw,
+  Repeat2,
   RotateCcw,
+  Share2,
   ShieldCheck,
+  Users,
   WandSparkles,
   Wifi,
 } from "lucide-react";
@@ -18,35 +24,73 @@ import {
   beginAuth,
   completeAuth,
   createMigration,
+  discardPlaylistImport,
+  downloadPlaylistExport,
   getAccounts,
+  getLibrary,
   getPlaylist,
   getPlaylists,
   getProviders,
   preflightMigration,
+  previewTextImport,
+  previewUrlImport,
   testAccountConnection,
+  uploadPlaylistFile,
 } from "./api/client";
 import type {
   AccountView,
+  Album,
+  Artist,
   AuthChallenge,
   CreateMigrationBody,
+  ExportFormat,
+  LibraryView,
+  LocalImportPreview,
   MigrationWarningsView,
+  Playlist,
   PlaylistRef,
   ProviderView,
+  SourceConnectionRequiredDetail,
+  SourceImportPreview,
   Track,
 } from "./api/types";
 import GeneratorWorkspace from "./components/GeneratorWorkspace";
+import LocalFileImportPanel from "./components/LocalFileImportPanel";
+import SourceImportPanel from "./components/SourceImportPanel";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
+import ExportControls from "./components/ExportControls";
+import PlaylistOrganizer from "./components/PlaylistOrganizer";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
+import SnapshotPanel from "./components/SnapshotPanel";
+import ShareManager from "./components/ShareManager";
+import SyncPanel from "./components/SyncPanel";
 import { providerLabel } from "./utils/providers";
+
+const LOCAL_FILE_PROVIDER = "local_file";
+const PUBLIC_URL_PROVIDER = "public_url";
+const PASTED_TEXT_PROVIDER = "pasted_text";
+const IMPORT_SOURCE_PROVIDERS = new Set([
+  LOCAL_FILE_PROVIDER,
+  PUBLIC_URL_PROVIDER,
+  PASTED_TEXT_PROVIDER,
+]);
+
+function isImportSource(provider: string | null): boolean {
+  return provider !== null && IMPORT_SOURCE_PROVIDERS.has(provider);
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("migration");
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [accounts, setAccounts] = useState<AccountView[]>([]);
   const [playlists, setPlaylists] = useState<PlaylistRef[]>([]);
+  const [library, setLibrary] = useState<LibraryView | null>(null);
   const [selectedPlaylists, setSelectedPlaylists] = useState<Set<string>>(new Set());
+  const [expandedPlaylists, setExpandedPlaylists] = useState<Set<string>>(new Set());
+  const [selectedAlbums, setSelectedAlbums] = useState<Set<string>>(new Set());
+  const [selectedArtists, setSelectedArtists] = useState<Set<string>>(new Set());
   const [playlistTracks, setPlaylistTracks] = useState<Record<string, Track[]>>({});
   const [selectedTracks, setSelectedTracks] = useState<Record<string, Set<string>>>({});
   const [ytHeaders, setYtHeaders] = useState("");
@@ -61,48 +105,91 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  const [localImport, setLocalImport] = useState<LocalImportPreview | null>(null);
+  const [sourceImport, setSourceImport] = useState<SourceImportPreview | null>(null);
+  const [sourceImportUrl, setSourceImportUrl] = useState("");
+  const [sourceImportText, setSourceImportText] = useState("");
+  const [sourceImportName, setSourceImportName] = useState("");
+  const [sourceRequiredProvider, setSourceRequiredProvider] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [showMigratedPlaylists, setShowMigratedPlaylists] = useState(false);
   const [showBlockedSpotifyPlaylists, setShowBlockedSpotifyPlaylists] = useState(false);
   const [statsRefreshKey, setStatsRefreshKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const authPollId = useRef(0);
+  const localUploadId = useRef(0);
+  const sourceImportRequestId = useRef(0);
   const playlistLoadId = useRef(0);
+  const libraryLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
   const generatorTabRef = useRef<HTMLButtonElement>(null);
+  const snapshotsTabRef = useRef<HTMLButtonElement>(null);
+  const syncTabRef = useRef<HTMLButtonElement>(null);
+  const organizerTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
+  const sharingTabRef = useRef<HTMLButtonElement>(null);
 
-  const sourceAccount = accounts.find((a) => a.provider === source) ?? null;
+  const isLocalSource = source === LOCAL_FILE_PROVIDER;
+  const isUrlSource = source === PUBLIC_URL_PROVIDER;
+  const isTextSource = source === PASTED_TEXT_PROVIDER;
+  const isRecordImportSource = isImportSource(source);
+  const sourceAccount = isRecordImportSource
+    ? null
+    : accounts.find((a) => a.provider === source) ?? null;
   const targetAccount = accounts.find((a) => a.provider === target) ?? null;
+  const sourceRequiredAccount = sourceRequiredProvider
+    ? accounts.find((a) => a.provider === sourceRequiredProvider) ?? null
+    : null;
+  const sourceAccountId = isLocalSource
+    ? localImport?.id ?? null
+    : isUrlSource || isTextSource
+      ? sourceImport?.id ?? null
+      : sourceAccount?.id ?? null;
+  const sourceReady = isLocalSource
+    ? Boolean(localImport)
+    : isUrlSource || isTextSource
+      ? Boolean(sourceImport)
+      : Boolean(sourceAccount);
   const blockedSpotifyPlaylists = playlists.filter((playlist) =>
     isSpotifyCopyRequiredPlaylist(playlist, source, sourceAccount),
   );
   const blockedSpotifyPlaylistIds = new Set(blockedSpotifyPlaylists.map((playlist) => playlist.id));
   const availablePlaylists = playlists.filter((playlist) => !blockedSpotifyPlaylistIds.has(playlist.id));
-  const selectedMigrationPlaylistIds = getSelectedMigrationPlaylistIds(
+  const selectedExportPlaylistIds = getSelectedMigrationPlaylistIds(
     selectedPlaylists,
     playlistTracks,
     selectedTracks,
-  ).filter((id) => !blockedSpotifyPlaylistIds.has(id));
+  );
+  const selectedMigrationPlaylistIds = selectedExportPlaylistIds.filter(
+    (id) => !blockedSpotifyPlaylistIds.has(id),
+  );
   const selectedMigrationPlaylists = selectedMigrationPlaylistIds
     .map((id) => availablePlaylists.find((playlist) => playlist.id === id))
     .filter((playlist): playlist is PlaylistRef => Boolean(playlist));
+  const selectedItemCount =
+    selectedMigrationPlaylistIds.length + selectedAlbums.size + selectedArtists.size;
   const startDisabled =
     !source ||
     !target ||
-    !sourceAccount ||
+    !sourceAccountId ||
     !targetAccount ||
-    selectedMigrationPlaylistIds.length === 0 ||
+    selectedItemCount === 0 ||
     busy;
   const ytHeaderStatus = getYtHeaderStatus(ytHeaders);
   const migratedPlaylists = availablePlaylists.filter(isAnnotatedMigratedPlaylist);
   const migrationCandidatePlaylists = availablePlaylists.filter(
     (playlist) => !isAnnotatedMigratedPlaylist(playlist),
   );
+  const selectableCandidatePlaylists = migrationCandidatePlaylists.filter((playlist) => {
+    const loaded = playlistTracks[playlist.id];
+    return !loaded || unmigratedTrackKeys(loaded).length > 0;
+  });
   const playlistErrorTitle = playlistError ? playlistErrorHeading(playlistError) : null;
   const showBlockedPlaylistDetails =
     showBlockedSpotifyPlaylists ||
@@ -112,9 +199,22 @@ export default function App() {
     (migrationCandidatePlaylists.length === 0 &&
       blockedSpotifyPlaylists.length === 0 &&
       migratedPlaylists.length > 0);
-  const selectedCandidateCount = migrationCandidatePlaylists.filter((playlist) =>
+  const selectedCandidateCount = selectableCandidatePlaylists.filter((playlist) =>
     selectedPlaylists.has(playlist.id),
   ).length;
+  const selectableAlbumCount =
+    isRecordImportSource || library?.saved_albums.target_limitation
+      ? 0
+      : (library?.saved_albums.items.length ?? 0);
+  const selectableArtistCount =
+    isRecordImportSource || library?.followed_artists.target_limitation
+      ? 0
+      : (library?.followed_artists.items.length ?? 0);
+  const selectableItemCount =
+    selectableCandidatePlaylists.length + selectableAlbumCount + selectableArtistCount;
+  const allSelectableItemsSelected =
+    selectableItemCount > 0 &&
+    selectedCandidateCount + selectedAlbums.size + selectedArtists.size === selectableItemCount;
   const sourceLabel = source
     ? providers.find((provider) => provider.name === source)?.display_name ?? providerLabel(source)
     : "Choose source";
@@ -124,7 +224,11 @@ export default function App() {
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
-      if (!source || !sourceAccount || !target || !targetAccount) {
+      if (isImportSource(source)) {
+        setPlaylistLoading(false);
+        return;
+      }
+      if (!source || !sourceAccount) {
         setPlaylistLoading(false);
         return;
       }
@@ -132,11 +236,17 @@ export default function App() {
       playlistLoadId.current = loadId;
       setPlaylistLoading(true);
       try {
-        const rows = await getPlaylists(source, sourceAccount.id, {
-          targetProvider: target,
-          targetAccountId: targetAccount.id,
-          refresh: options.forceRefresh,
-        });
+        const rows = await getPlaylists(
+          source,
+          sourceAccount.id,
+          target && targetAccount
+            ? {
+                targetProvider: target,
+                targetAccountId: targetAccount.id,
+                refresh: options.forceRefresh,
+              }
+            : { refresh: options.forceRefresh },
+        );
         if (loadId !== playlistLoadId.current) return;
         setPlaylists(rows);
         setPlaylistError(null);
@@ -158,6 +268,45 @@ export default function App() {
     },
     [source, sourceAccount?.id, target, targetAccount?.id],
   );
+
+  const refreshSourceLibrary = useCallback(async () => {
+    if (isImportSource(source) || !source || !sourceAccount || !target || !targetAccount) {
+      setLibraryLoading(false);
+      return;
+    }
+    const loadId = libraryLoadId.current + 1;
+    libraryLoadId.current = loadId;
+    setLibraryLoading(true);
+    setLibraryError(null);
+    try {
+      const nextLibrary = await getLibrary(source, sourceAccount.id, {
+        targetProvider: target,
+        targetAccountId: targetAccount.id,
+      });
+      if (loadId !== libraryLoadId.current) return;
+      setLibrary(nextLibrary);
+      const albumIds = new Set(
+        nextLibrary.saved_albums.target_limitation
+          ? []
+          : nextLibrary.saved_albums.items.map(albumKey),
+      );
+      const artistIds = new Set(
+        nextLibrary.followed_artists.target_limitation
+          ? []
+          : nextLibrary.followed_artists.items.map(artistKey),
+      );
+      setSelectedAlbums((current) =>
+        new Set([...current].filter((itemId) => albumIds.has(itemId))),
+      );
+      setSelectedArtists((current) =>
+        new Set([...current].filter((itemId) => artistIds.has(itemId))),
+      );
+    } catch (e: unknown) {
+      if (loadId === libraryLoadId.current) setLibraryError(errorMessage(e));
+    } finally {
+      if (loadId === libraryLoadId.current) setLibraryLoading(false);
+    }
+  }, [source, sourceAccount?.id, target, targetAccount?.id]);
 
   const handleMigrationChanged = useCallback(async () => {
     setStatsRefreshKey((value) => value + 1);
@@ -220,14 +369,39 @@ export default function App() {
 
   useEffect(() => {
     playlistLoadId.current += 1;
+    libraryLoadId.current += 1;
+    if (isImportSource(source)) {
+      setPlaylistError(null);
+      setPlaylistLoading(false);
+      setLibrary(null);
+      setLibraryError(null);
+      setLibraryLoading(false);
+      setSelectedAlbums(new Set());
+      setSelectedArtists(new Set());
+      const activePreview = isLocalSource ? localImport : sourceImport;
+      if (!activePreview) {
+        setPlaylists([]);
+        setSelectedPlaylists(new Set());
+        setExpandedPlaylists(new Set());
+        setPlaylistTracks({});
+        setSelectedTracks({});
+      }
+      return;
+    }
     setPlaylists([]);
     setPlaylistError(null);
     setPlaylistLoading(false);
     setSelectedPlaylists(new Set());
+    setExpandedPlaylists(new Set());
+    setSelectedAlbums(new Set());
+    setSelectedArtists(new Set());
     setPlaylistTracks({});
     setSelectedTracks({});
+    setLibrary(null);
+    setLibraryError(null);
     void refreshSourcePlaylists({ resetSelection: true });
-  }, [refreshSourcePlaylists]);
+    void refreshSourceLibrary();
+  }, [refreshSourceLibrary, refreshSourcePlaylists, source, localImport, sourceImport, isLocalSource]);
 
   useEffect(() => {
     if (!blockingAlert) return;
@@ -253,6 +427,271 @@ export default function App() {
   function showSpotifyCopyInstructions() {
     const alert = spotifyExternalPlaylistAlert(SPOTIFY_EXTERNAL_PLAYLIST_MESSAGE);
     if (alert) setBlockingAlert(alert);
+  }
+
+  async function chooseSource(provider: string) {
+    if (provider !== LOCAL_FILE_PROVIDER) localUploadId.current += 1;
+    if (provider !== PUBLIC_URL_PROVIDER && provider !== PASTED_TEXT_PROVIDER) {
+      sourceImportRequestId.current += 1;
+    }
+    if (source === LOCAL_FILE_PROVIDER && provider !== LOCAL_FILE_PROVIDER && localImport) {
+      try {
+        await discardPlaylistImport(localImport.id);
+      } catch (e: unknown) {
+        setError(`Could not discard the previous local preview: ${errorMessage(e)}`);
+      }
+      clearLocalImportPreview();
+    }
+    if ((isUrlSource || isTextSource) && provider !== source && sourceImport) {
+      try {
+        await discardPlaylistImport(sourceImport.id);
+      } catch (e: unknown) {
+        setError(`Could not discard the previous preview: ${errorMessage(e)}`);
+      }
+      clearSourceImportPreview();
+    }
+    setSource(provider);
+  }
+
+  async function importLocalFile(file: File) {
+    const uploadId = localUploadId.current + 1;
+    localUploadId.current = uploadId;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const previousImportId = localImport?.id;
+      const preview = await uploadPlaylistFile(file);
+      if (uploadId !== localUploadId.current) {
+        try {
+          await discardPlaylistImport(preview.id);
+        } catch (e: unknown) {
+          setError(`Stale local preview will expire automatically: ${errorMessage(e)}`);
+        }
+        return;
+      }
+      let replacementNotice: string | null = null;
+      if (previousImportId && previousImportId !== preview.id) {
+        try {
+          await discardPlaylistImport(previousImportId);
+        } catch (e: unknown) {
+          replacementNotice = `Previous preview will expire automatically: ${errorMessage(e)}`;
+        }
+      }
+      applyLocalImportPreview(preview);
+      setNotice(
+        replacementNotice ??
+          `Validated ${preview.playlist_count} playlist${
+            preview.playlist_count === 1 ? "" : "s"
+          } and ${preview.track_count} tracks.`,
+      );
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discardLocalImport() {
+    if (!localImport) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await discardPlaylistImport(localImport.id);
+      clearLocalImportPreview();
+      setNotice("Local playlist preview discarded.");
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyLocalImportPreview(preview: LocalImportPreview) {
+    const refs = preview.playlists.map(playlistRefFromImport);
+    const tracks = Object.fromEntries(
+      preview.playlists
+        .filter((playlist): playlist is Playlist & { id: string } => Boolean(playlist.id))
+        .map((playlist) => [playlist.id, playlist.tracks]),
+    );
+    setLocalImport(preview);
+    applyImportedPlaylists(refs, tracks);
+  }
+
+  function clearLocalImportPreview() {
+    setLocalImport(null);
+    setPlaylists([]);
+    setSelectedPlaylists(new Set());
+    setExpandedPlaylists(new Set());
+    setPlaylistTracks({});
+    setSelectedTracks({});
+    setPlaylistError(null);
+  }
+
+  // Shared with applyLocalImportPreview: both local-file and URL/text imports
+  // arrive fully loaded (no per-playlist fetch), so the ref list, track cache,
+  // and default selection are built the same way regardless of source.
+  function applyImportedPlaylists(refs: PlaylistRef[], tracks: Record<string, Track[]>) {
+    const trackSelections = Object.fromEntries(
+      Object.entries(tracks).map(([playlistId, playlistItems]) => [
+        playlistId,
+        new Set(unmigratedTrackKeys(playlistItems)),
+      ]),
+    );
+    setPlaylists(refs);
+    setPlaylistTracks(tracks);
+    setSelectedTracks(trackSelections);
+    setExpandedPlaylists(new Set(Object.keys(tracks)));
+    setSelectedPlaylists(
+      new Set(
+        Object.entries(trackSelections)
+          .filter(([, selection]) => selection.size > 0)
+          .map(([playlistId]) => playlistId),
+      ),
+    );
+    setPlaylistError(null);
+  }
+
+  async function previewSourceImport() {
+    if (!isUrlSource && !isTextSource) return;
+    if (isUrlSource && !sourceImportUrl.trim()) {
+      setError("Paste a public playlist URL first.");
+      return;
+    }
+    if (isTextSource && !sourceImportText.trim()) {
+      setError("Paste at least one track first.");
+      return;
+    }
+    const requestId = sourceImportRequestId.current + 1;
+    sourceImportRequestId.current = requestId;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const previousImportId = sourceImport?.id;
+      const connectedAccount = sourceRequiredProvider
+        ? accounts.find((account) => account.provider === sourceRequiredProvider)
+        : null;
+      let preview: SourceImportPreview;
+      try {
+        preview = isUrlSource
+          ? await previewUrlImport({
+              url: sourceImportUrl.trim(),
+              source_account_id: connectedAccount?.id ?? null,
+            })
+          : await previewTextImport({
+              text: sourceImportText,
+              name: sourceImportName.trim() || null,
+            });
+      } catch (e: unknown) {
+        const required = sourceConnectionRequiredDetail(e);
+        if (required) setSourceRequiredProvider(required.provider);
+        throw e;
+      }
+      if (requestId !== sourceImportRequestId.current) {
+        try {
+          await discardPlaylistImport(preview.id);
+        } catch (e: unknown) {
+          setError(`Stale preview will expire automatically: ${errorMessage(e)}`);
+        }
+        return;
+      }
+      let replacementNotice: string | null = null;
+      if (previousImportId && previousImportId !== preview.id) {
+        try {
+          await discardPlaylistImport(previousImportId);
+        } catch (e: unknown) {
+          replacementNotice = `Previous preview will expire automatically: ${errorMessage(e)}`;
+        }
+      }
+      setSourceRequiredProvider(null);
+      applySourceImportPreview(preview);
+      const issueCount = preview.issues.length;
+      setNotice(
+        replacementNotice ??
+          `Previewed ${preview.track_count} tracks${
+            issueCount
+              ? ` with ${issueCount} parsing or compatibility warning${issueCount === 1 ? "" : "s"}`
+              : ""
+          }.`,
+      );
+    } catch (e: unknown) {
+      showAppError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discardSourceImport() {
+    if (!sourceImport) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await discardPlaylistImport(sourceImport.id);
+      clearSourceImportPreview();
+      setNotice("Playlist preview discarded.");
+    } catch (e: unknown) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applySourceImportPreview(preview: SourceImportPreview) {
+    const ref = sourceImportPlaylistRef(preview);
+    setSourceImport(preview);
+    applyImportedPlaylists([ref], { [ref.id]: preview.playlist.tracks });
+  }
+
+  function clearSourceImportPreview() {
+    setSourceImport(null);
+    setSourceRequiredProvider(null);
+    setPlaylists([]);
+    setSelectedPlaylists(new Set());
+    setExpandedPlaylists(new Set());
+    setPlaylistTracks({});
+    setSelectedTracks({});
+    setPlaylistError(null);
+  }
+
+  // Editing the URL/text/name fields invalidates any preview built from the
+  // previous input so "Start migration" disappears until the user previews
+  // again; the stale record is discarded best-effort (it also self-expires).
+  function invalidateSourceImportPreview() {
+    if (!sourceImport && !sourceRequiredProvider) return;
+    const staleId = sourceImport?.id;
+    sourceImportRequestId.current += 1;
+    clearSourceImportPreview();
+    if (staleId) {
+      void discardPlaylistImport(staleId).catch((e: unknown) => {
+        setNotice(`Previous preview will expire automatically: ${errorMessage(e)}`);
+      });
+    }
+  }
+
+  function updateSourceImportUrl(value: string) {
+    setSourceImportUrl(value);
+    invalidateSourceImportPreview();
+  }
+
+  function updateSourceImportText(value: string) {
+    setSourceImportText(value);
+    invalidateSourceImportPreview();
+  }
+
+  function updateSourceImportName(value: string) {
+    setSourceImportName(value);
+    invalidateSourceImportPreview();
+  }
+
+  function migrationCreated(id: string, playlistIds: string[]) {
+    setJobId(id);
+    setStatsRefreshKey((value) => value + 1);
+    if (isLocalSource) clearLocalImportPreview();
+    else if (isUrlSource || isTextSource) clearSourceImportPreview();
+    else deselectStartedPlaylists(playlistIds);
+    setSelectedAlbums(new Set());
+    setSelectedArtists(new Set());
   }
 
   async function refreshAccounts() {
@@ -459,36 +898,33 @@ export default function App() {
   }
 
   async function start() {
-    if (!source || !target || !sourceAccount || !targetAccount) return;
+    if (!source || !target || !sourceAccountId || !targetAccount) return;
     const playlistIds = selectedMigrationPlaylistIds;
-    const tracks = Object.fromEntries(
-      playlistIds
-        .filter((id) => playlistTracks[id])
-        .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
-    );
+    const tracks = selectedTrackFilters(playlistIds, playlistTracks, selectedTracks);
     const body: CreateMigrationBody = {
       source_provider: source,
       target_provider: target,
-      source_account_id: sourceAccount.id,
+      source_account_id: sourceAccountId,
       target_account_id: targetAccount.id,
-      selection: { playlist_ids: playlistIds, tracks },
+      selection: {
+        playlist_ids: playlistIds,
+        tracks,
+        saved_album_ids: [...selectedAlbums],
+        followed_artist_ids: [...selectedArtists],
+      },
     };
     setBusy(true);
     setError(null);
     try {
       const preflight = await preflightMigration(body);
-      if (preflight.warnings.length > 0 && !confirm(warningMessage(preflight))) return;
+      if (!confirm(preflightMessage(preflight))) return;
       const job = await createMigration({ ...body, acknowledge_warnings: true });
-      setJobId(job.id);
-      setStatsRefreshKey((value) => value + 1);
-      deselectStartedPlaylists(playlistIds);
+      migrationCreated(job.id, playlistIds);
     } catch (e: unknown) {
-      if (isMigrationWarning(e) && confirm(warningMessage(e.detail))) {
+      if (isMigrationWarning(e) && confirm(preflightMessage(e.detail))) {
         try {
           const job = await createMigration({ ...body, acknowledge_warnings: true });
-          setJobId(job.id);
-          setStatsRefreshKey((value) => value + 1);
-          deselectStartedPlaylists(playlistIds);
+          migrationCreated(job.id, playlistIds);
         } catch (retryError: unknown) {
           showAppError(retryError);
         }
@@ -498,6 +934,25 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function exportSelected(format: ExportFormat) {
+    if (!source || !sourceAccount || selectedExportPlaylistIds.length === 0) {
+      throw new Error("Select at least one playlist to export.");
+    }
+    return downloadPlaylistExport({
+      source_provider: source,
+      source_account_id: sourceAccount.id,
+      format,
+      selection: {
+        playlist_ids: selectedExportPlaylistIds,
+        tracks: selectedTrackFilters(
+          selectedExportPlaylistIds,
+          playlistTracks,
+          selectedTracks,
+        ),
+      },
+    });
   }
 
   function togglePlaylist(id: string) {
@@ -519,10 +974,15 @@ export default function App() {
     if (loaded) {
       const selectableKeys = unmigratedTrackKeys(loaded);
       if (selectableKeys.length === 0) {
-        markPlaylistFullyMigrated(id, loaded.length);
-        closePlaylistSongs(id);
+        setExpandedPlaylists((previous) => new Set(previous).add(id));
+        if (loaded.length > 0 && loaded.every((track) => track.migration_status === "migrated")) {
+          markPlaylistFullyMigrated(id, loaded.length);
+        } else {
+          setError("This playlist has no tracks that can be matched to a streaming provider.");
+        }
         return;
       }
+      setExpandedPlaylists((previous) => new Set(previous).add(id));
       setSelectedPlaylists((prev) => {
         const next = new Set(prev);
         next.add(id);
@@ -540,15 +1000,44 @@ export default function App() {
       return next;
     });
   }
-
   function selectAllPlaylists() {
-    setSelectedPlaylists(new Set(migrationCandidatePlaylists.map((playlist) => playlist.id)));
+    const ids = selectableCandidatePlaylists.map((playlist) => playlist.id);
+    setSelectedPlaylists(new Set(ids));
+    setSelectedTracks((previous) => {
+      const next = { ...previous };
+      for (const id of ids) {
+        const loaded = playlistTracks[id];
+        if (loaded) next[id] = new Set(unmigratedTrackKeys(loaded));
+      }
+      return next;
+    });
+    if (!isRecordImportSource && !library?.saved_albums.target_limitation) {
+      setSelectedAlbums(new Set(library?.saved_albums.items.map(albumKey) ?? []));
+    }
+    if (!isRecordImportSource && !library?.followed_artists.target_limitation) {
+      setSelectedArtists(new Set(library?.followed_artists.items.map(artistKey) ?? []));
+    }
   }
 
   function deselectAllPlaylists() {
     setSelectedPlaylists(new Set());
-    setPlaylistTracks({});
+    if (!isRecordImportSource) {
+      setPlaylistTracks({});
+      setExpandedPlaylists(new Set());
+    }
+    setSelectedAlbums(new Set());
+    setSelectedArtists(new Set());
     setSelectedTracks({});
+  }
+
+  function toggleAlbum(album: Album) {
+    const key = albumKey(album);
+    setSelectedAlbums((current) => toggleSetValue(current, key));
+  }
+
+  function toggleArtist(artist: Artist) {
+    const key = artistKey(artist);
+    setSelectedArtists((current) => toggleSetValue(current, key));
   }
 
   function deselectStartedPlaylists(playlistIds: string[]) {
@@ -568,25 +1057,49 @@ export default function App() {
       for (const id of started) delete next[id];
       return next;
     });
+    setExpandedPlaylists((prev) => {
+      const next = new Set(prev);
+      for (const id of started) next.delete(id);
+      return next;
+    });
   }
 
   async function loadTracks(playlist: PlaylistRef, options: { forceRefresh?: boolean } = {}) {
-    if (!source || !sourceAccount || !target || !targetAccount) return;
+    if (isRecordImportSource) return;
+    if (!source || !sourceAccount) return;
     setBusy(true);
     setError(null);
     try {
-      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, {
-        targetProvider: target,
-        targetAccountId: targetAccount.id,
-        refresh: options.forceRefresh,
-      });
+      const detail = await getPlaylist(
+        source,
+        sourceAccount.id,
+        playlist.id,
+        target && targetAccount
+          ? {
+              targetProvider: target,
+              targetAccountId: targetAccount.id,
+              refresh: options.forceRefresh,
+            }
+          : { refresh: options.forceRefresh },
+      );
       const defaultSelected = unmigratedTrackKeys(detail.tracks);
+      setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
+      setExpandedPlaylists((previous) => new Set(previous).add(playlist.id));
       if (detail.tracks.length > 0 && defaultSelected.length === 0) {
-        markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
-        closePlaylistSongs(playlist.id);
+        if (detail.tracks.every((track) => track.migration_status === "migrated")) {
+          markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
+          closePlaylistSongs(playlist.id);
+        } else {
+          setSelectedPlaylists((selected) => {
+            const next = new Set(selected);
+            next.delete(playlist.id);
+            return next;
+          });
+          setSelectedTracks((previous) => ({ ...previous, [playlist.id]: new Set() }));
+          setError("This playlist has no tracks that can be matched to a streaming provider.");
+        }
         return;
       }
-      setPlaylistTracks((prev) => ({ ...prev, [playlist.id]: detail.tracks }));
       setSelectedTracks((prev) => ({
         ...prev,
         [playlist.id]: new Set(defaultSelected),
@@ -634,7 +1147,11 @@ export default function App() {
     }
     const tracks = playlistTracks[playlistId] ?? [];
     const keys = tracks
-      .filter((track) => mode === "all" || track.migration_status !== "migrated")
+      .filter(
+        (track) =>
+          isTrackMigratable(track) &&
+          (mode === "all" || track.migration_status !== "migrated"),
+      )
       .map(trackKey);
     setSelectedTracks((prev) => ({ ...prev, [playlistId]: new Set(keys) }));
     setSelectedPlaylists((prev) => {
@@ -647,11 +1164,18 @@ export default function App() {
   }
 
   function closePlaylistSongs(playlistId: string) {
-    setPlaylistTracks((prev) => {
-      const next = { ...prev };
-      delete next[playlistId];
+    setExpandedPlaylists((previous) => {
+      const next = new Set(previous);
+      next.delete(playlistId);
       return next;
     });
+    if (!isRecordImportSource) {
+      setPlaylistTracks((prev) => {
+        const next = { ...prev };
+        delete next[playlistId];
+        return next;
+      });
+    }
     setSelectedTracks((prev) => {
       const next = { ...prev };
       delete next[playlistId];
@@ -699,7 +1223,7 @@ export default function App() {
             {playlist.track_count === null ? "" : `${playlist.track_count} tracks`}
           </span>
         </label>
-        {selectedPlaylists.has(playlist.id) ? (
+        {selectedPlaylists.has(playlist.id) && !isRecordImportSource ? (
           <button
             className="secondary compact"
             disabled={busy}
@@ -712,7 +1236,7 @@ export default function App() {
                 : "Choose tracks"}
           </button>
         ) : null}
-        {selectedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
+        {expandedPlaylists.has(playlist.id) && playlistTracks[playlist.id] ? (
           <div className="track-list">
             <div className="track-toolbar">
               <button
@@ -736,26 +1260,36 @@ export default function App() {
               >
                 Deselect playlist
               </button>
-              <button
-                className="secondary compact"
-                disabled={busy}
-                onClick={() => loadTracks(playlist, { forceRefresh: true })}
-              >
-                Refresh songs
-              </button>
+              {!isRecordImportSource ? (
+                <button
+                  className="secondary compact"
+                  disabled={busy}
+                  onClick={() => loadTracks(playlist, { forceRefresh: true })}
+                >
+                  Refresh songs
+                </button>
+              ) : null}
             </div>
             {playlistTracks[playlist.id].map((track) => {
               const key = trackKey(track);
+              const migratable = isTrackMigratable(track);
               return (
-                <label key={key} className="track-row">
+                <label
+                  key={key}
+                  className={`track-row ${migratable ? "" : "track-row-unsupported"}`}
+                >
                   <input
                     type="checkbox"
                     checked={selectedTracks[playlist.id]?.has(key) ?? false}
+                    disabled={!migratable}
                     onChange={() => toggleTrack(playlist.id, key)}
                   />
                   <span>
                     {track.title} — {track.artist}
                     {track.explicit ? <span className="badge inline">explicit</span> : null}
+                    {!migratable ? (
+                      <span className="badge inline migration-blocked">unsupported</span>
+                    ) : null}
                     {track.migration_status === "migrated" ? (
                       <span className="badge inline migration-migrated">migrated</span>
                     ) : playlist.migration_status === "delta" ? (
@@ -764,7 +1298,9 @@ export default function App() {
                       <span className="badge inline migration-partial">leftover</span>
                     ) : null}
                   </span>
-                  <span className="muted">{track.album ?? ""}</span>
+                  <span className="muted">
+                    {!migratable ? track.unsupported_reason : track.album ?? ""}
+                  </span>
                 </label>
               );
             })}
@@ -797,26 +1333,95 @@ export default function App() {
     );
   }
 
+  function renderAlbumCard(album: Album) {
+    const key = albumKey(album);
+    const disabled = Boolean(library?.saved_albums.target_limitation);
+    return (
+      <label key={key} className={`library-item-row ${disabled ? "disabled" : ""}`}>
+        <input
+          type="checkbox"
+          checked={selectedAlbums.has(key)}
+          disabled={disabled || busy}
+          onChange={() => toggleAlbum(album)}
+        />
+        {album.artwork_uri ? (
+          <img src={album.artwork_uri} alt="" className="library-artwork" />
+        ) : (
+          <span className="library-artwork placeholder" aria-hidden="true">
+            <Disc3 />
+          </span>
+        )}
+        <span>
+          <strong>{album.title}</strong>
+          <span className="muted">{album.artists.join(", ") || "Unknown artist"}</span>
+        </span>
+        <span className="muted">
+          {album.release_date?.slice(0, 4) ?? album.release_year ?? ""}
+        </span>
+      </label>
+    );
+  }
+
+  function renderArtistCard(artist: Artist) {
+    const key = artistKey(artist);
+    const disabled = Boolean(library?.followed_artists.target_limitation);
+    return (
+      <label key={key} className={`library-item-row ${disabled ? "disabled" : ""}`}>
+        <input
+          type="checkbox"
+          checked={selectedArtists.has(key)}
+          disabled={disabled || busy}
+          onChange={() => toggleArtist(artist)}
+        />
+        {artist.artwork_uri ? (
+          <img src={artist.artwork_uri} alt="" className="library-artwork round" />
+        ) : (
+          <span className="library-artwork placeholder round" aria-hidden="true">
+            <Users />
+          </span>
+        )}
+        <span>
+          <strong>{artist.name}</strong>
+          <span className="muted">
+            {artistCollectionAction(library?.followed_artists.source_semantics)}
+          </span>
+        </span>
+      </label>
+    );
+  }
+
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const tabs: WorkspaceTab[] = ["migration", "generator", "stats"];
+    const tabs: WorkspaceTab[] = [
+      "migration",
+      "generator",
+      "snapshots",
+      "sync",
+      "organizer",
+      "stats",
+      "sharing",
+    ];
     const currentIndex = tabs.indexOf(activeTab);
-    const nextTab =
+    const nextTab: WorkspaceTab =
       event.key === "Home"
         ? tabs[0]
         : event.key === "End"
-          ? tabs[tabs.length - 1]
-          : event.key === "ArrowRight"
-            ? tabs[(currentIndex + 1) % tabs.length]
-            : tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+          ? "sharing"
+          : (tabs[
+              (currentIndex + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length
+            ] ?? "migration");
     setActiveTab(nextTab);
-    const refs = {
+    const tabRefs = {
       migration: migrationTabRef,
       generator: generatorTabRef,
+      snapshots: snapshotsTabRef,
+      sync: syncTabRef,
+      organizer: organizerTabRef,
       stats: statsTabRef,
+      sharing: sharingTabRef,
     };
-    refs[nextTab].current?.focus();
+    tabRefs[nextTab].current?.focus();
   }
 
   function openMigrationConnections() {
@@ -824,8 +1429,8 @@ export default function App() {
     migrationTabRef.current?.focus();
   }
 
-  function handleGeneratedJob(jobId: string) {
-    setJobId(jobId);
+  function handleGeneratedJob(nextJobId: string) {
+    setJobId(nextJobId);
     setStatsRefreshKey((value) => value + 1);
     setActiveTab("migration");
     migrationTabRef.current?.focus();
@@ -896,12 +1501,66 @@ export default function App() {
           <small>Build and review</small>
         </button>
         <button
+          ref={snapshotsTabRef}
+          id="snapshots-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Snapshots"
+          aria-selected={activeTab === "snapshots"}
+          aria-controls="snapshots-panel"
+          tabIndex={activeTab === "snapshots" ? 0 : -1}
+          onClick={() => setActiveTab("snapshots")}
+        >
+          <span>
+            <Archive aria-hidden="true" />
+            Snapshots
+          </span>
+          <small>Local backup</small>
+        </button>
+        <button
+          ref={syncTabRef}
+          id="sync-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Sync"
+          aria-selected={activeTab === "sync"}
+          aria-controls="sync-panel"
+          tabIndex={activeTab === "sync" ? 0 : -1}
+          onClick={() => setActiveTab("sync")}
+        >
+          <span>
+            <Repeat2 aria-hidden="true" />
+            Sync
+          </span>
+          <small>Keep playlists aligned</small>
+        </button>
+        <button
+          ref={organizerTabRef}
+          id="organizer-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Organizer"
+          aria-selected={activeTab === "organizer"}
+          aria-controls="organizer-panel"
+          tabIndex={activeTab === "organizer" ? 0 : -1}
+          onClick={() => setActiveTab("organizer")}
+        >
+          <span>
+            <ListChecks aria-hidden="true" />
+            Organizer
+          </span>
+          <small>Clean up safely</small>
+        </button>
+        <button
           ref={statsTabRef}
           id="stats-tab"
           className="workspace-tab"
           type="button"
           role="tab"
-          aria-label="Stats"
+          aria-label="History and stats"
           aria-selected={activeTab === "stats"}
           aria-controls="stats-panel"
           tabIndex={activeTab === "stats" ? 0 : -1}
@@ -909,9 +1568,27 @@ export default function App() {
         >
           <span>
             <BarChart3 aria-hidden="true" />
-            Stats
+            History
           </span>
-          <small>Review history</small>
+          <small>Inspect results</small>
+        </button>
+        <button
+          ref={sharingTabRef}
+          id="sharing-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Sharing"
+          aria-selected={activeTab === "sharing"}
+          aria-controls="sharing-panel"
+          tabIndex={activeTab === "sharing" ? 0 : -1}
+          onClick={() => setActiveTab("sharing")}
+        >
+          <span>
+            <Share2 aria-hidden="true" />
+            Sharing
+          </span>
+          <small>Publish snapshots</small>
         </button>
       </div>
 
@@ -955,7 +1632,7 @@ export default function App() {
                 role="source"
                 providers={providers}
                 selected={source}
-                onSelect={setSource}
+                onSelect={(provider) => void chooseSource(provider)}
               />
               <ProviderPicker
                 title="To"
@@ -975,19 +1652,52 @@ export default function App() {
                 </span>
                 <div>
                   <h2>Connect accounts</h2>
-                  <p className="muted">Authorize both services before choosing playlists.</p>
+                  <p className="muted">
+                    {isLocalSource
+                      ? "Validate the source file and authorize the target service."
+                      : isUrlSource || isTextSource
+                        ? "Preview the playlist and authorize the target service."
+                        : "Connect a source to export; connect both services to migrate."}
+                  </p>
                 </div>
               </div>
             </div>
             <div className="account-grid">
-              <AccountPanel
-                label="Source"
-                provider={source}
-                account={sourceAccount}
-                busy={busy}
-                onConnect={connect}
-                onTest={testConnection}
-              />
+              {isLocalSource ? (
+                <LocalFileImportPanel
+                  preview={localImport}
+                  busy={busy}
+                  onUpload={(file) => void importLocalFile(file)}
+                  onDiscard={() => void discardLocalImport()}
+                />
+              ) : isUrlSource || isTextSource ? (
+                <SourceImportPanel
+                  provider={source as "public_url" | "pasted_text"}
+                  preview={sourceImport}
+                  busy={busy}
+                  url={sourceImportUrl}
+                  text={sourceImportText}
+                  name={sourceImportName}
+                  onUrlChange={updateSourceImportUrl}
+                  onTextChange={updateSourceImportText}
+                  onNameChange={updateSourceImportName}
+                  onPreview={() => void previewSourceImport()}
+                  onDiscard={() => void discardSourceImport()}
+                  requiredProvider={sourceRequiredProvider}
+                  requiredAccount={sourceRequiredAccount}
+                  onConnect={connect}
+                  onTestConnection={testConnection}
+                />
+              ) : (
+                <AccountPanel
+                  label="Source"
+                  provider={source}
+                  account={sourceAccount}
+                  busy={busy}
+                  onConnect={connect}
+                  onTest={testConnection}
+                />
+              )}
               <AccountPanel
                 label="Target"
                 provider={target}
@@ -1161,7 +1871,7 @@ export default function App() {
             </button>
           </section>
 
-          {source && sourceAccount ? (
+          {source && sourceReady && target && targetAccount ? (
             <section className="card flow">
           <div className="section-heading">
             <div className="section-title">
@@ -1169,9 +1879,11 @@ export default function App() {
                 <ListMusic />
               </span>
               <div>
-              <h2>Pick playlists</h2>
+              <h2>Pick music to migrate</h2>
               <p className="muted">
-                {selectedMigrationPlaylistIds.length} of {availablePlaylists.length} migratable selected
+                {isRecordImportSource
+                  ? `${selectedMigrationPlaylistIds.length} of ${selectableCandidatePlaylists.length} migratable playlists selected`
+                  : `${selectedItemCount} items selected across playlists, albums, and artists`}
               </p>
               </div>
             </div>
@@ -1180,8 +1892,8 @@ export default function App() {
                 className="secondary compact"
                 disabled={
                   busy ||
-                  migrationCandidatePlaylists.length === 0 ||
-                  selectedCandidateCount === migrationCandidatePlaylists.length
+                  selectableItemCount === 0 ||
+                  allSelectableItemsSelected
                 }
                 onClick={selectAllPlaylists}
               >
@@ -1190,36 +1902,54 @@ export default function App() {
               </button>
               <button
                 className="secondary compact"
-                disabled={busy || selectedPlaylists.size === 0}
+                disabled={busy || selectedItemCount === 0}
                 onClick={deselectAllPlaylists}
               >
                 Deselect all
               </button>
-              <button
-                className="secondary compact"
-                disabled={busy || playlistLoading}
-                onClick={() => void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })}
-              >
-                <RefreshCw aria-hidden="true" />
-                {playlistLoading ? "Refreshing…" : "Refresh playlists"}
-              </button>
+              {!isRecordImportSource ? (
+                <>
+                  <button
+                    className="secondary compact"
+                    disabled={busy || playlistLoading}
+                    onClick={() =>
+                      void refreshSourcePlaylists({ resetSelection: true, forceRefresh: true })
+                    }
+                  >
+                    <RefreshCw aria-hidden="true" />
+                    {playlistLoading ? "Refreshing…" : "Refresh playlists"}
+                  </button>
+                  <button
+                    className="secondary compact"
+                    disabled={busy || libraryLoading}
+                    onClick={() => void refreshSourceLibrary()}
+                  >
+                    <RefreshCw aria-hidden="true" />
+                    {libraryLoading ? "Refreshing…" : "Refresh library"}
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
           <p className="cache-guidance">
-            Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only
-            for new playlists or changed snapshots; songs are cached per playlist until Spotify
-            reports a new snapshot.
+            {isLocalSource
+              ? "This preview preserves file order and metadata. Unsupported local audio entries remain visible but are not selected for migration."
+              : isUrlSource || isTextSource
+                ? "This preview preserves source order and metadata. Unsupported or duplicate entries remain visible but are not selected for migration."
+              : "Playlist lists are cached to avoid Spotify rate limits. Use Refresh playlists only for new playlists or changed snapshots; songs are cached per playlist until Spotify reports a new snapshot."}
           </p>
           <div className="migration-top-stack">
             <div className="migration-action-bar">
               <div>
                 <p className="action-label">
                   <CircleGauge aria-hidden="true" />
-                  Ready to migrate
+                  Ready to move or export
                 </p>
                 <p className="muted">
                   {selectedMigrationPlaylistIds.length} playlist
-                  {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} selected for migration
+                  {selectedMigrationPlaylistIds.length === 1 ? "" : "s"} ·{" "}
+                  {selectedAlbums.size} album{selectedAlbums.size === 1 ? "" : "s"} ·{" "}
+                  {selectedArtists.size} artist{selectedArtists.size === 1 ? "" : "s"}
                 </p>
                 {selectedMigrationPlaylists.length >= 2 ? (
                   <ul className="selected-playlist-names" aria-label="Selected playlists">
@@ -1229,10 +1959,21 @@ export default function App() {
                   </ul>
                 ) : null}
               </div>
-              <button className="primary" disabled={startDisabled} onClick={() => start()}>
-                <Play aria-hidden="true" />
-                {busy ? "Starting…" : "Start migration"}
-              </button>
+              <div className="migration-action-buttons">
+                <ExportControls
+                  disabled={
+                    busy ||
+                    !source ||
+                    !sourceAccount ||
+                    selectedExportPlaylistIds.length === 0
+                  }
+                  onExport={exportSelected}
+                />
+                <button className="primary" disabled={startDisabled} onClick={() => start()}>
+                  <Play aria-hidden="true" />
+                  {busy ? "Starting…" : "Start migration"}
+                </button>
+              </div>
             </div>
             {jobId ? (
               <div className="migration-progress-slot">
@@ -1245,6 +1986,69 @@ export default function App() {
               </div>
             ) : null}
           </div>
+          {!isRecordImportSource ? (
+          <div className="library-selection-grid">
+            <section className="library-collection" aria-labelledby="saved-albums-heading">
+              <div className="library-collection-heading">
+                <span className="section-icon compact" aria-hidden="true">
+                  <Disc3 />
+                </span>
+                <div>
+                  <h3 id="saved-albums-heading">Saved albums</h3>
+                  <p className="muted">
+                    {library?.saved_albums.count ?? 0} available · {selectedAlbums.size} selected
+                  </p>
+                </div>
+              </div>
+              {library?.saved_albums.source_limitation ? (
+                <p className="library-limitation">{library.saved_albums.source_limitation}</p>
+              ) : library?.saved_albums.target_limitation ? (
+                <p className="library-limitation">{library.saved_albums.target_limitation}</p>
+              ) : null}
+              {libraryLoading && !library ? (
+                <p className="muted">Loading saved albums…</p>
+              ) : library?.saved_albums.items.length ? (
+                <div className="library-item-list">
+                  {library.saved_albums.items.map(renderAlbumCard)}
+                </div>
+              ) : !library?.saved_albums.source_limitation ? (
+                <p className="muted">No saved albums found.</p>
+              ) : null}
+            </section>
+            <section className="library-collection" aria-labelledby="followed-artists-heading">
+              <div className="library-collection-heading">
+                <span className="section-icon compact" aria-hidden="true">
+                  <Users />
+                </span>
+                <div>
+                  <h3 id="followed-artists-heading">
+                    {artistCollectionLabel(library?.followed_artists.source_semantics)}
+                  </h3>
+                  <p className="muted">
+                    {library?.followed_artists.count ?? 0} available · {selectedArtists.size} selected
+                  </p>
+                </div>
+              </div>
+              {library?.followed_artists.source_limitation ? (
+                <p className="library-limitation">{library.followed_artists.source_limitation}</p>
+              ) : library?.followed_artists.target_limitation ? (
+                <p className="library-limitation">{library.followed_artists.target_limitation}</p>
+              ) : null}
+              {libraryLoading && !library ? (
+                <p className="muted">Loading artists…</p>
+              ) : library?.followed_artists.items.length ? (
+                <div className="library-item-list">
+                  {library.followed_artists.items.map(renderArtistCard)}
+                </div>
+              ) : !library?.followed_artists.source_limitation ? (
+                <p className="muted">No artists found.</p>
+              ) : null}
+            </section>
+          </div>
+          ) : null}
+          {!isRecordImportSource && libraryError ? (
+            <p className="empty-guidance error-guidance">{libraryError}</p>
+          ) : null}
           {playlistError && playlistErrorTitle ? (
             <div className="playlist-error-panel error-guidance" role="alert">
               <div>
@@ -1328,6 +2132,14 @@ export default function App() {
           )}
             </section>
           ) : null}
+          {jobId && !sourceReady ? (
+            <ProgressBoard
+              className="progress-popover flow local-import-progress"
+              jobId={jobId}
+              onMigrationChanged={handleMigrationChanged}
+              onReconnectProvider={connect}
+            />
+          ) : null}
         </div>
       ) : activeTab === "generator" ? (
         <div
@@ -1343,7 +2155,53 @@ export default function App() {
             onJobCreated={handleGeneratedJob}
           />
         </div>
-      ) : (
+      ) : activeTab === "snapshots" ? (
+        <div
+          id="snapshots-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="snapshots-tab"
+        >
+          <SnapshotPanel
+            providers={providers}
+            accounts={accounts}
+            onReconnectProvider={connect}
+            onMigrationChanged={handleMigrationChanged}
+          />
+        </div>
+      ) : activeTab === "sync" ? (
+        <div
+          id="sync-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="sync-tab"
+        >
+          <SyncPanel
+            providers={providers}
+            onReconnectProvider={(provider) => {
+              setActiveTab("migration");
+              return connect(provider);
+            }}
+          />
+        </div>
+      ) : activeTab === "organizer" ? (
+        <div
+          id="organizer-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="organizer-tab"
+        >
+          <PlaylistOrganizer
+            providers={providers}
+            accounts={accounts}
+            authBusy={busy}
+            onConnect={(provider) => {
+              setActiveTab("migration");
+              return connect(provider);
+            }}
+          />
+        </div>
+      ) : activeTab === "stats" ? (
         <div
           id="stats-panel"
           className="workspace-panel"
@@ -1352,9 +2210,44 @@ export default function App() {
         >
           <MigrationStatsPanel providers={providers} refreshKey={statsRefreshKey} />
         </div>
+      ) : (
+        <div
+          id="sharing-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="sharing-tab"
+        >
+          <ShareManager providers={providers} accounts={accounts} />
+        </div>
       )}
     </div>
   );
+}
+
+function playlistRefFromImport(playlist: Playlist): PlaylistRef {
+  return {
+    id: playlist.id ?? playlist.name,
+    name: playlist.name,
+    track_count: playlist.tracks.length,
+    owner_id: playlist.owner_id,
+    owner_name: null,
+    is_owned: null,
+    is_followed: null,
+    collaborative: null,
+    snapshot_id: playlist.snapshot_id,
+    tracks_href: null,
+    created_at: playlist.created_at,
+    updated_at: playlist.updated_at,
+    migration_status: null,
+    migrated_track_count: 0,
+    remaining_track_count: playlist.tracks.length,
+    migration_note: null,
+    kind: playlist.kind,
+  };
+}
+
+function sourceImportPlaylistRef(preview: SourceImportPreview): PlaylistRef {
+  return playlistRefFromImport(preview.playlist);
 }
 
 function getSelectedMigrationPlaylistIds(
@@ -1369,16 +2262,67 @@ function getSelectedMigrationPlaylistIds(
   });
 }
 
+function selectedTrackFilters(
+  playlistIds: string[],
+  playlistTracks: Record<string, Track[]>,
+  selectedTracks: Record<string, Set<string>>,
+): Record<string, string[]> {
+  return Object.fromEntries(
+    playlistIds
+      .filter((id) => playlistTracks[id])
+      .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
+  );
+}
+
 function isAnnotatedMigratedPlaylist(playlist: PlaylistRef): boolean {
   return playlist.migration_status === "migrated" || playlist.migration_status === "partial";
 }
 
 function unmigratedTrackKeys(tracks: Track[]): string[] {
-  return tracks.filter((track) => track.migration_status !== "migrated").map(trackKey);
+  return tracks
+    .filter((track) => isTrackMigratable(track) && track.migration_status !== "migrated")
+    .map(trackKey);
+}
+
+function isTrackMigratable(track: Track): boolean {
+  return track.media_type === "track" && !track.is_local && !track.unsupported_reason;
 }
 
 function trackKey(track: Track): string {
   return track.source_item_id ?? track.id ?? String(track.position ?? track.title);
+}
+
+function albumKey(album: Album): string {
+  return (
+    album.source_item_id ??
+    album.id ??
+    album.provider_uris[Object.keys(album.provider_uris)[0]] ??
+    album.title
+  );
+}
+
+function artistKey(artist: Artist): string {
+  return (
+    artist.source_item_id ??
+    artist.id ??
+    artist.provider_uris[Object.keys(artist.provider_uris)[0]] ??
+    artist.name
+  );
+}
+
+function toggleSetValue(current: Set<string>, value: string): Set<string> {
+  const next = new Set(current);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
+function artistCollectionLabel(semantics: "follow" | "favorite" | null | undefined): string {
+  return semantics === "favorite" ? "Favorite artists" : "Followed artists";
+}
+
+function artistCollectionAction(semantics: "follow" | "favorite" | null | undefined): string {
+  return semantics === "favorite" ? "Favorite artist" : "Followed artist";
 }
 
 function isMigrationWarning(error: unknown): error is ApiError & { detail: MigrationWarningsView } {
@@ -1388,13 +2332,33 @@ function isMigrationWarning(error: unknown): error is ApiError & { detail: Migra
   return detail.code === "migration_warnings" && Array.isArray(detail.warnings);
 }
 
-function warningMessage(detail: MigrationWarningsView): string {
+function sourceConnectionRequiredDetail(error: unknown): SourceConnectionRequiredDetail | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  if (!error.detail || typeof error.detail !== "object") return null;
+  const detail = error.detail as Partial<SourceConnectionRequiredDetail>;
+  if (detail.code !== "source_connection_required" || typeof detail.provider !== "string") {
+    return null;
+  }
+  return detail as SourceConnectionRequiredDetail;
+}
+
+function preflightMessage(detail: MigrationWarningsView): string {
+  const summary = detail.summary ?? {
+    playlists: 0,
+    tracks: 0,
+    saved_albums: 0,
+    followed_artists: 0,
+  };
   return [
-    detail.message,
+    "Migration preflight",
     "",
-    ...detail.warnings.map((warning) => `- ${warning.message}`),
+    `- ${summary.playlists} playlist${summary.playlists === 1 ? "" : "s"}`,
+    `- ${summary.tracks} track${summary.tracks === 1 ? "" : "s"}`,
+    `- ${summary.saved_albums} saved album${summary.saved_albums === 1 ? "" : "s"}`,
+    `- ${summary.followed_artists} artist${summary.followed_artists === 1 ? "" : "s"}`,
+    ...(detail.warnings.length ? ["", ...detail.warnings.map((warning) => `- ${warning.message}`)] : []),
     "",
-    "Continue anyway?",
+    "Start this migration?",
   ].join("\n");
 }
 
@@ -1406,7 +2370,14 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "generator" | "stats";
+type WorkspaceTab =
+  | "migration"
+  | "generator"
+  | "snapshots"
+  | "sync"
+  | "organizer"
+  | "stats"
+  | "sharing";
 
 interface AppleMusicChallenge {
   developerToken: string;

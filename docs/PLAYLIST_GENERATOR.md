@@ -145,9 +145,10 @@ The worker skips model calls and matching. It writes only the reviewed URIs, usi
 existing playlist reuse, duplicate checks, provider batch limits, operation ledger,
 progress events, and statistics.
 
-Generated drafts expose a universal `Playlist` snapshot in the API, so future portable
-export and self-hosted sharing features can consume the same provider-agnostic shape
-without exposing internal account IDs or prompts.
+Generated drafts expose a universal `Playlist` snapshot in the API. Confirmation also
+stores migration-history playlist metadata and valid universal track metadata, so the
+existing history/export surfaces can reconstruct the generated source without exposing
+internal account IDs or prompts.
 
 ## Failure behavior and limitations
 

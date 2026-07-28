@@ -25,11 +25,16 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
+    PublicPlaylistRef,
     RateLimited,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
+    Unsupported,
 )
 from app.core.capabilities import (
     Capability,
@@ -356,7 +361,11 @@ def _playlist_ref(resource: dict[str, Any]) -> PlaylistRef:
         name=str(attrs.get("name") or ""),
         track_count=total if isinstance(total, int) else None,
         owner_id=_ACCOUNT_ID,
+        owner_name="Apple Music account",
+        is_owned=True,
+        is_followed=False,
         collaborative=False,
+        created_at=attrs.get("dateAdded"),
     )
 
 
@@ -449,6 +458,61 @@ def _track_from_library_song(
         position=position,
         media_type=media_type,
         source_item_id=library_id or None,
+    )
+    if media_type is not MediaType.TRACK:
+        track.unsupported_reason = f"unsupported Apple Music item type: {resource_type}"
+    return track
+
+
+def _track_from_catalog_song(
+    resource: dict[str, Any],
+    *,
+    storefront: str,
+    position: int,
+) -> Track:
+    attrs = _attributes(resource)
+    song_id = str(resource.get("id") or "")
+    resource_type = str(resource.get("type") or "")
+    media_type = MediaType.TRACK if resource_type == "songs" else MediaType.VIDEO
+    release_date, release_year = _release_date(attrs.get("releaseDate"))
+    genre_names = attrs.get("genreNames")
+    genres = (
+        [value for value in genre_names if isinstance(value, str)]
+        if isinstance(genre_names, list)
+        else []
+    )
+    composer = attrs.get("composerName")
+    if not isinstance(composer, str):
+        composer = None
+    track = Track(
+        id=song_id or None,
+        title=str(attrs.get("name") or song_id),
+        artist=str(attrs.get("artistName") or "Unknown"),
+        album=attrs.get("albumName") if isinstance(attrs.get("albumName"), str) else None,
+        duration_s=_duration_s(attrs.get("durationInMillis")),
+        release_date=release_date,
+        release_year=release_year,
+        genre=genres[0] if genres else None,
+        track_number=attrs.get("trackNumber")
+        if isinstance(attrs.get("trackNumber"), int)
+        else None,
+        disc_number=attrs.get("discNumber")
+        if isinstance(attrs.get("discNumber"), int)
+        else None,
+        explicit=_is_explicit(attrs),
+        composer=composer,
+        credits=[{"role": "composer", "name": composer}] if composer else [],
+        isrc=attrs.get("isrc") if isinstance(attrs.get("isrc"), str) else None,
+        artwork_uri=_artwork_uri(attrs),
+        provider_uris={"applemusic": _catalog_uri(storefront, song_id)} if song_id else {},
+        metadata={
+            "applemusic_catalog_id": song_id or None,
+            "applemusic_url": attrs.get("url"),
+            "applemusic_genres": genres,
+        },
+        position=position,
+        media_type=media_type,
+        source_item_id=song_id or None,
     )
     if media_type is not MediaType.TRACK:
         track.unsupported_reason = f"unsupported Apple Music item type: {resource_type}"
@@ -602,6 +666,14 @@ class AppleMusicAdapter:
             timeout=30.0,
         )
 
+    def _public_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=_API_ORIGIN,
+            transport=self._transport,
+            headers=_headers(self._token_provider.get()),
+            timeout=30.0,
+        )
+
     async def _storefront_for_cred(
         self, client: httpx.AsyncClient, cred: ProviderCredential
     ) -> str:
@@ -642,6 +714,66 @@ class AppleMusicAdapter:
         for track in playlist.tracks:
             yield track
 
+    async def read_public_playlist(self, ref: PublicPlaylistRef) -> Playlist:
+        storefront = ref.metadata.get("storefront", "").lower()
+        if not storefront:
+            raise ProviderError("Apple Music public playlist URL is missing a storefront")
+        async with self._public_client() as client:
+            meta_resp = _raise_for_status(
+                await _apple_request(
+                    client,
+                    "GET",
+                    f"/v1/catalog/{storefront}/playlists/{ref.id}",
+                    params={"include": "tracks", "limit": _LIST_PAGE},
+                )
+            )
+            resources = _resources(meta_resp.json())
+            if not resources:
+                raise ProviderError(
+                    "Apple Music public playlist response did not include playlist data"
+                )
+            resource = resources[0]
+            attrs = _attributes(resource)
+            items = await self._catalog_playlist_items(
+                client,
+                resource,
+                max_items=ref.max_items + 1,
+            )
+        return Playlist(
+            id=str(resource.get("id") or ref.id),
+            name=str(attrs.get("name") or ref.id),
+            description=_description(attrs),
+            photo=_artwork_uri(attrs),
+            tracks=[
+                _track_from_catalog_song(item, storefront=storefront, position=position)
+                for position, item in enumerate(items)
+            ],
+            owner_id=attrs.get("curatorName")
+            if isinstance(attrs.get("curatorName"), str)
+            else None,
+        )
+
+    async def _catalog_playlist_items(
+        self,
+        client: httpx.AsyncClient,
+        resource: dict[str, Any],
+        *,
+        max_items: int,
+    ) -> list[dict[str, Any]]:
+        relationships = resource.get("relationships")
+        tracks = relationships.get("tracks") if isinstance(relationships, dict) else None
+        if not isinstance(tracks, dict):
+            return []
+        items = _resources(tracks)[:max_items]
+        url = _next_url(tracks)
+        while url and len(items) < max_items:
+            payload = _raise_for_status(
+                await _apple_request(client, "GET", url)
+            ).json()
+            items.extend(_resources(payload)[: max_items - len(items)])
+            url = _next_url(payload)
+        return items
+
     async def read_playlist(
         self, cred: ProviderCredential, ref: PlaylistRef
     ) -> Playlist:
@@ -680,6 +812,10 @@ class AppleMusicAdapter:
             photo=_artwork_uri(attrs),
             tracks=tracks,
             owner_id=_ACCOUNT_ID,
+            owner_name="Apple Music account",
+            is_owned=True,
+            is_followed=False,
+            collaborative=False,
             created_at=attrs.get("dateAdded"),
         )
 
@@ -890,6 +1026,26 @@ class AppleMusicAdapter:
             else AddItemResult(uri=uris[position], ok=False, error="track was not processed")
             for position, result in enumerate(results)
         ]
+
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported("Apple Music does not expose playlist unfollow through MusicKit")
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported("Apple Music does not expose library playlist deletion through MusicKit")
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        raise Unsupported(
+            "Apple Music does not expose removal of songs from library playlists through MusicKit"
+        )
 
     async def _post_tracks(
         self,
