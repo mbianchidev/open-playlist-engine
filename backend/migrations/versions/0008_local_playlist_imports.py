@@ -1,7 +1,7 @@
 """Store expiring normalized local playlist-file imports.
 
-Revision ID: 0003_local_playlist_imports
-Revises: 0002_playlist_read_cache
+Revision ID: 0008_local_playlist_imports
+Revises: 0007_merge_sync
 Create Date: 2026-07-14
 """
 
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0003_local_playlist_imports"
-down_revision: str | None = "0002_playlist_read_cache"
+revision: str = "0008_local_playlist_imports"
+down_revision: str | None = "0007_merge_sync"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

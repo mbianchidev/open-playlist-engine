@@ -236,6 +236,11 @@ async def test_local_preflight_surfaces_unsupported_selected_items(
             "load_fresh_credential",
             lambda *args, **kwargs: _async_value((_target_credential(), None)),
         )
+        monkeypatch.setattr(
+            migrations,
+            "load_credential",
+            lambda *args, **kwargs: _async_value((_target_credential(), None)),
+        )
         monkeypatch.setattr(migrations, "get_settings", lambda: migration_settings)
 
         warnings = await migrations._validated_preflight_warnings(
@@ -272,12 +277,12 @@ async def test_create_migration_leases_local_import_once(
         )
 
         async def no_warnings(*args, **kwargs):
-            return []
+            return [], migrations.MigrationSelectionSummary(playlists=1, tracks=1)
 
         async def no_enqueue(*args, **kwargs):
             return None
 
-        monkeypatch.setattr(migrations, "_validated_preflight_warnings", no_warnings)
+        monkeypatch.setattr(migrations, "_validated_preflight", no_warnings)
         monkeypatch.setattr(migrations, "_enqueue_or_inline", no_enqueue)
         monkeypatch.setattr(migrations, "get_settings", lambda: migration_settings)
 
@@ -477,7 +482,7 @@ async def test_failed_worker_keeps_import_for_retry_grace(
     assert expires_at > before
 
 
-async def test_worker_rejects_and_deletes_expired_queued_import(
+async def test_worker_rejects_expired_queued_import(
     migration_database,
     migration_settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
@@ -523,7 +528,8 @@ async def test_worker_rejects_and_deletes_expired_queued_import(
     assert job is not None
     assert job.status == "failed"
     assert "expired before" in (job.error or "")
-    assert import_record is None
+    assert import_record is not None
+    assert import_record.status == "failed"
 
 
 def _patch_worker(

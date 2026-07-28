@@ -127,6 +127,7 @@ async def open_migration_source(
         account_id=account_id,
         adapter=adapter,
         provider=provider,
+        user_id=user_id,
     )
     return MigrationSource(
         provider=provider,

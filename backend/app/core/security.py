@@ -46,3 +46,15 @@ def encrypt(plaintext: str) -> bytes:
 
 def decrypt(token: bytes) -> str:
     return _provider.fernet().decrypt(token).decode()
+
+
+def encrypt_scoped(purpose: str, plaintext: str) -> bytes:
+    return encrypt(f"{purpose}\0{plaintext}")
+
+
+def decrypt_scoped(purpose: str, token: bytes) -> str:
+    prefix = f"{purpose}\0"
+    value = decrypt(token)
+    if not value.startswith(prefix):
+        raise ValueError("encrypted value has the wrong purpose")
+    return value.removeprefix(prefix)

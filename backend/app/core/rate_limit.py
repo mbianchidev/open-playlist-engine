@@ -31,14 +31,51 @@ class RateLimiter:
     def configure(self, key: str, *, capacity: float, refill_per_s: float) -> None:
         self._buckets[key] = _Bucket(capacity, refill_per_s, capacity)
 
-    async def acquire(self, key: str, cost: float = 1.0) -> None:
-        """Block until ``cost`` tokens are available for ``key``."""
+    def ensure_configured(self, key: str, *, capacity: float, refill_per_s: float) -> None:
+        if key not in self._buckets:
+            self.configure(key, capacity=capacity, refill_per_s=refill_per_s)
+
+    async def try_consume(
+        self,
+        key: str,
+        *,
+        capacity: float,
+        refill_per_s: float,
+        cost: float = 1.0,
+    ) -> float | None:
+        """Consume immediately, returning retry seconds instead of sleeping."""
+        if capacity <= 0 or refill_per_s <= 0 or cost <= 0:
+            raise ValueError("rate limit values must be positive")
         async with self._lock:
             bucket = self._buckets.get(key)
-            if bucket is None:
-                # Unconfigured keys are unthrottled; adapters should configure on init.
-                return
-            while True:
+            if (
+                bucket is None
+                or bucket.capacity != capacity
+                or bucket.refill_per_s != refill_per_s
+            ):
+                bucket = _Bucket(capacity, refill_per_s, capacity)
+                self._buckets[key] = bucket
+            now = time.monotonic()
+            bucket.tokens = min(
+                bucket.capacity, bucket.tokens + (now - bucket.updated) * bucket.refill_per_s
+            )
+            bucket.updated = now
+            if bucket.tokens >= cost:
+                bucket.tokens -= cost
+                return None
+            return (cost - bucket.tokens) / bucket.refill_per_s
+
+    async def clear(self) -> None:
+        async with self._lock:
+            self._buckets.clear()
+
+    async def acquire(self, key: str, cost: float = 1.0) -> None:
+        """Block until ``cost`` tokens are available for ``key``."""
+        while True:
+            async with self._lock:
+                bucket = self._buckets.get(key)
+                if bucket is None:
+                    return
                 now = time.monotonic()
                 bucket.tokens = min(
                     bucket.capacity, bucket.tokens + (now - bucket.updated) * bucket.refill_per_s
@@ -48,7 +85,8 @@ class RateLimiter:
                     bucket.tokens -= cost
                     return
                 deficit = cost - bucket.tokens
-                await asyncio.sleep(deficit / bucket.refill_per_s)
+                wait_s = deficit / bucket.refill_per_s
+            await asyncio.sleep(wait_s)
 
 
 rate_limiter = RateLimiter()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import CurrentUserId
 from app.core.adapter import (
     AccessDenied,
     AuthChallenge,
@@ -21,6 +23,7 @@ from app.core.adapter import (
     Unsupported,
 )
 from app.core.registry import get
+from app.db import models as orm
 from app.db.base import get_session
 from app.db.repositories import (
     AccountNotFound,
@@ -31,7 +34,12 @@ from app.db.repositories import (
     load_fresh_credential,
     save_credential,
 )
-from app.settings import get_settings
+from app.db.shares import (
+    consume_recipient_auth_state,
+    decrypt_share_token,
+    share_unavailable_reason,
+)
+from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -71,7 +79,7 @@ def _provider_error(exc: ProviderError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-def _account_view(account) -> AccountView:
+def account_view(account) -> AccountView:
     return AccountView(
         id=account.id,
         provider=account.provider,
@@ -80,8 +88,7 @@ def _account_view(account) -> AccountView:
     )
 
 
-@router.post("/{provider}/begin", response_model=AuthChallenge)
-async def begin(provider: str, user_id: str = "local") -> AuthChallenge:
+async def begin_connection(provider: str, *, user_id: str) -> AuthChallenge:
     try:
         adapter = get(provider)
     except KeyError as exc:
@@ -92,16 +99,52 @@ async def begin(provider: str, user_id: str = "local") -> AuthChallenge:
         raise _provider_error(exc) from exc
 
 
+async def complete_connection(
+    provider: str,
+    callback: dict,
+    session: AsyncSession,
+    *,
+    user_id: str,
+    ephemeral_expires_at: datetime | None = None,
+) -> ConnectionView:
+    try:
+        adapter = get(provider)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        credential = await adapter.auth.complete(user_id=user_id, callback=callback)
+        account = await save_credential(
+            session,
+            user_id=user_id,
+            provider=provider,
+            provider_user_id=credential.account_id,
+            display_name=credential.extra.get("display_name"),
+            credential=credential,
+            ephemeral_expires_at=ephemeral_expires_at,
+        )
+        await session.commit()
+    except ProviderError as exc:
+        raise _provider_error(exc) from exc
+    except (AccountNotFound, CredentialNotFound) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ConnectionView(status="connected", provider=provider, account=account_view(account))
+
+
+@router.post("/{provider}/begin", response_model=AuthChallenge)
+async def begin(provider: str, user_id: CurrentUserId) -> AuthChallenge:
+    return await begin_connection(provider, user_id=user_id)
+
+
 @router.get("/accounts", response_model=list[AccountView])
 async def accounts(
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
     provider: Annotated[str | None, Query()] = None,
     check: Annotated[bool, Query()] = False,
 ) -> list[AccountView]:
     rows = await list_accounts(session, user_id=user_id, provider=provider)
     if not check:
-        return [_account_view(account) for account in rows]
+        return [account_view(account) for account in rows]
 
     valid_accounts = []
     removed = False
@@ -113,6 +156,7 @@ async def accounts(
                 account_id=account.id,
                 adapter=adapter,
                 provider=account.provider,
+                user_id=user_id,
             )
             await adapter.test_connection(credential)
             valid_accounts.append(account)
@@ -130,25 +174,28 @@ async def accounts(
             valid_accounts.append(account)
     if removed:
         await session.commit()
-    return [_account_view(account) for account in valid_accounts]
+    return [account_view(account) for account in valid_accounts]
 
 
 @router.post("/accounts/{account_id}/test", response_model=ConnectionTestView)
 async def test_account_connection(
     account_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
 ) -> ConnectionTestView:
     try:
-        _, account = await load_credential(session, account_id=account_id)
-        if account.user_id != user_id:
-            raise AccountNotFound(account_id)
+        _, account = await load_credential(
+            session,
+            account_id=account_id,
+            user_id=user_id,
+        )
         adapter = get(account.provider)
         credential, account = await load_fresh_credential(
             session,
             account_id=account_id,
             adapter=adapter,
             provider=account.provider,
+            user_id=user_id,
         )
         await adapter.test_connection(credential)
         await session.commit()
@@ -178,46 +225,50 @@ async def complete(
     provider: str,
     callback: dict,
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    user_id: CurrentUserId,
 ) -> ConnectionView:
-    try:
-        adapter = get(provider)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    try:
-        credential = await adapter.auth.complete(user_id=user_id, callback=callback)
-        account = await save_credential(
-            session,
-            user_id=user_id,
-            provider=provider,
-            provider_user_id=credential.account_id,
-            display_name=credential.extra.get("display_name"),
-            credential=credential,
-        )
-        await session.commit()
-    except ProviderError as exc:
-        raise _provider_error(exc) from exc
-    except (AccountNotFound, CredentialNotFound) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ConnectionView(status="connected", provider=provider, account=_account_view(account))
+    return await complete_connection(provider, callback, session, user_id=user_id)
 
 
 @router.get("/{provider}/callback", response_class=HTMLResponse)
 async def callback(
     provider: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    user_id: str = "local",
+    settings: Annotated[Settings, Depends(get_settings)],
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
 ) -> str:
-    result = await complete(
+    if settings.is_hosted:
+        raise HTTPException(status_code=501, detail="Hosted user authentication is not configured")
+    recipient_state = await consume_recipient_auth_state(session, state=state)
+    return_url = settings.frontend_url
+    user_id = "local"
+    ephemeral_expires_at = None
+    if recipient_state is not None:
+        share = await session.get(orm.PlaylistShare, recipient_state.share_id)
+        if share is None:
+            raise HTTPException(status_code=404, detail="playlist share not found")
+        reason = share_unavailable_reason(share)
+        if reason:
+            await session.commit()
+            raise HTTPException(status_code=410, detail=f"playlist share is {reason}")
+        if recipient_state.provider != provider:
+            raise HTTPException(status_code=400, detail="OAuth provider state mismatch")
+        user_id = recipient_state.recipient_user_id
+        ephemeral_expires_at = datetime.now(UTC) + timedelta(
+            seconds=settings.share_recipient_credential_retention_s
+        )
+        token = decrypt_share_token(share)
+        return_url = f"{settings.public_base_url_normalized}/shared/{token}"
+    result = await complete_connection(
         provider,
         {"code": code, "state": state, "error": error},
         session,
-        user_id,
+        user_id=user_id,
+        ephemeral_expires_at=ephemeral_expires_at,
     )
-    app_url = get_settings().frontend_url
+    app_url = return_url
     name = html.escape(
         result.account.display_name or result.account.provider_user_id or result.account.id
     )
