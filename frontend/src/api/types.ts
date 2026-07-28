@@ -118,6 +118,11 @@ export interface Playlist {
   kind: "standard" | "liked_tracks";
 }
 
+export interface PlaylistSelection {
+  playlist_ids: string[];
+  tracks: Record<string, string[]>;
+}
+
 export interface Album {
   id: string | null;
   title: string;
@@ -188,6 +193,20 @@ export interface MigrationSelectionSummary {
   tracks: number;
   saved_albums: number;
   followed_artists: number;
+}
+
+export type ExportFormat = "csv" | "txt" | "m3u8" | "xspf" | "json";
+
+export interface CreateExportBody {
+  source_provider: string;
+  source_account_id: string;
+  format: ExportFormat;
+  selection: PlaylistSelection;
+}
+
+export interface ExportDownloadResult {
+  filename: string;
+  warningCount: number;
 }
 
 export type JobView = ApiSchema<"JobView">;

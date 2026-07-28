@@ -9,8 +9,10 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker + the import→match→review→write pipeline.
+- `app/exports/` — versioned portable schemas, serializers, history reconstruction,
+  and temporary-file-backed archive generation.
 - `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/library`,
-  `/migrations`).
+  `/migrations`, `/exports`).
 
 ## Develop
 ```bash
@@ -66,6 +68,13 @@ items, conservative matching, native contains checks, review, and entity-specifi
 statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+Portable exports read one playlist at a time and stream temporary CSV, TXT, M3U8,
+XSPF, JSON, or ZIP64 artifacts. Live selections use `POST /api/exports`; terminal
+migration history uses `POST /api/exports/migrations/{job_id}` while item details
+remain within retention. The default limit is 100 playlists per request
+(`OPE_EXPORT_MAX_PLAYLISTS`) with no track cap. See
+[`docs/EXPORTING_PLAYLISTS.md`](../docs/EXPORTING_PLAYLISTS.md).
 
 The existing migration stats API also exposes complete history details. Track,
 album, and artist rows support owner-scoped filters and optional paging, while

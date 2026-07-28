@@ -27,20 +27,24 @@ The script invokes a pinned code generator ephemerally, keeping codegen-only par
 dependencies out of the installed/audited frontend dependency graph.
 
 ## Flow (maps to the phased design)
-1. Pick source/target providers from `/api/providers`.
+1. Pick a source and optional target provider from `/api/providers`.
 2. Connect accounts through generic auth challenges.
 3. Load source playlists from `/api/playlists` and saved albums/artists from
    `/api/library`, including target limitations and follow/favorite semantics.
-4. Create a migration with selected playlist, track, album, and artist IDs. The
+4. Without a target account, download selected playlists through `/api/exports` as
+   JSON, CSV, TXT, M3U8, or XSPF.
+5. Create a migration with selected playlist, track, album, and artist IDs. The
    preflight confirms per-entity counts; warning popups guard slow defaults,
    semantic conversions, and same-name target playlist conflicts.
-5. Render live job/item progress from SSE.
-6. Review low-confidence matches by approving a suggested target URI, pasting a
+6. Render live job/item progress from SSE.
+7. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
-7. Reopen migrations in **History**, filter track/album/artist results, inspect prior
+8. Reopen migrations in **History**, filter track/album/artist results, inspect prior
    decisions and errors, follow entity-aware target links, and download filtered
    all/problem CSV or JSON reports.
+9. Download the source playlist snapshot from a completed/failed migration while its
+   retained item details remain available.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised

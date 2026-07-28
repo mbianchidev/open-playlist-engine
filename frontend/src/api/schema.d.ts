@@ -89,6 +89,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Export */
+        post: operations["create_export_api_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports/migrations/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create History Export */
+        post: operations["create_history_export_api_exports_migrations__job_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library": {
         parameters: {
             query?: never;
@@ -528,6 +562,19 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** CreateExport */
+        CreateExport: {
+            format: components["schemas"]["ExportFormat"];
+            selection: components["schemas"]["PlaylistSelection"];
+            /** Source Account Id */
+            source_account_id: string;
+            /** Source Provider */
+            source_provider: string;
+        };
+        /** CreateHistoryExport */
+        CreateHistoryExport: {
+            format: components["schemas"]["ExportFormat"];
+        };
         /** CreateMigration */
         CreateMigration: {
             /**
@@ -556,6 +603,11 @@ export interface components {
             /** Uri */
             uri?: string | null;
         };
+        /**
+         * ExportFormat
+         * @enum {string}
+         */
+        ExportFormat: "csv" | "txt" | "m3u8" | "xspf" | "json";
         /** FollowedArtistsView */
         FollowedArtistsView: {
             /**
@@ -896,6 +948,15 @@ export interface components {
             track_count?: number | null;
             /** Tracks Href */
             tracks_href?: string | null;
+        };
+        /** PlaylistSelection */
+        PlaylistSelection: {
+            /** Playlist Ids */
+            playlist_ids?: string[];
+            /** Tracks */
+            tracks?: {
+                [key: string]: string[];
+            };
         };
         /** PlaylistStatsView */
         PlaylistStatsView: {
@@ -1266,6 +1327,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_export_api_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateExport"];
+            };
+        };
+        responses: {
+            /** @description A portable playlist file or multi-playlist ZIP archive. */
+            200: {
+                headers: {
+                    /** @description Deterministic sanitized download filename. */
+                    "Content-Disposition"?: string;
+                    /** @description Number of warnings represented in the output. */
+                    "X-Open-Playlist-Warning-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                    "application/vnd.open-playlist+json": string;
+                    "application/xspf+xml": string;
+                    "application/zip": string;
+                    "text/csv": string;
+                    "text/plain": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_history_export_api_exports_migrations__job_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateHistoryExport"];
+            };
+        };
+        responses: {
+            /** @description A portable playlist file or multi-playlist ZIP archive. */
+            200: {
+                headers: {
+                    /** @description Deterministic sanitized download filename. */
+                    "Content-Disposition"?: string;
+                    /** @description Number of warnings represented in the output. */
+                    "X-Open-Playlist-Warning-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                    "application/vnd.open-playlist+json": string;
+                    "application/xspf+xml": string;
+                    "application/zip": string;
+                    "text/csv": string;
+                    "text/plain": string;
                 };
             };
             /** @description Validation Error */

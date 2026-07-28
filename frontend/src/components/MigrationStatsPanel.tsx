@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, ExternalLink, History, RefreshCw } from "lucide-react";
 import {
+  downloadMigrationExport,
   getAggregateMigrationStats,
   getMigrationStats,
   listMigrations,
@@ -13,6 +14,7 @@ import type {
   StatusCounts,
 } from "../api/types";
 import { providerLabel, targetPlaylistUrl } from "../utils/providers";
+import ExportControls from "./ExportControls";
 import MigrationHistoryDetail from "./MigrationHistoryDetail";
 
 interface Props {
@@ -183,6 +185,21 @@ export default function MigrationStatsPanel({ providers, refreshKey, className }
               <>
                 <SingleMigrationStats stats={selectedStats} />
                 <MigrationHistoryDetail stats={selectedStats} />
+                {selectedStats.playlist_count > 0 && selectedStats.detail_available ? (
+                  <div className="stats-export-row">
+                    <div>
+                      <strong>Portable source playlists</strong>
+                      <p className="muted">
+                        Download the source playlists and tracks recorded for this migration.
+                      </p>
+                    </div>
+                    <ExportControls
+                      disabled={!["done", "failed"].includes(selectedStats.status)}
+                      buttonLabel="Download playlists"
+                      onExport={(format) => downloadMigrationExport(selectedMigrationId, format)}
+                    />
+                  </div>
+                ) : null}
               </>
             ) : null}
           </>

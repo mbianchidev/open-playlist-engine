@@ -532,6 +532,44 @@
         "title": "ConnectionView",
         "type": "object"
       },
+      "CreateExport": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/PlaylistSelection"
+          },
+          "source_account_id": {
+            "title": "Source Account Id",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_provider",
+          "source_account_id",
+          "format",
+          "selection"
+        ],
+        "title": "CreateExport",
+        "type": "object"
+      },
+      "CreateHistoryExport": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "CreateHistoryExport",
+        "type": "object"
+      },
       "CreateMigration": {
         "properties": {
           "acknowledge_warnings": {
@@ -608,6 +646,17 @@
         ],
         "title": "Credit",
         "type": "object"
+      },
+      "ExportFormat": {
+        "enum": [
+          "csv",
+          "txt",
+          "m3u8",
+          "xspf",
+          "json"
+        ],
+        "title": "ExportFormat",
+        "type": "string"
       },
       "FollowedArtistsView": {
         "properties": {
@@ -1664,6 +1713,29 @@
         "title": "PlaylistRef",
         "type": "object"
       },
+      "PlaylistSelection": {
+        "properties": {
+          "playlist_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playlist Ids",
+            "type": "array"
+          },
+          "tracks": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Tracks",
+            "type": "object"
+          }
+        },
+        "title": "PlaylistSelection",
+        "type": "object"
+      },
       "PlaylistStatsView": {
         "properties": {
           "counts": {
@@ -2590,6 +2662,189 @@
         "summary": "Complete",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/exports": {
+      "post": {
+        "operationId": "create_export_api_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/vnd.open-playlist+json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/xspf+xml": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A portable playlist file or multi-playlist ZIP archive.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Deterministic sanitized download filename.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Open-Playlist-Warning-Count": {
+                "description": "Number of warnings represented in the output.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/exports/migrations/{job_id}": {
+      "post": {
+        "operationId": "create_history_export_api_exports_migrations__job_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateHistoryExport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/vnd.open-playlist+json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/xspf+xml": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A portable playlist file or multi-playlist ZIP archive.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Deterministic sanitized download filename.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Open-Playlist-Warning-Count": {
+                "description": "Number of warnings represented in the output.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create History Export",
+        "tags": [
+          "exports"
         ]
       }
     },

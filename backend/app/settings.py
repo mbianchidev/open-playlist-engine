@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     migration_safe_daily_tracks: int = 250
     migration_safe_min_job_gap_s: int = 120
     migration_worker_job_timeout_s: int = 3600
+    export_max_playlists: int = 100
     migration_history_retention_days: int = Field(default=90, ge=0)
     migration_history_cleanup_batch_size: int = Field(default=100, ge=1, le=10_000)
     migration_report_batch_size: int = Field(default=250, ge=1, le=5_000)

@@ -60,6 +60,7 @@ from app.db.migration_history import (
     summary_playlists,
 )
 from app.db.repositories import load_fresh_credential
+from app.exports.history import store_playlist_snapshot
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,8 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         playlist = await source.read_playlist(
             source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
         )
+        store_playlist_snapshot(job, playlist, playlist_id=playlist_id)
+        await session.commit()
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
         tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         logger.info(

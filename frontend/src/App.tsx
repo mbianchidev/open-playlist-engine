@@ -19,6 +19,7 @@ import {
   beginAuth,
   completeAuth,
   createMigration,
+  downloadPlaylistExport,
   getAccounts,
   getLibrary,
   getPlaylist,
@@ -33,6 +34,7 @@ import type {
   Artist,
   AuthChallenge,
   CreateMigrationBody,
+  ExportFormat,
   MigrationWarningsView,
   LibraryView,
   PlaylistRef,
@@ -40,6 +42,7 @@ import type {
   Track,
 } from "./api/types";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
+import ExportControls from "./components/ExportControls";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
@@ -92,11 +95,14 @@ export default function App() {
   );
   const blockedSpotifyPlaylistIds = new Set(blockedSpotifyPlaylists.map((playlist) => playlist.id));
   const availablePlaylists = playlists.filter((playlist) => !blockedSpotifyPlaylistIds.has(playlist.id));
-  const selectedMigrationPlaylistIds = getSelectedMigrationPlaylistIds(
+  const selectedExportPlaylistIds = getSelectedMigrationPlaylistIds(
     selectedPlaylists,
     playlistTracks,
     selectedTracks,
-  ).filter((id) => !blockedSpotifyPlaylistIds.has(id));
+  );
+  const selectedMigrationPlaylistIds = selectedExportPlaylistIds.filter(
+    (id) => !blockedSpotifyPlaylistIds.has(id),
+  );
   const selectedMigrationPlaylists = selectedMigrationPlaylistIds
     .map((id) => availablePlaylists.find((playlist) => playlist.id === id))
     .filter((playlist): playlist is PlaylistRef => Boolean(playlist));
@@ -132,7 +138,7 @@ export default function App() {
 
   const refreshSourcePlaylists = useCallback(
     async (options: { resetSelection?: boolean; forceRefresh?: boolean } = {}) => {
-      if (!source || !sourceAccount || !target || !targetAccount) {
+      if (!source || !sourceAccount) {
         setPlaylistLoading(false);
         return;
       }
@@ -140,11 +146,17 @@ export default function App() {
       playlistLoadId.current = loadId;
       setPlaylistLoading(true);
       try {
-        const rows = await getPlaylists(source, sourceAccount.id, {
-          targetProvider: target,
-          targetAccountId: targetAccount.id,
-          refresh: options.forceRefresh,
-        });
+        const rows = await getPlaylists(
+          source,
+          sourceAccount.id,
+          target && targetAccount
+            ? {
+                targetProvider: target,
+                targetAccountId: targetAccount.id,
+                refresh: options.forceRefresh,
+              }
+            : { refresh: options.forceRefresh },
+        );
         if (loadId !== playlistLoadId.current) return;
         setPlaylists(rows);
         setPlaylistError(null);
@@ -514,11 +526,7 @@ export default function App() {
   async function start() {
     if (!source || !target || !sourceAccount || !targetAccount) return;
     const playlistIds = selectedMigrationPlaylistIds;
-    const tracks = Object.fromEntries(
-      playlistIds
-        .filter((id) => playlistTracks[id])
-        .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
-    );
+    const tracks = selectedTrackFilters(playlistIds, playlistTracks, selectedTracks);
     const body: CreateMigrationBody = {
       source_provider: source,
       target_provider: target,
@@ -560,6 +568,25 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function exportSelected(format: ExportFormat) {
+    if (!source || !sourceAccount || selectedExportPlaylistIds.length === 0) {
+      throw new Error("Select at least one playlist to export.");
+    }
+    return downloadPlaylistExport({
+      source_provider: source,
+      source_account_id: sourceAccount.id,
+      format,
+      selection: {
+        playlist_ids: selectedExportPlaylistIds,
+        tracks: selectedTrackFilters(
+          selectedExportPlaylistIds,
+          playlistTracks,
+          selectedTracks,
+        ),
+      },
+    });
   }
 
   function togglePlaylist(id: string) {
@@ -651,15 +678,22 @@ export default function App() {
   }
 
   async function loadTracks(playlist: PlaylistRef, options: { forceRefresh?: boolean } = {}) {
-    if (!source || !sourceAccount || !target || !targetAccount) return;
+    if (!source || !sourceAccount) return;
     setBusy(true);
     setError(null);
     try {
-      const detail = await getPlaylist(source, sourceAccount.id, playlist.id, {
-        targetProvider: target,
-        targetAccountId: targetAccount.id,
-        refresh: options.forceRefresh,
-      });
+      const detail = await getPlaylist(
+        source,
+        sourceAccount.id,
+        playlist.id,
+        target && targetAccount
+          ? {
+              targetProvider: target,
+              targetAccountId: targetAccount.id,
+              refresh: options.forceRefresh,
+            }
+          : { refresh: options.forceRefresh },
+      );
       const defaultSelected = unmigratedTrackKeys(detail.tracks);
       if (detail.tracks.length > 0 && defaultSelected.length === 0) {
         markPlaylistFullyMigrated(playlist.id, detail.tracks.length);
@@ -1075,7 +1109,9 @@ export default function App() {
                 </span>
                 <div>
                   <h2>Connect accounts</h2>
-                  <p className="muted">Authorize both services before choosing playlists.</p>
+                  <p className="muted">
+                    Connect a source to export; connect both services to migrate.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1324,7 +1360,7 @@ export default function App() {
               <div>
                 <p className="action-label">
                   <CircleGauge aria-hidden="true" />
-                  Ready to migrate
+                  Ready to move or export
                 </p>
                 <p className="muted">
                   {selectedMigrationPlaylistIds.length} playlist
@@ -1340,10 +1376,21 @@ export default function App() {
                   </ul>
                 ) : null}
               </div>
-              <button className="primary" disabled={startDisabled} onClick={() => start()}>
-                <Play aria-hidden="true" />
-                {busy ? "Starting…" : "Start migration"}
-              </button>
+              <div className="migration-action-buttons">
+                <ExportControls
+                  disabled={
+                    busy ||
+                    !source ||
+                    !sourceAccount ||
+                    selectedExportPlaylistIds.length === 0
+                  }
+                  onExport={exportSelected}
+                />
+                <button className="primary" disabled={startDisabled} onClick={() => start()}>
+                  <Play aria-hidden="true" />
+                  {busy ? "Starting…" : "Start migration"}
+                </button>
+              </div>
             </div>
             {jobId ? (
               <div className="migration-progress-slot">
@@ -1523,6 +1570,18 @@ function getSelectedMigrationPlaylistIds(
     if (!loaded) return true;
     return (selectedTracks[id]?.size ?? 0) > 0;
   });
+}
+
+function selectedTrackFilters(
+  playlistIds: string[],
+  playlistTracks: Record<string, Track[]>,
+  selectedTracks: Record<string, Set<string>>,
+): Record<string, string[]> {
+  return Object.fromEntries(
+    playlistIds
+      .filter((id) => playlistTracks[id])
+      .map((id) => [id, [...(selectedTracks[id] ?? new Set<string>())]]),
+  );
 }
 
 function isAnnotatedMigratedPlaylist(playlist: PlaylistRef): boolean {
