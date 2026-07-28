@@ -37,8 +37,13 @@ class FakeYTMusic:
             "id": playlistId,
             "title": playlist["title"],
             "description": playlist["description"],
+            "owned": True,
+            "author": {"name": "Fixture User", "id": "fixture-user"},
             "trackCount": len(playlist["tracks"]),
-            "tracks": self._tracks(playlist["tracks"][:track_limit]),
+            "tracks": self._tracks(
+                playlist["tracks"][:track_limit],
+                playlist["set_video_ids"][:track_limit],
+            ),
         }
 
     def get_liked_songs(self, limit: int | None = 100) -> dict[str, Any]:
@@ -48,22 +53,30 @@ class FakeYTMusic:
             "title": "Liked Songs",
             "description": None,
             "trackCount": len(self.liked_tracks),
-            "tracks": self._tracks(self.liked_tracks[:track_limit]),
+            "tracks": self._tracks(
+                self.liked_tracks[:track_limit],
+                [f"liked_{index}" for index in range(track_limit)],
+            ),
         }
 
-    def _tracks(self, video_ids: list[str]) -> list[dict[str, Any]]:
+    def _tracks(
+        self,
+        video_ids: list[str],
+        set_video_ids: list[str],
+    ) -> list[dict[str, Any]]:
         return [
             {
                 "videoId": video_id,
+                "setVideoId": set_video_id,
                 "title": title,
                 "artists": [{"name": artist}],
                 "album": {"name": album},
                 "duration_seconds": duration,
                 "isExplicit": False,
             }
-            for video_id, title, artist, album, duration in (
-                _VIDEO_FIXTURES.get(video_id, (video_id, video_id, "", None, None))
-                for video_id in video_ids
+            for video_id, set_video_id in zip(video_ids, set_video_ids, strict=True)
+            for title, artist, album, duration in (
+                [_VIDEO_FIXTURES.get(video_id, (video_id, video_id, "", None, None))[1:]]
             )
         ]
 
@@ -82,6 +95,9 @@ class FakeYTMusic:
             "description": description,
             "privacy": privacy_status,
             "tracks": list(video_ids or []),
+            "set_video_ids": [
+                f"set_{video_id}_{index}" for index, video_id in enumerate(video_ids or [])
+            ],
         }
         return playlist_id
 
@@ -97,8 +113,38 @@ class FakeYTMusic:
         results = []
         for video_id in videoIds or []:
             self.playlists[playlistId]["tracks"].append(video_id)
-            results.append({"videoId": video_id, "setVideoId": f"set_{video_id}"})
+            set_video_id = f"set_{video_id}_{len(self.playlists[playlistId]['tracks']) - 1}"
+            self.playlists[playlistId]["set_video_ids"].append(set_video_id)
+            results.append({"videoId": video_id, "setVideoId": set_video_id})
         return {"status": "STATUS_SUCCEEDED", "playlistEditResults": results}
+
+    def delete_playlist(self, playlistId: str) -> dict[str, Any]:
+        if playlistId not in self.playlists:
+            return {"status": "STATUS_FAILED", "error": "playlist not found"}
+        del self.playlists[playlistId]
+        return {"status": "STATUS_SUCCEEDED"}
+
+    def remove_playlist_items(
+        self,
+        playlistId: str,
+        videos: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        playlist = self.playlists.get(playlistId)
+        if playlist is None:
+            return {"status": "STATUS_FAILED", "error": "playlist not found"}
+        wanted = {video["setVideoId"] for video in videos}
+        kept = [
+            (video_id, set_video_id)
+            for video_id, set_video_id in zip(
+                playlist["tracks"],
+                playlist["set_video_ids"],
+                strict=True,
+            )
+            if set_video_id not in wanted
+        ]
+        playlist["tracks"] = [video_id for video_id, _ in kept]
+        playlist["set_video_ids"] = [set_video_id for _, set_video_id in kept]
+        return {"status": "STATUS_SUCCEEDED"}
 
     def search(
         self, query: str, filter: str | None = None, limit: int = 20

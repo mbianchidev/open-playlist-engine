@@ -8,11 +8,12 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
-- `app/jobs/` — arq worker + the import→match→review→write pipeline.
+- `app/jobs/` — arq worker + migration and durable playlist-organizer jobs.
 - `app/exports/` — versioned portable schemas, serializers, history reconstruction,
   and temporary-file-backed archive generation.
 - `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/library`,
-  `/migrations`, `/exports`, owner `/shares`, and isolated `/public/shares`).
+  `/migrations`, `/organizer`, `/exports`, owner `/shares`, and isolated
+  `/public/shares`).
 
 ## Develop
 ```bash
@@ -41,12 +42,12 @@ Album/artist support is independently structural: implement only the advertised
 `FollowedArtistReader`/`FollowedArtistWriter` contracts.
 
 ## Provider status
-| Provider | Read / Search | Write | Test seam |
-|---|---|---|---|
-| Spotify | ✅ playlists, liked tracks, saved albums, followed artists | ✅ native playlist/library writes | recorded JSON fixtures via injected `httpx.MockTransport` |
-| Tidal | ✅ playlists, liked tracks, saved albums, favorite artists | ✅ native playlist/collection writes | recorded JSON:API fixtures via injected `httpx.MockTransport` |
-| YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | injected in-memory client (`client_factory`) |
-| Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Provider | Read / Search | Migration write | Organizer | Test seam |
+|---|---|---|---|---|
+| Spotify | ✅ playlists, liked tracks, saved albums, followed artists | ✅ native playlist/library writes | ✅ safe unfollow + exact song removal; no destructive delete | recorded JSON fixtures via injected `httpx.MockTransport` |
+| Tidal | ✅ playlists, liked tracks, saved albums, favorite artists | ✅ native playlist/collection writes | ✅ owned-playlist delete; song removal gated off | recorded JSON:API fixtures via injected `httpx.MockTransport` |
+| YouTube Music | ✅ device-code/header auth + playlist/Liked Songs read/search | ✅ playlist writes + native likes (`ytmusicapi`) | ✅ owned-playlist delete + `setVideoId` song removal; no verified safe unfollow | injected in-memory client (`client_factory`) |
+| Apple Music | ✅ MusicKit user auth + library read and ISRC/text catalog search | ✅ library playlist create/add | read-only; MusicKit lacks delete/remove operations | recorded JSON fixtures via injected `httpx.MockTransport` |
 
 The unofficial YouTube Music API can't be recorded as stable HTTP, so its seam is
 an injected client object instead of a transport. Real singletons use the network;
@@ -68,6 +69,12 @@ items, conservative matching, native contains checks, review, and entity-specifi
 statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+Playlist Organizer uses separate `organizer_job` and `organizer_item` tables. The
+worker persists per-playlist results, skips successful items on retry, rate-limits
+provider/account writes, and invalidates playlist caches after successful work.
+Provider behavior and recovery limits are documented in
+[`docs/PLAYLIST_ORGANIZER.md`](../docs/PLAYLIST_ORGANIZER.md).
 
 Portable exports read one playlist at a time and stream temporary CSV, TXT, M3U8,
 XSPF, JSON, or ZIP64 artifacts. Live selections use `POST /api/exports`; terminal

@@ -430,4 +430,3 @@ def _filename_slug(value: str) -> str:
 def _ensure_bytes(content: bytes, max_bytes: int, kind: str) -> None:
     if len(content) > max_bytes:
         raise SnapshotLimitError(f"{kind} exceeds public share byte limit of {max_bytes}")
-

@@ -22,6 +22,9 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert rows["spotify"]["can_source"] is True
     assert rows["spotify"]["can_target"] is True
     assert rows["spotify"]["has_isrc"] is True
+    assert rows["spotify"]["can_unfollow_playlist"] is True
+    assert rows["spotify"]["can_delete_playlist"] is False
+    assert rows["spotify"]["can_remove_tracks"] is True
     assert rows["spotify"]["saved_albums"] == {"read": True, "write": True}
     assert rows["spotify"]["followed_artists"] == {
         "read": True,
@@ -33,7 +36,13 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert rows["tidal"]["has_isrc"] is True
     assert rows["tidal"]["saved_albums"] == {"read": True, "write": True}
     assert rows["tidal"]["followed_artists"]["semantics"] == "favorite"
+    assert rows["tidal"]["can_unfollow_playlist"] is False
+    assert rows["tidal"]["can_delete_playlist"] is True
+    assert rows["tidal"]["can_remove_tracks"] is False
     assert rows["applemusic"]["can_source"] is True
     assert rows["applemusic"]["can_target"] is True
+    assert rows["applemusic"]["can_unfollow_playlist"] is False
+    assert rows["applemusic"]["can_delete_playlist"] is False
+    assert rows["applemusic"]["can_remove_tracks"] is False
     assert rows["applemusic"]["auth_kind"] == "developer_user_token"
     assert rows["applemusic"]["saved_albums"] == {"read": False, "write": False}

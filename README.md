@@ -17,7 +17,8 @@ instantly works with all the others — both as source and target.
 > playlist/track/album/artist selection, CSV/TXT/M3U8/XSPF/JSON playlist exports,
 > partial-migration detection, migration jobs, review actions, SSE progress,
 > reopenable migration history, mixed-entity statistics, streamed CSV/JSON
-> reports, and opt-in immutable public playlist shares are wired. Other provider
+> reports, opt-in immutable public playlist shares, and a capability-gated Playlist
+> Organizer are wired. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -41,7 +42,7 @@ for low-confidence matches.
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
 | `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
-| `docs/` | Design, provider setup, portable export documentation, and ADRs. |
+| `docs/` | Design, provider setup, Organizer, sharing, history, portable export documentation, and ADRs. |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
 the generated OpenAPI client.
@@ -94,7 +95,12 @@ Safe migration defaults are intentionally slow and can be overridden only after 
 warning in the UI: 1 playlist/job, 50 tracks/job, 250 tracks/day, and 120 seconds
 between jobs (`OPE_MIGRATION_SAFE_*`). Worker jobs can run for up to 3600 seconds
 by default (`OPE_MIGRATION_WORKER_JOB_TIMEOUT_S`) so large playlists do not hit
-ARQ's 5-minute default timeout. Portable exports allow up to 100 playlists per
+ARQ's 5-minute default timeout.
+Organizer pacing and retries use `OPE_ORGANIZER_RATE_LIMIT_CAPACITY`,
+`OPE_ORGANIZER_RATE_LIMIT_REFILL_PER_S`, `OPE_ORGANIZER_RETRY_ATTEMPTS`,
+`OPE_ORGANIZER_RETRY_MAX_DELAY_S`, and
+`OPE_ORGANIZER_WORKER_JOB_TIMEOUT_S`.
+Portable exports allow up to 100 playlists per
 download by default (`OPE_EXPORT_MAX_PLAYLISTS`) and do not impose a track cap.
 
 ## Portable local exports
@@ -186,13 +192,20 @@ albums or artists into synthetic playlists.
 9. Review low-confidence matches in the progress panel: approve the suggested
    YouTube Music URI, approve all suggested matches, paste a corrected URI/video
    ID, skip one item, or deny all doubtful items.
-10. Open the **History** tab to reopen completed, partial, or failed migrations.
+10. Open **Organizer** to filter and sort one connected library, safely remove
+    playlists, permanently delete owned playlists where supported, or remove exact
+    song entries. The preflight shows ownership, collaboration, recovery impact, and
+    unsupported operations. Destructive work requires an exact typed phrase; retries
+    run failed playlist items only. Duplicate scans are review-only and never select
+    or remove a candidate. See
+    [`docs/PLAYLIST_ORGANIZER.md`](docs/PLAYLIST_ORGANIZER.md).
+11. Open the **History** tab to reopen completed, partial, or failed migrations.
     Inspect accounts, collections, lifecycle timestamps, warnings, target links,
     prior review decisions, and filtered item results; download all rows or only
     problem rows as streamed CSV/JSON. Aggregate stats remain filterable by source
     and target provider. Report fields and retention behavior are documented in
     [`docs/MIGRATION_HISTORY.md`](docs/MIGRATION_HISTORY.md).
-11. Re-running a playlist reuses an existing migrated target playlist, labels
+12. Re-running a playlist reuses an existing migrated target playlist, labels
    partial source playlists/tracks, and skips duplicate target songs with an item
    notice instead of adding them twice. Saved albums and artists use native target
    contains checks before writes, so reruns report already-present items instead of

@@ -126,4 +126,3 @@ async def logout(
         sharing_enabled=settings.sharing_enabled,
         sharing_disabled_reason=settings.sharing_disabled_reason,
     )
-

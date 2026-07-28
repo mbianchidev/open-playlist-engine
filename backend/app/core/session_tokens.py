@@ -84,4 +84,3 @@ def verify_session(
     if age > max_age_s:
         raise SessionTokenError("session token expired")
     return subject
-

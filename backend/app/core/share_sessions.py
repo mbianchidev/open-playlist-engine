@@ -59,7 +59,6 @@ def require_recipient_session(request: Request, settings: Settings) -> str:
         raise HTTPException(status_code=401, detail="Recipient session required")
     return session_id
 
-
 def recipient_user_id(share_id: str, session_id: str) -> str:
     return f"share-recipient:{share_id}:{session_id}"
-
+    return f"share-recipient:{share_id}:{session_id}"

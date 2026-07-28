@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
-from app.core.models import Album, Artist, ArtistCollectionSemantics, Track
+from app.core.models import Album, Artist, ArtistCollectionSemantics, PlaylistRef, Track
 
 
 def test_track_accepts_structured_credits() -> None:
@@ -20,6 +20,25 @@ def test_track_accepts_structured_credits() -> None:
     assert track.credits[0].role == "featured_artist"
     assert track.credits[1].name == "Max Martin"
     assert track.model_dump()["credits"][1]["uri"] == "https://music.example.com/artist/max-martin"
+
+
+def test_playlist_ref_accepts_organizer_metadata() -> None:
+    updated_at = datetime(2026, 7, 14, tzinfo=UTC)
+
+    playlist = PlaylistRef(
+        id="playlist",
+        name="Roadtrip",
+        owner_id="owner",
+        owner_name="Owner",
+        is_owned=False,
+        is_followed=True,
+        updated_at=updated_at,
+    )
+
+    assert playlist.owner_name == "Owner"
+    assert playlist.is_owned is False
+    assert playlist.is_followed is True
+    assert playlist.updated_at == updated_at
 
 
 def test_album_preserves_cross_provider_matching_metadata() -> None:

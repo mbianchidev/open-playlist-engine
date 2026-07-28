@@ -31,6 +31,10 @@ class RateLimiter:
     def configure(self, key: str, *, capacity: float, refill_per_s: float) -> None:
         self._buckets[key] = _Bucket(capacity, refill_per_s, capacity)
 
+    def ensure_configured(self, key: str, *, capacity: float, refill_per_s: float) -> None:
+        if key not in self._buckets:
+            self.configure(key, capacity=capacity, refill_per_s=refill_per_s)
+
     async def try_consume(
         self,
         key: str,
@@ -67,12 +71,11 @@ class RateLimiter:
 
     async def acquire(self, key: str, cost: float = 1.0) -> None:
         """Block until ``cost`` tokens are available for ``key``."""
-        async with self._lock:
-            bucket = self._buckets.get(key)
-            if bucket is None:
-                # Unconfigured keys are unthrottled; adapters should configure on init.
-                return
-            while True:
+        while True:
+            async with self._lock:
+                bucket = self._buckets.get(key)
+                if bucket is None:
+                    return
                 now = time.monotonic()
                 bucket.tokens = min(
                     bucket.capacity, bucket.tokens + (now - bucket.updated) * bucket.refill_per_s
@@ -82,7 +85,8 @@ class RateLimiter:
                     bucket.tokens -= cost
                     return
                 deficit = cost - bucket.tokens
-                await asyncio.sleep(deficit / bucket.refill_per_s)
+                wait_s = deficit / bucket.refill_per_s
+            await asyncio.sleep(wait_s)
 
 
 rate_limiter = RateLimiter()

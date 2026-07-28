@@ -311,6 +311,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizer/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze Duplicates */
+        post: operations["analyze_duplicates_api_organizer_duplicates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizer/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Organizer Jobs */
+        get: operations["list_organizer_jobs_api_organizer_jobs_get"];
+        put?: never;
+        /** Create Organizer Job */
+        post: operations["create_organizer_job_api_organizer_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizer/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organizer Job */
+        get: operations["get_organizer_job_api_organizer_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizer/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Organizer Job */
+        post: operations["retry_organizer_job_api_organizer_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizer/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Organizer Playlists */
+        get: operations["list_organizer_playlists_api_organizer_playlists_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizer/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preflight Organizer */
+        post: operations["preflight_organizer_api_organizer_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/playlists": {
         parameters: {
             query?: never;
@@ -928,6 +1031,27 @@ export interface components {
             /** Uri */
             uri?: string | null;
         };
+        /** DuplicateCandidateView */
+        DuplicateCandidateView: {
+            /** Normalized Name */
+            normalized_name: string;
+            /** Overlap Count */
+            overlap_count: number;
+            /** Overlap Ratio */
+            overlap_ratio: number;
+            /** Playlist Ids */
+            playlist_ids: [
+                string,
+                string
+            ];
+            /** Playlist Names */
+            playlist_names: [
+                string,
+                string
+            ];
+            /** Reasons */
+            reasons: string[];
+        };
         /**
          * ExportFormat
          * @enum {string}
@@ -1213,6 +1337,168 @@ export interface components {
                 [key: string]: string;
             }[];
         };
+        /**
+         * OrganizerAction
+         * @enum {string}
+         */
+        OrganizerAction: "unfollow_playlist" | "delete_playlist" | "remove_tracks";
+        /**
+         * OrganizerIntent
+         * @enum {string}
+         */
+        OrganizerIntent: "remove" | "delete" | "remove_tracks";
+        /** OrganizerItemView */
+        OrganizerItemView: {
+            /** Action */
+            action: string;
+            /** Attempts */
+            attempts: number;
+            /** Collaborative */
+            collaborative?: boolean | null;
+            /** Destructive */
+            destructive: boolean;
+            /** Error */
+            error?: string | null;
+            /** Id */
+            id: string;
+            /** Ownership */
+            ownership: string;
+            /** Playlist Id */
+            playlist_id: string;
+            /** Playlist Name */
+            playlist_name: string;
+            /** Request Payload */
+            request_payload?: {
+                [key: string]: unknown;
+            };
+            /** Result Payload */
+            result_payload?: {
+                [key: string]: unknown;
+            };
+            /** Retryable */
+            retryable: boolean;
+            /** Status */
+            status: string;
+        };
+        /** OrganizerJobView */
+        OrganizerJobView: {
+            /** Account Id */
+            account_id: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Done */
+            done: number;
+            /** Error */
+            error?: string | null;
+            /** Failed */
+            failed: number;
+            /** Id */
+            id: string;
+            /** Items */
+            items?: components["schemas"]["OrganizerItemView"][];
+            /** Provider */
+            provider: string;
+            /** Status */
+            status: string;
+            /** Total */
+            total: number;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** OrganizerPlaylistView */
+        OrganizerPlaylistView: {
+            /** Available Intents */
+            available_intents?: components["schemas"]["OrganizerIntent"][];
+            /** Notes */
+            notes?: string[];
+            /** Ownership */
+            ownership: string;
+            playlist: components["schemas"]["PlaylistRef"];
+            /**
+             * Requires Ownership Check
+             * @default false
+             */
+            requires_ownership_check: boolean;
+        };
+        /** OrganizerPreflightGroupView */
+        OrganizerPreflightGroupView: {
+            action: components["schemas"]["OrganizerAction"];
+            /** Destructive */
+            destructive: boolean;
+            /** Items */
+            items?: components["schemas"]["OrganizerPreflightItemView"][];
+            /** Label */
+            label: string;
+            /** Recovery */
+            recovery: string;
+        };
+        /** OrganizerPreflightItemView */
+        OrganizerPreflightItemView: {
+            action: components["schemas"]["OrganizerAction"];
+            /** Collaborative */
+            collaborative?: boolean | null;
+            /** Destructive */
+            destructive: boolean;
+            /** Ownership */
+            ownership: string;
+            /** Playlist Id */
+            playlist_id: string;
+            /** Playlist Name */
+            playlist_name: string;
+            /** Recovery */
+            recovery: string;
+            /**
+             * Selected Track Count
+             * @default 0
+             */
+            selected_track_count: number;
+        };
+        /** OrganizerPreflightView */
+        OrganizerPreflightView: {
+            /**
+             * Code
+             * @default organizer_preflight
+             */
+            code: string;
+            /** Confirmation Phrase */
+            confirmation_phrase?: string | null;
+            /**
+             * Confirmation Required
+             * @default false
+             */
+            confirmation_required: boolean;
+            /** Groups */
+            groups?: components["schemas"]["OrganizerPreflightGroupView"][];
+            /**
+             * Total Playlists
+             * @default 0
+             */
+            total_playlists: number;
+            /**
+             * Total Tracks
+             * @default 0
+             */
+            total_tracks: number;
+            /** Unsupported */
+            unsupported?: components["schemas"]["UnsupportedOrganizerItem"][];
+        };
+        /** OrganizerRequest */
+        OrganizerRequest: {
+            /** Account Id */
+            account_id: string;
+            /** Confirmation */
+            confirmation?: string | null;
+            /** Provider */
+            provider: string;
+            selection?: components["schemas"]["OrganizerSelection"];
+        };
+        /** OrganizerSelection */
+        OrganizerSelection: {
+            /** Playlist Actions */
+            playlist_actions?: components["schemas"]["PlaylistActionSelection"][];
+            /** Track Removals */
+            track_removals?: components["schemas"]["PlaylistTrackSelection"][];
+        };
         /** OwnerSessionLogin */
         OwnerSessionLogin: {
             /** Access Token */
@@ -1231,18 +1517,26 @@ export interface components {
         };
         /** Playlist */
         Playlist: {
+            /** Collaborative */
+            collaborative?: boolean | null;
             /** Created At */
             created_at?: string | null;
             /** Description */
             description?: string | null;
             /** Id */
             id?: string | null;
+            /** Is Followed */
+            is_followed?: boolean | null;
+            /** Is Owned */
+            is_owned?: boolean | null;
             /** @default standard */
             kind: components["schemas"]["PlaylistKind"];
             /** Name */
             name: string;
             /** Owner Id */
             owner_id?: string | null;
+            /** Owner Name */
+            owner_name?: string | null;
             /** Photo */
             photo?: string | null;
             /** Snapshot Id */
@@ -1251,6 +1545,13 @@ export interface components {
             tracks?: components["schemas"]["Track"][];
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** PlaylistActionSelection */
+        PlaylistActionSelection: {
+            /** @default remove */
+            intent: components["schemas"]["OrganizerIntent"];
+            /** Playlist Id */
+            playlist_id: string;
         };
         /**
          * PlaylistKind
@@ -1264,8 +1565,14 @@ export interface components {
         PlaylistRef: {
             /** Collaborative */
             collaborative?: boolean | null;
+            /** Created At */
+            created_at?: string | null;
             /** Id */
             id: string;
+            /** Is Followed */
+            is_followed?: boolean | null;
+            /** Is Owned */
+            is_owned?: boolean | null;
             /** @default standard */
             kind: components["schemas"]["PlaylistKind"];
             /**
@@ -1281,6 +1588,8 @@ export interface components {
             name: string;
             /** Owner Id */
             owner_id?: string | null;
+            /** Owner Name */
+            owner_name?: string | null;
             /** Remaining Track Count */
             remaining_track_count?: number | null;
             /** Snapshot Id */
@@ -1289,6 +1598,8 @@ export interface components {
             track_count?: number | null;
             /** Tracks Href */
             tracks_href?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** PlaylistSelection */
         PlaylistSelection: {
@@ -1309,6 +1620,13 @@ export interface components {
             /** Target Playlist Id */
             target_playlist_id?: string | null;
         };
+        /** PlaylistTrackSelection */
+        PlaylistTrackSelection: {
+            /** Playlist Id */
+            playlist_id: string;
+            /** Tracks */
+            tracks?: components["schemas"]["TrackSelection"][];
+        };
         /**
          * PortableFormat
          * @enum {string}
@@ -1318,15 +1636,23 @@ export interface components {
         ProviderView: {
             /** Auth Kind */
             auth_kind: string;
+            /** Can Delete Playlist */
+            can_delete_playlist: boolean;
+            /** Can Remove Tracks */
+            can_remove_tracks: boolean;
             /** Can Source */
             can_source: boolean;
             /** Can Target */
             can_target: boolean;
+            /** Can Unfollow Playlist */
+            can_unfollow_playlist: boolean;
             /** Display Name */
             display_name: string;
             followed_artists: components["schemas"]["ArtistCapabilityView"];
             /** Has Isrc */
             has_isrc: boolean;
+            /** Max Remove Batch */
+            max_remove_batch: number;
             /** Name */
             name: string;
             /** Official */
@@ -1602,6 +1928,23 @@ export interface components {
             track_number?: number | null;
             /** Unsupported Reason */
             unsupported_reason?: string | null;
+        };
+        /** TrackSelection */
+        TrackSelection: {
+            /** Position */
+            position: number;
+            /** Source Item Id */
+            source_item_id?: string | null;
+        };
+        /** UnsupportedOrganizerItem */
+        UnsupportedOrganizerItem: {
+            intent: components["schemas"]["OrganizerIntent"];
+            /** Playlist Id */
+            playlist_id: string;
+            /** Playlist Name */
+            playlist_name: string;
+            /** Reason */
+            reason: string;
         };
         /** UpdateShare */
         UpdateShare: {
@@ -2271,6 +2614,220 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MigrationStatsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_duplicates_api_organizer_duplicates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateCandidateView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organizer_jobs_api_organizer_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerJobView"][];
+                };
+            };
+        };
+    };
+    create_organizer_job_api_organizer_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organizer_job_api_organizer_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_organizer_job_api_organizer_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organizer_playlists_api_organizer_playlists_get: {
+        parameters: {
+            query: {
+                provider: string;
+                account_id: string;
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerPlaylistView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preflight_organizer_api_organizer_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerPreflightView"];
                 };
             };
             /** @description Validation Error */

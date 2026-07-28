@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     migration_history_cleanup_batch_size: int = Field(default=100, ge=1, le=10_000)
     migration_report_batch_size: int = Field(default=250, ge=1, le=5_000)
 
+    # Organizer jobs use conservative per-account pacing and bounded in-worker retries.
+    organizer_worker_job_timeout_s: int = 3600
+    organizer_rate_limit_capacity: float = 2.0
+    organizer_rate_limit_refill_per_s: float = 1.0
+    organizer_retry_attempts: int = 3
+    organizer_retry_max_delay_s: float = 30.0
+
     # Spotify OAuth (set in .env)
     spotify_client_id: str = ""
     spotify_client_secret: str = ""

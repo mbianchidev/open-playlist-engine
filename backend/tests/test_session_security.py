@@ -67,5 +67,3 @@ async def test_rate_limiter_rejects_without_blocking_and_reports_retry_after() -
 
     assert retry_after is not None
     assert 0 < retry_after <= 1
-
-

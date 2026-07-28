@@ -34,4 +34,3 @@ def configure_share_token_redaction() -> None:
         if any(isinstance(filter_, ShareTokenRedactionFilter) for filter_ in logger.filters):
             continue
         logger.addFilter(ShareTokenRedactionFilter())
-

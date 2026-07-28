@@ -217,5 +217,3 @@ def test_portable_exports_escape_structural_and_spreadsheet_injection() -> None:
 
     xspf_export = serialize_snapshot(snapshot, PortableFormat.XSPF, max_bytes=100_000)
     ET.fromstring(xspf_export.content)
-
-

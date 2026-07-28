@@ -5,6 +5,7 @@ import {
   Check,
   CircleGauge,
   Disc3,
+  ListChecks,
   ListMusic,
   Music2,
   Play,
@@ -44,6 +45,7 @@ import type {
 } from "./api/types";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
 import ExportControls from "./components/ExportControls";
+import PlaylistOrganizer from "./components/PlaylistOrganizer";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
@@ -88,6 +90,7 @@ export default function App() {
   const libraryLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const organizerTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
   const sharingTabRef = useRef<HTMLButtonElement>(null);
 
@@ -974,11 +977,11 @@ export default function App() {
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const tabs: WorkspaceTab[] = ["migration", "stats", "sharing"];
+    const tabs: WorkspaceTab[] = ["migration", "organizer", "stats", "sharing"];
     const currentIndex = tabs.indexOf(activeTab);
     const nextTab: WorkspaceTab =
       event.key === "Home"
-        ? "migration"
+        ? tabs[0]
         : event.key === "End"
           ? "sharing"
           : (tabs[
@@ -987,6 +990,7 @@ export default function App() {
     setActiveTab(nextTab);
     const tabRefs = {
       migration: migrationTabRef,
+      organizer: organizerTabRef,
       stats: statsTabRef,
       sharing: sharingTabRef,
     };
@@ -1038,6 +1042,24 @@ export default function App() {
             Migration
           </span>
           <small>Move playlists</small>
+        </button>
+        <button
+          ref={organizerTabRef}
+          id="organizer-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Organizer"
+          aria-selected={activeTab === "organizer"}
+          aria-controls="organizer-panel"
+          tabIndex={activeTab === "organizer" ? 0 : -1}
+          onClick={() => setActiveTab("organizer")}
+        >
+          <span>
+            <ListChecks aria-hidden="true" />
+            Organizer
+          </span>
+          <small>Clean up safely</small>
         </button>
         <button
           ref={statsTabRef}
@@ -1574,6 +1596,23 @@ export default function App() {
             </section>
           ) : null}
         </div>
+      ) : activeTab === "organizer" ? (
+        <div
+          id="organizer-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="organizer-tab"
+        >
+          <PlaylistOrganizer
+            providers={providers}
+            accounts={accounts}
+            authBusy={busy}
+            onConnect={(provider) => {
+              setActiveTab("migration");
+              return connect(provider);
+            }}
+          />
+        </div>
       ) : activeTab === "stats" ? (
         <div
           id="stats-panel"
@@ -1701,7 +1740,7 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "stats" | "sharing";
+type WorkspaceTab = "migration" | "organizer" | "stats" | "sharing";
 
 interface AppleMusicChallenge {
   developerToken: string;

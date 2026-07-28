@@ -15,6 +15,7 @@ from app.api import (
     exports,
     library,
     migrations,
+    organizer,
     owner_session,
     playlists,
     providers,
@@ -48,6 +49,7 @@ app.include_router(auth.router)
 app.include_router(playlists.router)
 app.include_router(library.router)
 app.include_router(migrations.router)
+app.include_router(organizer.router)
 app.include_router(exports.router)
 app.include_router(shares.router)
 app.include_router(shares.public_router)

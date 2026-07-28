@@ -243,6 +243,33 @@ async def test_create_playlist_payload_and_visibility() -> None:
     assert b'"description":"Desc"' in captured["payload"]
 
 
+async def test_delete_owned_playlist_uses_delete_endpoint() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(204)
+
+    result = await TidalAdapter(transport=httpx.MockTransport(handler)).delete_playlist(
+        _cred(),
+        _ref("owned", "Owned").model_copy(update={"is_owned": True}),
+    )
+
+    assert result.ok is True
+    assert captured == {"method": "DELETE", "path": "/v2/playlists/owned"}
+
+
+async def test_delete_playlist_requires_confirmed_ownership() -> None:
+    adapter = TidalAdapter(transport=tidal_transport())
+
+    with pytest.raises(AccessDenied, match="ownership"):
+        await adapter.delete_playlist(
+            _cred(),
+            _ref("owned", "Owned"),
+        )
+
+
 async def test_add_tracks_batches_at_tidal_limit() -> None:
     calls: list[list[str]] = []
 

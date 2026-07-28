@@ -40,10 +40,13 @@ dependencies out of the installed/audited frontend dependency graph.
 7. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
-8. Reopen migrations in **History**, filter track/album/artist results, inspect prior
+8. Use the Organizer tab to search/sort one provider library, choose a
+   capability-gated action, review duplicate evidence, type destructive
+   confirmations, and inspect or retry durable per-playlist job results.
+9. Reopen migrations in **History**, filter track/album/artist results, inspect prior
    decisions and errors, follow entity-aware target links, and download filtered
    all/problem CSV or JSON reports.
-9. Download the source playlist snapshot from a completed/failed migration while its
+10. Download the source playlist snapshot from a completed/failed migration while its
    retained item details remain available.
 
 The owner-only **Sharing** tab publishes and manages immutable snapshots. Public
@@ -59,6 +62,8 @@ Native liked-track collections map across Spotify Liked Songs, Tidal My Collecti
 and YouTube Music Liked Songs. Spotify and Tidal also expose explicit saved-album
 and followed/favorite-artist selection. Unsupported target types remain disabled
 instead of being represented as playlists.
+Playlist Organizer defaults to safe library removal, never substitutes deletion,
+and requires explicit song-entry selection for playlist edits.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
 

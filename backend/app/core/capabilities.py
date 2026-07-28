@@ -24,6 +24,8 @@ class Capability(StrEnum):
     CREATE_PLAYLIST = "create_playlist"
     ADD_TRACKS = "add_tracks"
     REMOVE_TRACKS = "remove_tracks"
+    UNFOLLOW_PLAYLIST = "unfollow_playlist"
+    DELETE_PLAYLIST = "delete_playlist"
     REORDER = "reorder"
     SET_COVER = "set_cover"
     SET_DESCRIPTION = "set_description"
@@ -56,6 +58,7 @@ class CapabilityDescriptor(BaseModel):
 
     # Write constraints
     max_add_batch: int = 100
+    max_remove_batch: int = 100
     max_library_batch: int = 50
     max_playlist_size: int | None = None
     supports_duplicates: bool = True

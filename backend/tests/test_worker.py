@@ -24,8 +24,14 @@ class _JobSession:
 
 
 def test_worker_timeout_uses_migration_setting() -> None:
-    assert WorkerSettings.job_timeout == get_settings().migration_worker_job_timeout_s
+    assert WorkerSettings.job_timeout == max(
+        get_settings().migration_worker_job_timeout_s,
+        get_settings().organizer_worker_job_timeout_s,
+    )
     assert WorkerSettings.job_timeout >= 3600
+    timeouts = {function.name: function.timeout_s for function in WorkerSettings.functions}
+    assert timeouts["run_migration"] == get_settings().migration_worker_job_timeout_s
+    assert timeouts["run_organizer"] == get_settings().organizer_worker_job_timeout_s
 
 
 def test_worker_schedules_history_cleanup() -> None:

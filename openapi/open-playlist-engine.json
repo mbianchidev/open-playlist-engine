@@ -697,6 +697,67 @@
         "title": "Credit",
         "type": "object"
       },
+      "DuplicateCandidateView": {
+        "properties": {
+          "normalized_name": {
+            "title": "Normalized Name",
+            "type": "string"
+          },
+          "overlap_count": {
+            "title": "Overlap Count",
+            "type": "integer"
+          },
+          "overlap_ratio": {
+            "title": "Overlap Ratio",
+            "type": "number"
+          },
+          "playlist_ids": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Playlist Ids",
+            "type": "array"
+          },
+          "playlist_names": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Playlist Names",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playlist_ids",
+          "playlist_names",
+          "normalized_name",
+          "overlap_count",
+          "overlap_ratio",
+          "reasons"
+        ],
+        "title": "DuplicateCandidateView",
+        "type": "object"
+      },
       "ExportFormat": {
         "enum": [
           "csv",
@@ -1536,6 +1597,420 @@
         "title": "MigrationWarningsView",
         "type": "object"
       },
+      "OrganizerAction": {
+        "enum": [
+          "unfollow_playlist",
+          "delete_playlist",
+          "remove_tracks"
+        ],
+        "title": "OrganizerAction",
+        "type": "string"
+      },
+      "OrganizerIntent": {
+        "enum": [
+          "remove",
+          "delete",
+          "remove_tracks"
+        ],
+        "title": "OrganizerIntent",
+        "type": "string"
+      },
+      "OrganizerItemView": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
+          "destructive": {
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "request_payload": {
+            "additionalProperties": true,
+            "title": "Request Payload",
+            "type": "object"
+          },
+          "result_payload": {
+            "additionalProperties": true,
+            "title": "Result Payload",
+            "type": "object"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "playlist_id",
+          "playlist_name",
+          "action",
+          "destructive",
+          "ownership",
+          "status",
+          "attempts",
+          "retryable"
+        ],
+        "title": "OrganizerItemView",
+        "type": "object"
+      },
+      "OrganizerJobView": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "account_id",
+          "status",
+          "total",
+          "done",
+          "failed"
+        ],
+        "title": "OrganizerJobView",
+        "type": "object"
+      },
+      "OrganizerPlaylistView": {
+        "properties": {
+          "available_intents": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerIntent"
+            },
+            "title": "Available Intents",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "playlist": {
+            "$ref": "#/components/schemas/PlaylistRef"
+          },
+          "requires_ownership_check": {
+            "default": false,
+            "title": "Requires Ownership Check",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "playlist",
+          "ownership"
+        ],
+        "title": "OrganizerPlaylistView",
+        "type": "object"
+      },
+      "OrganizerPreflightGroupView": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OrganizerAction"
+          },
+          "destructive": {
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerPreflightItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "recovery": {
+            "title": "Recovery",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "label",
+          "destructive",
+          "recovery"
+        ],
+        "title": "OrganizerPreflightGroupView",
+        "type": "object"
+      },
+      "OrganizerPreflightItemView": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OrganizerAction"
+          },
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
+          "destructive": {
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "recovery": {
+            "title": "Recovery",
+            "type": "string"
+          },
+          "selected_track_count": {
+            "default": 0,
+            "title": "Selected Track Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "playlist_id",
+          "playlist_name",
+          "action",
+          "destructive",
+          "ownership",
+          "recovery"
+        ],
+        "title": "OrganizerPreflightItemView",
+        "type": "object"
+      },
+      "OrganizerPreflightView": {
+        "properties": {
+          "code": {
+            "default": "organizer_preflight",
+            "title": "Code",
+            "type": "string"
+          },
+          "confirmation_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Phrase"
+          },
+          "confirmation_required": {
+            "default": false,
+            "title": "Confirmation Required",
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizerPreflightGroupView"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "total_playlists": {
+            "default": 0,
+            "title": "Total Playlists",
+            "type": "integer"
+          },
+          "total_tracks": {
+            "default": 0,
+            "title": "Total Tracks",
+            "type": "integer"
+          },
+          "unsupported": {
+            "items": {
+              "$ref": "#/components/schemas/UnsupportedOrganizerItem"
+            },
+            "title": "Unsupported",
+            "type": "array"
+          }
+        },
+        "title": "OrganizerPreflightView",
+        "type": "object"
+      },
+      "OrganizerRequest": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "confirmation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/OrganizerSelection"
+          }
+        },
+        "required": [
+          "provider",
+          "account_id"
+        ],
+        "title": "OrganizerRequest",
+        "type": "object"
+      },
+      "OrganizerSelection": {
+        "properties": {
+          "playlist_actions": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistActionSelection"
+            },
+            "title": "Playlist Actions",
+            "type": "array"
+          },
+          "track_removals": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistTrackSelection"
+            },
+            "title": "Track Removals",
+            "type": "array"
+          }
+        },
+        "title": "OrganizerSelection",
+        "type": "object"
+      },
       "OwnerSessionLogin": {
         "properties": {
           "access_token": {
@@ -1579,6 +2054,17 @@
       },
       "Playlist": {
         "properties": {
+          "collaborative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collaborative"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -1613,6 +2099,28 @@
             ],
             "title": "Id"
           },
+          "is_followed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Followed"
+          },
+          "is_owned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Owned"
+          },
           "kind": {
             "$ref": "#/components/schemas/PlaylistKind",
             "default": "standard"
@@ -1631,6 +2139,17 @@
               }
             ],
             "title": "Owner Id"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
           },
           "photo": {
             "anyOf": [
@@ -1680,6 +2199,23 @@
         "title": "Playlist",
         "type": "object"
       },
+      "PlaylistActionSelection": {
+        "properties": {
+          "intent": {
+            "$ref": "#/components/schemas/OrganizerIntent",
+            "default": "remove"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playlist_id"
+        ],
+        "title": "PlaylistActionSelection",
+        "type": "object"
+      },
       "PlaylistKind": {
         "enum": [
           "standard",
@@ -1702,9 +2238,43 @@
             ],
             "title": "Collaborative"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "is_followed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Followed"
+          },
+          "is_owned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Owned"
           },
           "kind": {
             "$ref": "#/components/schemas/PlaylistKind",
@@ -1752,6 +2322,17 @@
             ],
             "title": "Owner Id"
           },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
           "remaining_track_count": {
             "anyOf": [
               {
@@ -1795,6 +2376,18 @@
               }
             ],
             "title": "Tracks Href"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "required": [
@@ -1866,6 +2459,26 @@
         "title": "PlaylistStatsView",
         "type": "object"
       },
+      "PlaylistTrackSelection": {
+        "properties": {
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/TrackSelection"
+            },
+            "title": "Tracks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playlist_id"
+        ],
+        "title": "PlaylistTrackSelection",
+        "type": "object"
+      },
       "PortableFormat": {
         "enum": [
           "json",
@@ -1883,12 +2496,24 @@
             "title": "Auth Kind",
             "type": "string"
           },
+          "can_delete_playlist": {
+            "title": "Can Delete Playlist",
+            "type": "boolean"
+          },
+          "can_remove_tracks": {
+            "title": "Can Remove Tracks",
+            "type": "boolean"
+          },
           "can_source": {
             "title": "Can Source",
             "type": "boolean"
           },
           "can_target": {
             "title": "Can Target",
+            "type": "boolean"
+          },
+          "can_unfollow_playlist": {
+            "title": "Can Unfollow Playlist",
             "type": "boolean"
           },
           "display_name": {
@@ -1901,6 +2526,10 @@
           "has_isrc": {
             "title": "Has Isrc",
             "type": "boolean"
+          },
+          "max_remove_batch": {
+            "title": "Max Remove Batch",
+            "type": "integer"
           },
           "name": {
             "title": "Name",
@@ -1938,6 +2567,10 @@
           "has_isrc",
           "can_source",
           "can_target",
+          "can_unfollow_playlist",
+          "can_delete_playlist",
+          "can_remove_tracks",
+          "max_remove_batch",
           "saved_albums",
           "followed_artists"
         ],
@@ -2784,6 +3417,57 @@
           "artist"
         ],
         "title": "Track",
+        "type": "object"
+      },
+      "TrackSelection": {
+        "properties": {
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          }
+        },
+        "required": [
+          "position"
+        ],
+        "title": "TrackSelection",
+        "type": "object"
+      },
+      "UnsupportedOrganizerItem": {
+        "properties": {
+          "intent": {
+            "$ref": "#/components/schemas/OrganizerIntent"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playlist_id",
+          "playlist_name",
+          "intent",
+          "reason"
+        ],
+        "title": "UnsupportedOrganizerItem",
         "type": "object"
       },
       "UpdateShare": {
@@ -4262,6 +4946,305 @@
         "summary": "Get Migration Stats",
         "tags": [
           "migrations"
+        ]
+      }
+    },
+    "/api/organizer/duplicates": {
+      "post": {
+        "operationId": "analyze_duplicates_api_organizer_duplicates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DuplicateCandidateView"
+                  },
+                  "title": "Response Analyze Duplicates Api Organizer Duplicates Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Duplicates",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/jobs": {
+      "get": {
+        "operationId": "list_organizer_jobs_api_organizer_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizerJobView"
+                  },
+                  "title": "Response List Organizer Jobs Api Organizer Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Organizer Jobs",
+        "tags": [
+          "organizer"
+        ]
+      },
+      "post": {
+        "operationId": "create_organizer_job_api_organizer_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Organizer Job",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_organizer_job_api_organizer_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Organizer Job",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_organizer_job_api_organizer_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Organizer Job",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/playlists": {
+      "get": {
+        "operationId": "list_organizer_playlists_api_organizer_playlists_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizerPlaylistView"
+                  },
+                  "title": "Response List Organizer Playlists Api Organizer Playlists Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Organizer Playlists",
+        "tags": [
+          "organizer"
+        ]
+      }
+    },
+    "/api/organizer/preflight": {
+      "post": {
+        "operationId": "preflight_organizer_api_organizer_preflight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerPreflightView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preflight Organizer",
+        "tags": [
+          "organizer"
         ]
       }
     },

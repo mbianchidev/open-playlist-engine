@@ -16,12 +16,9 @@ from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from arq import create_pool
-from arq.connections import RedisSettings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +76,7 @@ from app.db.repositories import (
     load_fresh_credential,
 )
 from app.jobs.migration import commit_job_counts, run_migration
+from app.jobs.queue import enqueue_or_inline
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -976,17 +974,13 @@ def _aggregate_item_counts_stmt(job_ids: list[str]):
 
 
 async def _enqueue_or_inline(background_tasks: BackgroundTasks, job_id: str) -> None:
-    try:
-        redis = await create_pool(RedisSettings.from_dsn(get_settings().valkey_url))
-        try:
-            await redis.enqueue_job("run_migration", job_id)
-        finally:
-            await redis.close(close_connection_pool=True)
-    except (ConnectionError, OSError, RedisError, TimeoutError) as exc:
-        logger.warning(
-            "queue unavailable; running migration inline job_id=%s error=%s", job_id, exc
-        )
-        background_tasks.add_task(run_migration, {}, job_id)
+    await enqueue_or_inline(
+        background_tasks,
+        function_name="run_migration",
+        fallback=run_migration,
+        job_id=job_id,
+        job_label="migration",
+    )
 
 
 @router.get("", response_model=list[MigrationOptionView])
