@@ -89,8 +89,11 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_SPOTIFY_CLIENT_SECRET`, `OPE_TIDAL_CLIENT_ID`, `OPE_TIDAL_CLIENT_SECRET`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
-`OPE_EXPORT_MAX_PLAYLISTS`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`, and
-`OPE_MIGRATION_HISTORY_RETENTION_DAYS`. Public playlist sharing additionally uses
+`OPE_SECRET_KEY`, `OPE_FRONTEND_URL`, `OPE_SNAPSHOT_DIR`,
+`OPE_SNAPSHOT_DEFAULT_RETENTION_COUNT`, `OPE_SNAPSHOT_DEFAULT_RETENTION_DAYS`,
+`OPE_EXPORT_MAX_PLAYLISTS`, `OPE_MIGRATION_HISTORY_RETENTION_DAYS`, and snapshot
+import/verification size limits shown in [`.env.example`](.env.example). Public
+playlist sharing additionally uses
 `OPE_PUBLIC_BASE_URL` and `OPE_OWNER_ACCESS_TOKEN`; it remains disabled while the
 public URL is empty. Local imports use the `OPE_LOCAL_IMPORT_*` size, item-count,
 spool, lease, and retention controls. Public URL and pasted-text previews use the
@@ -235,7 +238,12 @@ albums or artists into synthetic playlists.
    notice instead of adding them twice. Saved albums and artists use native target
    contains checks before writes, so reruns report already-present items instead of
    issuing duplicate actions. Name-only artist matches always require review.
-13. Open the **Sync** tab after a completed full-playlist migration to create a
+13. Open the **Snapshots** tab to define one or more connected source accounts,
+   select playlists or liked-track collections, set count/age retention, and create
+   a local metadata-only snapshot. History supports verification, version diff,
+   download, deletion, portable import, and selected restore through the same
+   preflight → match → review → write pipeline.
+14. Open the **Sync** tab after a completed full-playlist migration to create a
    recurring rule. Choose add-only or an available mirror mode, cadence and IANA
    timezone; then run now, pause/resume, edit, delete or inspect the latest result.
    Rules and checkpoints survive restarts. A rule waits when tracks need review
@@ -288,6 +296,28 @@ Detailed Spotify, Tidal, YouTube Music and Apple Music setup steps are in
 [`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
 Scheduled synchronization behavior and recovery details are in
 [`docs/SYNCHRONIZATION.md`](docs/SYNCHRONIZATION.md).
+
+## Local library snapshots
+
+Snapshots are versioned Open Playlist bundles stored only on the self-hosted
+instance. Docker Compose persists them in the shared `snapshots` named volume at
+`/data/snapshots`; local development defaults to `./data/snapshots` through
+`OPE_SNAPSHOT_DIR`. The backend and worker both mount the same directory so the
+worker can stream archives while the API verifies, downloads, imports, diffs, and
+deletes them.
+
+Bundles contain playlist/liked-track and item metadata, a schema-versioned manifest,
+counts, per-collection checksums, and an archive checksum. They never contain
+provider credentials, raw auth headers, cookies, audio, or Spotify preview audio.
+Opaque provider metadata is restricted to a small safe allow-list. Integrity checks
+detect corruption but are not a cryptographic signature or encryption layer.
+
+Retention can limit each profile by count and age; cleanup is deterministic and
+always keeps the newest usable snapshot. Imported archives are not attached to a
+profile and are retained until manually deleted. Newer schemas, unsafe paths,
+undeclared/binary files, excessive expansion, and checksum failures are rejected
+without changing provider libraries. See [`docs/SNAPSHOTS.md`](docs/SNAPSHOTS.md)
+for persistence, portability, restore behavior, and limitations.
 
 ## Adding a provider
 

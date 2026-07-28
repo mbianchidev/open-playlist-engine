@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Archive,
   ArrowRight,
   BarChart3,
   Check,
@@ -60,8 +61,9 @@ import PlaylistOrganizer from "./components/PlaylistOrganizer";
 import ProviderPicker from "./components/ProviderPicker";
 import ProviderIcon from "./components/ProviderIcon";
 import ProgressBoard from "./components/ProgressBoard";
-import SyncPanel from "./components/SyncPanel";
+import SnapshotPanel from "./components/SnapshotPanel";
 import ShareManager from "./components/ShareManager";
+import SyncPanel from "./components/SyncPanel";
 import { providerLabel } from "./utils/providers";
 
 const LOCAL_FILE_PROVIDER = "local_file";
@@ -124,6 +126,7 @@ export default function App() {
   const libraryLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const snapshotsTabRef = useRef<HTMLButtonElement>(null);
   const syncTabRef = useRef<HTMLButtonElement>(null);
   const organizerTabRef = useRef<HTMLButtonElement>(null);
   const statsTabRef = useRef<HTMLButtonElement>(null);
@@ -1387,7 +1390,14 @@ export default function App() {
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const tabs: WorkspaceTab[] = ["migration", "sync", "organizer", "stats", "sharing"];
+    const tabs: WorkspaceTab[] = [
+      "migration",
+      "snapshots",
+      "sync",
+      "organizer",
+      "stats",
+      "sharing",
+    ];
     const currentIndex = tabs.indexOf(activeTab);
     const nextTab: WorkspaceTab =
       event.key === "Home"
@@ -1400,6 +1410,7 @@ export default function App() {
     setActiveTab(nextTab);
     const tabRefs = {
       migration: migrationTabRef,
+      snapshots: snapshotsTabRef,
       sync: syncTabRef,
       organizer: organizerTabRef,
       stats: statsTabRef,
@@ -1453,6 +1464,24 @@ export default function App() {
             Migration
           </span>
           <small>Move playlists</small>
+        </button>
+        <button
+          ref={snapshotsTabRef}
+          id="snapshots-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Snapshots"
+          aria-selected={activeTab === "snapshots"}
+          aria-controls="snapshots-panel"
+          tabIndex={activeTab === "snapshots" ? 0 : -1}
+          onClick={() => setActiveTab("snapshots")}
+        >
+          <span>
+            <Archive aria-hidden="true" />
+            Snapshots
+          </span>
+          <small>Local backup</small>
         </button>
         <button
           ref={syncTabRef}
@@ -2077,6 +2106,20 @@ export default function App() {
             />
           ) : null}
         </div>
+      ) : activeTab === "snapshots" ? (
+        <div
+          id="snapshots-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="snapshots-tab"
+        >
+          <SnapshotPanel
+            providers={providers}
+            accounts={accounts}
+            onReconnectProvider={connect}
+            onMigrationChanged={handleMigrationChanged}
+          />
+        </div>
       ) : activeTab === "sync" ? (
         <div
           id="sync-panel"
@@ -2278,7 +2321,7 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "sync" | "organizer" | "stats" | "sharing";
+type WorkspaceTab = "migration" | "snapshots" | "sync" | "organizer" | "stats" | "sharing";
 
 interface AppleMusicChallenge {
   developerToken: string;

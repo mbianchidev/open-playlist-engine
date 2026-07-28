@@ -7,6 +7,7 @@ import type {
   ConnectionTestView,
   CreateExportBody,
   CreateMigrationBody,
+  CreateSnapshotProfileBody,
   CreateSyncRuleBody,
   ExportDownloadResult,
   ExportFormat,
@@ -32,6 +33,13 @@ import type {
   PublicShareView,
   ShareConfigView,
   ShareDetailView,
+  SnapshotCleanupView,
+  SnapshotDetailView,
+  SnapshotDiffView,
+  SnapshotListView,
+  SnapshotProfileView,
+  SnapshotVerificationView,
+  SnapshotView,
   SourceImportPreview,
   SyncRuleView,
   SyncRunView,
@@ -54,6 +62,12 @@ async function json<T>(res: Response): Promise<T> {
     await throwApiError(res);
   }
   return (await res.json()) as T;
+}
+
+async function empty(res: Response): Promise<void> {
+  if (!res.ok) {
+    await throwApiError(res);
+  }
 }
 
 async function throwApiError(res: Response): Promise<never> {
@@ -480,6 +494,22 @@ export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) =>
   return () => source.close();
 }
 
+export async function listSnapshotProfiles(): Promise<SnapshotProfileView[]> {
+  return json<SnapshotProfileView[]>(await fetch("/api/snapshots/profiles"));
+}
+
+export async function createSnapshotProfile(
+  body: CreateSnapshotProfileBody,
+): Promise<SnapshotProfileView> {
+  return json<SnapshotProfileView>(
+    await fetch("/api/snapshots/profiles", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 export interface MigrationProgressApi {
   getItems(jobId: string): Promise<JobItemView[]>;
   reviewItem(
@@ -519,6 +549,19 @@ export async function createShare(body: CreateShareBody): Promise<ShareDetailVie
   );
 }
 
+export async function updateSnapshotProfile(
+  profileId: string,
+  body: { name?: string; retention_count?: number | null; retention_days?: number | null },
+): Promise<SnapshotProfileView> {
+  return json<SnapshotProfileView>(
+    await fetch(`/api/snapshots/profiles/${encodeURIComponent(profileId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 export async function updateShare(
   shareId: string,
   body: { visibility?: "public" | "unlisted"; expires_at?: string | null },
@@ -528,6 +571,22 @@ export async function updateShare(
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function deleteSnapshotProfile(profileId: string): Promise<void> {
+  return empty(
+    await fetch(`/api/snapshots/profiles/${encodeURIComponent(profileId)}`, {
+      method: "DELETE",
+    }),
+  );
+}
+
+export async function createLocalSnapshot(profileId: string): Promise<SnapshotView> {
+  return json<SnapshotView>(
+    await fetch(`/api/snapshots/profiles/${encodeURIComponent(profileId)}/snapshots`, {
+      method: "POST",
     }),
   );
 }
@@ -603,6 +662,67 @@ export async function importPublicShare(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function cleanupSnapshotProfile(profileId: string): Promise<SnapshotCleanupView> {
+  return json<SnapshotCleanupView>(
+    await fetch(`/api/snapshots/profiles/${encodeURIComponent(profileId)}/cleanup`, {
+      method: "POST",
+    }),
+  );
+}
+
+export async function listSnapshots(profileId?: string | null): Promise<SnapshotListView> {
+  const params = new URLSearchParams();
+  if (profileId) params.set("profile_id", profileId);
+  const suffix = params.size ? `?${params}` : "";
+  return json<SnapshotListView>(await fetch(`/api/snapshots${suffix}`));
+}
+
+export async function getSnapshot(snapshotId: string): Promise<SnapshotDetailView> {
+  return json<SnapshotDetailView>(
+    await fetch(`/api/snapshots/${encodeURIComponent(snapshotId)}`),
+  );
+}
+
+export async function verifySnapshot(snapshotId: string): Promise<SnapshotVerificationView> {
+  return json<SnapshotVerificationView>(
+    await fetch(`/api/snapshots/${encodeURIComponent(snapshotId)}/verify`, {
+      method: "POST",
+    }),
+  );
+}
+
+export async function getSnapshotDiff(
+  snapshotId: string,
+  baseSnapshotId: string,
+): Promise<SnapshotDiffView> {
+  const params = new URLSearchParams({ base_snapshot_id: baseSnapshotId });
+  return json<SnapshotDiffView>(
+    await fetch(`/api/snapshots/${encodeURIComponent(snapshotId)}/diff?${params}`),
+  );
+}
+
+export function snapshotDownloadUrl(snapshotId: string): string {
+  return `/api/snapshots/${encodeURIComponent(snapshotId)}/download`;
+}
+
+export async function deleteSnapshot(snapshotId: string): Promise<void> {
+  return empty(
+    await fetch(`/api/snapshots/${encodeURIComponent(snapshotId)}`, {
+      method: "DELETE",
+    }),
+  );
+}
+
+export async function importSnapshot(file: File): Promise<SnapshotDetailView> {
+  return json<SnapshotDetailView>(
+    await fetch("/api/snapshots/import?confirm=true", {
+      method: "POST",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
     }),
   );
 }

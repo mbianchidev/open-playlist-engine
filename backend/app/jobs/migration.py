@@ -70,7 +70,7 @@ from app.imports.service import (
     delete_import_for_job,
     mark_import_failed,
 )
-from app.imports.source import open_migration_source
+from app.imports.source import MigrationSource, open_migration_source, open_snapshot_source
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -154,13 +154,19 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         if job.source_snapshot is not None
         else None
     )
+    migration_source: MigrationSource | None = None
     source = None
     source_cred = None
-    local_source = None
-    source_display_name: str | None = None
     if source_snapshot is None:
-        if job.source_provider in IMPORT_RECORD_PROVIDERS:
-            local_source = await open_migration_source(
+        if job.source_kind == "snapshot":
+            migration_source = await open_snapshot_source(
+                session,
+                snapshot_id=job.source_snapshot_id or "",
+                user_id=job.user_id,
+                for_update=False,
+            )
+        else:
+            migration_source = await open_migration_source(
                 session,
                 provider=job.source_provider,
                 account_id=job.source_account_id,
@@ -168,25 +174,26 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 settings=settings,
                 job_id=job.id,
             )
-            source_display_name = local_source.display_name
-        else:
-            source = get(job.source_provider)
-            source_cred, _ = await load_fresh_credential(
-                session,
-                account_id=job.source_account_id,
-                adapter=source,
-                provider=job.source_provider,
-                user_id=job.user_id,
-            )
-            source_display_name = source.info.display_name
+        source = migration_source.adapter
+        source_cred = migration_source.credential
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
     saved_album_ids = list(selection.get("saved_album_ids") or [])
     followed_artist_ids = list(selection.get("followed_artist_ids") or [])
-    if (source_snapshot is not None or local_source is not None) and (
+    if (
+        source_snapshot is not None
+        or migration_source is None
+        or migration_source.kind != "provider"
+    ) and (
         saved_album_ids or followed_artist_ids
     ):
-        source_kind = "shared" if source_snapshot is not None else "local-file"
+        source_kind = (
+            "shared"
+            if source_snapshot is not None
+            else migration_source.kind
+            if migration_source is not None
+            else "unavailable"
+        )
         raise ValueError(f"{source_kind} migrations support playlist tracks only")
     if not (playlist_ids or saved_album_ids or followed_artist_ids):
         raise ValueError("migration has no selected items")
@@ -205,7 +212,9 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     matcher = MatchService(graph=None, review_threshold=review_threshold)
     reviewed_history = (
         []
-        if source_snapshot is not None or local_source is not None
+        if source_snapshot is not None
+        or migration_source is None
+        or migration_source.kind == "import"
         else await _previous_reviewed_items(
             session,
             job=job,
@@ -218,28 +227,20 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             if playlist_id != (job.source_share_id or job.source_account_id):
                 raise ValueError("shared migration playlist does not match its snapshot")
             playlist = snapshot_to_playlist(source_snapshot)
-        elif local_source is not None:
-            logger.info(
-                "migration job_id=%s reading local source playlist playlist_id=%s",
-                job.id,
-                playlist_id,
-            )
-            playlist = await local_source.read_playlist(playlist_id)
         else:
+            if migration_source is None:
+                raise ValueError("migration source is unavailable")
             logger.info(
-                "migration job_id=%s reading source playlist playlist_id=%s",
+                "migration job_id=%s reading %s source playlist playlist_id=%s",
                 job.id,
+                migration_source.kind,
                 playlist_id,
             )
-            if source is None or source_cred is None:
-                raise ValueError("migration source is unavailable")
             snapshot_payload = (selection.get("playlist_snapshots") or {}).get(playlist_id)
-            if snapshot_payload:
+            if migration_source.kind == "provider" and snapshot_payload:
                 playlist = Playlist.model_validate(snapshot_payload)
             else:
-                playlist = await source.read_playlist(
-                    source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
-                )
+                playlist = await migration_source.read_playlist(playlist_id)
         store_playlist_snapshot(job, playlist, playlist_id=playlist_id)
         await session.commit()
         wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
@@ -265,8 +266,9 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             or (
                 "Imported from a shared playlist by Open Playlist Engine."
                 if source_snapshot is not None
-                else f"Migrated from {source_display_name or job.source_provider} "
-                "by Open Playlist Engine."
+                else migration_source.migration_description(playlist_id)
+                if migration_source is not None
+                else f"Migrated from {job.source_provider} by Open Playlist Engine."
             ),
             playlist_kind=playlist.kind,
             source_tracks=tracks,
@@ -1115,7 +1117,7 @@ async def _previous_reviewed_items(
 
 
 def _source_account_history(account_id_column, job: orm.MigrationJob):
-    if job.source_snapshot is not None:
+    if job.source_snapshot is not None or job.source_kind != "provider":
         return account_id_column == job.source_account_id
     return provider_account_history(
         account_id_column,

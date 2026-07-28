@@ -19,7 +19,7 @@ npm run build
 ## API types
 The checked-in FastAPI contract is `../openapi/open-playlist-engine.json`.
 `src/api/schema.d.ts` is generated from it, while `src/api/types.ts` adds the few
-frontend-only filter/page shapes:
+frontend-only filter/page and snapshot workspace shapes:
 ```bash
 npm run gen:api
 ```
@@ -47,19 +47,20 @@ dependencies out of the installed/audited frontend dependency graph.
 7. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
-   replacement URI/video ID, approving all suggested matches, skipping one item, or
-   denying all doubtful items.
-8. Create and manage recurring rules from completed full-playlist migrations in the
+8. Use the Snapshots workspace to create multi-account backup profiles, inspect
+   local storage/history, verify/diff/download/import archives, and restore selected
+   collections through the same migration review and progress components.
+9. Create and manage recurring rules from completed full-playlist migrations in the
    Sync workspace. The UI exposes add-only/mirror capability gating, cadence/timezone
    editing, run now, pause/resume, delete, changed-track counts, errors and the latest
    migration review panel.
-9. Use the Organizer tab to search/sort one provider library, choose a
+10. Use the Organizer tab to search/sort one provider library, choose a
    capability-gated action, review duplicate evidence, type destructive
    confirmations, and inspect or retry durable per-playlist job results.
-10. Reopen migrations in **History**, filter track/album/artist results, inspect prior
+11. Reopen migrations in **History**, filter track/album/artist results, inspect prior
    decisions and errors, follow entity-aware target links, and download filtered
    all/problem CSV or JSON reports.
-11. Download the source playlist snapshot from a completed/failed migration while its
+12. Download the source playlist snapshot from a completed/failed migration while its
    retained item details remain available.
 
 The owner-only **Sharing** tab publishes and manages immutable snapshots. Public
@@ -93,5 +94,9 @@ that renders only the matching connect panel inline.
 `src/index.css` retains the established component and state selectors.
 `src/theme.css` owns the product tokens, provider-aware presentation, responsive
 layout, and motion overrides. Keep dynamic status classes and the ARIA tab
-relationships intact when changing presentation. The accessible workspace tab order
-is Migration, Sync, Organizer, History, Sharing.
+relationships intact when changing presentation.
+The snapshot workspace uses an archive-ledger timeline and checksum seals while
+reusing the same tokens, focus behavior, responsive breakpoints, and reduced-motion
+rules.
+The accessible workspace tab order is Migration, Snapshots, Sync, Organizer,
+History, Sharing.

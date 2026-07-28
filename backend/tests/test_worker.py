@@ -4,6 +4,7 @@ from app.db import models as orm
 from app.imports.service import cleanup_local_imports
 from app.jobs import migration
 from app.jobs.history_cleanup import cleanup_expired_migration_details
+from app.jobs.snapshot import run_snapshot
 from app.jobs.worker import WorkerSettings
 from app.settings import get_settings
 
@@ -28,11 +29,14 @@ def test_worker_timeout_uses_migration_setting() -> None:
     assert WorkerSettings.job_timeout == max(
         get_settings().migration_worker_job_timeout_s,
         get_settings().organizer_worker_job_timeout_s,
+        get_settings().snapshot_worker_job_timeout_s,
     )
     assert WorkerSettings.job_timeout >= 3600
     timeouts = {function.name: function.timeout_s for function in WorkerSettings.functions}
     assert timeouts["run_migration"] == get_settings().migration_worker_job_timeout_s
     assert timeouts["run_organizer"] == get_settings().organizer_worker_job_timeout_s
+    assert timeouts["run_snapshot"] == get_settings().snapshot_worker_job_timeout_s
+    assert any(function.coroutine is run_snapshot for function in WorkerSettings.functions)
 
 
 def test_worker_schedules_history_cleanup() -> None:

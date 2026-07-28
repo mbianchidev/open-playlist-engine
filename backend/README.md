@@ -13,12 +13,15 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   resolvers) and pasted-text parsing.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker, import→match→review→write pipeline, persisted sync
-  scheduler, local-import cleanup, and durable playlist-organizer jobs.
+  scheduler, local-import cleanup, durable playlist-organizer jobs, and streamed
+  snapshot jobs.
+- `app/snapshots/` — versioned bundle format, safe filesystem boundary, verification,
+  diffing, retention, and storage reconciliation.
 - `app/exports/` — versioned portable schemas, serializers, history reconstruction,
   and temporary-file-backed archive generation.
 - `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/imports`,
-  `/migrations`, `/syncs`, `/library`, `/organizer`, `/exports`, owner `/shares`,
-  and isolated `/public/shares`).
+  `/migrations`, `/snapshots`, `/syncs`, `/library`, `/organizer`, `/exports`,
+  owner `/shares`, and isolated `/public/shares`).
 
 ## Develop
 ```bash
@@ -129,6 +132,25 @@ future matching. See
 
 Provider setup steps are documented in
 [`docs/CONNECTING_PROVIDERS.md`](../docs/CONNECTING_PROVIDERS.md).
+
+## Local snapshots
+
+`POST /api/snapshots/profiles/{id}/snapshots` queues a streamed snapshot job.
+Profiles can include collections from multiple connected accounts. The worker reads
+each collection with `iter_playlist_items`, writes canonical JSONL directly into a
+ZIP64 Open Playlist bundle, records partial provider failures, verifies checksums,
+and applies deterministic count/age retention. The API owns profile/history CRUD,
+storage usage, verification, diff, download, portable import, deletion, and cleanup.
+
+Snapshot restore uses `source_snapshot_id` on the existing migration endpoints.
+Only source reading changes; target preflight, matching, review, chunked writes,
+duplicate detection, operation ledger, SSE progress, and statistics remain the same.
+Snapshot lineage is isolated from deleted/reconnected live-account history.
+
+Set `OPE_SNAPSHOT_DIR` to a durable directory writable by both API and worker.
+Docker Compose mounts the shared `snapshots` volume at `/data/snapshots`. Full
+format and operations documentation is in [`docs/SNAPSHOTS.md`](../docs/SNAPSHOTS.md).
+
 Public snapshot models, hashed/encrypted share tokens, owner sessions, recipient
 account isolation, portable downloads, and share-backed migration jobs are
 documented in [`docs/PLAYLIST_SHARING.md`](../docs/PLAYLIST_SHARING.md).

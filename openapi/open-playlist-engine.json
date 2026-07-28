@@ -581,12 +581,37 @@
             "$ref": "#/components/schemas/Selection"
           },
           "source_account_id": {
-            "title": "Source Account Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account Id"
           },
           "source_provider": {
-            "title": "Source Provider",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Provider"
+          },
+          "source_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Snapshot Id"
           },
           "target_account_id": {
             "title": "Target Account Id",
@@ -598,9 +623,7 @@
           }
         },
         "required": [
-          "source_provider",
           "target_provider",
-          "source_account_id",
           "target_account_id",
           "selection"
         ],
@@ -1354,9 +1377,25 @@
             "title": "Origin",
             "type": "string"
           },
+          "source_kind": {
+            "default": "provider",
+            "title": "Source Kind",
+            "type": "string"
+          },
           "source_provider": {
             "title": "Source Provider",
             "type": "string"
+          },
+          "source_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Snapshot Id"
           },
           "status": {
             "title": "Status",
@@ -3421,6 +3460,953 @@
           "artist"
         ],
         "title": "SharedTrack",
+        "type": "object"
+      },
+      "SnapshotCleanupView": {
+        "properties": {
+          "deleted_bytes": {
+            "title": "Deleted Bytes",
+            "type": "integer"
+          },
+          "deleted_count": {
+            "title": "Deleted Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted_count",
+          "deleted_bytes"
+        ],
+        "title": "SnapshotCleanupView",
+        "type": "object"
+      },
+      "SnapshotCollectionManifest": {
+        "properties": {
+          "complete": {
+            "default": true,
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "entity_type": {
+            "const": "playlist",
+            "default": "playlist",
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "default": 0,
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "items_sha256": {
+            "title": "Items Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlaylistKind",
+            "default": "standard"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "payload_bytes": {
+            "default": 0,
+            "title": "Payload Bytes",
+            "type": "integer"
+          },
+          "payload_sha256": {
+            "title": "Payload Sha256",
+            "type": "string"
+          },
+          "source_collection_id": {
+            "title": "Source Collection Id",
+            "type": "string"
+          },
+          "source_key": {
+            "title": "Source Key",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_key",
+          "source_provider",
+          "source_collection_id",
+          "name",
+          "path",
+          "payload_sha256",
+          "items_sha256"
+        ],
+        "title": "SnapshotCollectionManifest",
+        "type": "object"
+      },
+      "SnapshotCounts": {
+        "properties": {
+          "collections": {
+            "default": 0,
+            "title": "Collections",
+            "type": "integer"
+          },
+          "failed_collections": {
+            "default": 0,
+            "title": "Failed Collections",
+            "type": "integer"
+          },
+          "items": {
+            "default": 0,
+            "title": "Items",
+            "type": "integer"
+          },
+          "sources": {
+            "default": 0,
+            "title": "Sources",
+            "type": "integer"
+          }
+        },
+        "title": "SnapshotCounts",
+        "type": "object"
+      },
+      "SnapshotDetailView": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/SnapshotCounts"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Name"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "default": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Labels",
+            "type": "array"
+          },
+          "source_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Providers",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verification_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Error"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_id",
+          "library_id",
+          "status",
+          "schema_version",
+          "verification_status"
+        ],
+        "title": "SnapshotDetailView",
+        "type": "object"
+      },
+      "SnapshotDiff": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDiffCollection"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "base_snapshot_id": {
+            "title": "Base Snapshot Id",
+            "type": "string"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDiffCollection"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "compare_snapshot_id": {
+            "title": "Compare Snapshot Id",
+            "type": "string"
+          },
+          "items_added": {
+            "default": 0,
+            "title": "Items Added",
+            "type": "integer"
+          },
+          "items_removed": {
+            "default": 0,
+            "title": "Items Removed",
+            "type": "integer"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDiffCollection"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "renamed": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDiffCollection"
+            },
+            "title": "Renamed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base_snapshot_id",
+          "compare_snapshot_id"
+        ],
+        "title": "SnapshotDiff",
+        "type": "object"
+      },
+      "SnapshotDiffCollection": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "default": 0,
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "previous_item_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Item Count"
+          },
+          "previous_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Name"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SnapshotDiffCollection",
+        "type": "object"
+      },
+      "SnapshotFailure": {
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "source_key": {
+            "title": "Source Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_key",
+          "provider",
+          "message"
+        ],
+        "title": "SnapshotFailure",
+        "type": "object"
+      },
+      "SnapshotListView": {
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotView"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "total_bytes": {
+            "default": 0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "SnapshotListView",
+        "type": "object"
+      },
+      "SnapshotManifest": {
+        "properties": {
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotCollectionManifest"
+            },
+            "title": "Collections",
+            "type": "array"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/SnapshotCounts"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotFailure"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "format": {
+            "const": "open-playlist-bundle",
+            "default": "open-playlist-bundle",
+            "title": "Format",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Name"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotSourceManifest"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "library_id",
+          "created_at",
+          "status"
+        ],
+        "title": "SnapshotManifest",
+        "type": "object"
+      },
+      "SnapshotProfileCreate": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "retention_count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Count"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotProfileSourceInput"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "sources"
+        ],
+        "title": "SnapshotProfileCreate",
+        "type": "object"
+      },
+      "SnapshotProfileSourceInput": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "collection_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Collection Ids",
+            "type": "array"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "account_id",
+          "collection_ids"
+        ],
+        "title": "SnapshotProfileSourceInput",
+        "type": "object"
+      },
+      "SnapshotProfileSourceView": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "account_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Label"
+          },
+          "collection_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Collection Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider"
+        ],
+        "title": "SnapshotProfileSourceView",
+        "type": "object"
+      },
+      "SnapshotProfileUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "retention_count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Count"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          }
+        },
+        "title": "SnapshotProfileUpdate",
+        "type": "object"
+      },
+      "SnapshotProfileView": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "retention_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Count"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          },
+          "snapshot_count": {
+            "default": 0,
+            "title": "Snapshot Count",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotProfileSourceView"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SnapshotProfileView",
+        "type": "object"
+      },
+      "SnapshotSourceManifest": {
+        "properties": {
+          "account_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Label"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "selected_collection_count": {
+            "default": 0,
+            "title": "Selected Collection Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "provider"
+        ],
+        "title": "SnapshotSourceManifest",
+        "type": "object"
+      },
+      "SnapshotVerificationView": {
+        "properties": {
+          "archive_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archive Sha256"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "status"
+        ],
+        "title": "SnapshotVerificationView",
+        "type": "object"
+      },
+      "SnapshotView": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/SnapshotCounts"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Name"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "default": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Labels",
+            "type": "array"
+          },
+          "source_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Providers",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verification_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Error"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_id",
+          "library_id",
+          "status",
+          "schema_version",
+          "verification_status"
+        ],
+        "title": "SnapshotView",
         "type": "object"
       },
       "SourceConnectionRequiredDetail": {
@@ -7480,6 +8466,556 @@
         "summary": "Revoke Share",
         "tags": [
           "shares"
+        ]
+      }
+    },
+    "/api/snapshots": {
+      "get": {
+        "operationId": "list_snapshots_api_snapshots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "profile_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotListView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Snapshots",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/import": {
+      "post": {
+        "operationId": "import_snapshot_api_snapshots_import_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "application/zip": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Snapshot",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/profiles": {
+      "get": {
+        "operationId": "list_snapshot_profiles_api_snapshots_profiles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SnapshotProfileView"
+                  },
+                  "title": "Response List Snapshot Profiles Api Snapshots Profiles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Snapshot Profiles",
+        "tags": [
+          "snapshots"
+        ]
+      },
+      "post": {
+        "operationId": "create_snapshot_profile_api_snapshots_profiles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotProfileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotProfileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Snapshot Profile",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/profiles/{profile_id}": {
+      "delete": {
+        "operationId": "delete_snapshot_profile_api_snapshots_profiles__profile_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Snapshot Profile",
+        "tags": [
+          "snapshots"
+        ]
+      },
+      "patch": {
+        "operationId": "update_snapshot_profile_api_snapshots_profiles__profile_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotProfileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Snapshot Profile",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/profiles/{profile_id}/cleanup": {
+      "post": {
+        "operationId": "cleanup_snapshots_api_snapshots_profiles__profile_id__cleanup_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotCleanupView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Snapshots",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/profiles/{profile_id}/snapshots": {
+      "post": {
+        "operationId": "create_snapshot_api_snapshots_profiles__profile_id__snapshots_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Snapshot",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/{snapshot_id}": {
+      "delete": {
+        "operationId": "delete_snapshot_api_snapshots__snapshot_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Snapshot",
+        "tags": [
+          "snapshots"
+        ]
+      },
+      "get": {
+        "operationId": "get_snapshot_api_snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Snapshot",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/{snapshot_id}/diff": {
+      "get": {
+        "operationId": "diff_snapshot_api_snapshots__snapshot_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Base Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDiff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff Snapshot",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/{snapshot_id}/download": {
+      "get": {
+        "operationId": "download_snapshot_api_snapshots__snapshot_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Snapshot",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/{snapshot_id}/verify": {
+      "post": {
+        "operationId": "verify_snapshot_api_snapshots__snapshot_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotVerificationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Snapshot",
+        "tags": [
+          "snapshots"
         ]
       }
     },

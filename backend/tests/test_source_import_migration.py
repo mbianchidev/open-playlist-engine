@@ -149,7 +149,16 @@ async def test_create_migration_leases_public_url_import_once(
         )
 
         async def no_warnings(*args, **kwargs):
-            return [], migrations.MigrationSelectionSummary(playlists=1, tracks=2)
+            return migrations._ValidatedPreflight(
+                source=migrations.MigrationSource(
+                    kind="import",
+                    provider=PUBLIC_URL_PROVIDER,
+                    account_id=record.id,
+                    display_name=record.source_label or "Public playlist",
+                ),
+                warnings=[],
+                summary=migrations.MigrationSelectionSummary(playlists=1, tracks=2),
+            )
 
         async def no_enqueue(*args, **kwargs):
             return None

@@ -827,6 +827,179 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Snapshots */
+        get: operations["list_snapshots_api_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Snapshot */
+        post: operations["import_snapshot_api_snapshots_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Snapshot Profiles */
+        get: operations["list_snapshot_profiles_api_snapshots_profiles_get"];
+        put?: never;
+        /** Create Snapshot Profile */
+        post: operations["create_snapshot_profile_api_snapshots_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Snapshot Profile */
+        delete: operations["delete_snapshot_profile_api_snapshots_profiles__profile_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Snapshot Profile */
+        patch: operations["update_snapshot_profile_api_snapshots_profiles__profile_id__patch"];
+        trace?: never;
+    };
+    "/api/snapshots/profiles/{profile_id}/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cleanup Snapshots */
+        post: operations["cleanup_snapshots_api_snapshots_profiles__profile_id__cleanup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/profiles/{profile_id}/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Snapshot */
+        post: operations["create_snapshot_api_snapshots_profiles__profile_id__snapshots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Snapshot */
+        get: operations["get_snapshot_api_snapshots__snapshot_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Snapshot */
+        delete: operations["delete_snapshot_api_snapshots__snapshot_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{snapshot_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diff Snapshot */
+        get: operations["diff_snapshot_api_snapshots__snapshot_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{snapshot_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Snapshot */
+        get: operations["download_snapshot_api_snapshots__snapshot_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{snapshot_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Snapshot */
+        post: operations["verify_snapshot_api_snapshots__snapshot_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/syncs": {
         parameters: {
             query?: never;
@@ -1154,9 +1327,11 @@ export interface components {
             acknowledge_warnings: boolean;
             selection: components["schemas"]["Selection"];
             /** Source Account Id */
-            source_account_id: string;
+            source_account_id?: string | null;
             /** Source Provider */
-            source_provider: string;
+            source_provider?: string | null;
+            /** Source Snapshot Id */
+            source_snapshot_id?: string | null;
             /** Target Account Id */
             target_account_id: string;
             /** Target Provider */
@@ -1412,8 +1587,15 @@ export interface components {
              * @default manual
              */
             origin: string;
+            /**
+             * Source Kind
+             * @default provider
+             */
+            source_kind: string;
             /** Source Provider */
             source_provider: string;
+            /** Source Snapshot Id */
+            source_snapshot_id?: string | null;
             /** Status */
             status: string;
             /** Sync Run Id */
@@ -2118,6 +2300,349 @@ export interface components {
             title: string;
             /** Unsupported Reason */
             unsupported_reason?: string | null;
+        };
+        /** SnapshotCleanupView */
+        SnapshotCleanupView: {
+            /** Deleted Bytes */
+            deleted_bytes: number;
+            /** Deleted Count */
+            deleted_count: number;
+        };
+        /** SnapshotCollectionManifest */
+        SnapshotCollectionManifest: {
+            /**
+             * Complete
+             * @default true
+             */
+            complete: boolean;
+            /**
+             * Entity Type
+             * @default playlist
+             * @constant
+             */
+            entity_type: "playlist";
+            /** Error */
+            error?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Item Count
+             * @default 0
+             */
+            item_count: number;
+            /** Items Sha256 */
+            items_sha256: string;
+            /** @default standard */
+            kind: components["schemas"]["PlaylistKind"];
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /**
+             * Payload Bytes
+             * @default 0
+             */
+            payload_bytes: number;
+            /** Payload Sha256 */
+            payload_sha256: string;
+            /** Source Collection Id */
+            source_collection_id: string;
+            /** Source Key */
+            source_key: string;
+            /** Source Provider */
+            source_provider: string;
+        };
+        /** SnapshotCounts */
+        SnapshotCounts: {
+            /**
+             * Collections
+             * @default 0
+             */
+            collections: number;
+            /**
+             * Failed Collections
+             * @default 0
+             */
+            failed_collections: number;
+            /**
+             * Items
+             * @default 0
+             */
+            items: number;
+            /**
+             * Sources
+             * @default 0
+             */
+            sources: number;
+        };
+        /** SnapshotDetailView */
+        SnapshotDetailView: {
+            /** Bundle Id */
+            bundle_id: string;
+            counts?: components["schemas"]["SnapshotCounts"];
+            /** Created At */
+            created_at?: string | null;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Id */
+            id: string;
+            /** Library Id */
+            library_id: string;
+            manifest?: components["schemas"]["SnapshotManifest"] | null;
+            /** Profile Id */
+            profile_id?: string | null;
+            /** Profile Name */
+            profile_name?: string | null;
+            /** Schema Version */
+            schema_version: number;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+            /** Source Labels */
+            source_labels?: string[];
+            /** Source Providers */
+            source_providers?: string[];
+            /** Status */
+            status: string;
+            /** Verification Error */
+            verification_error?: string | null;
+            /** Verification Status */
+            verification_status: string;
+            /** Verified At */
+            verified_at?: string | null;
+        };
+        /** SnapshotDiff */
+        SnapshotDiff: {
+            /** Added */
+            added?: components["schemas"]["SnapshotDiffCollection"][];
+            /** Base Snapshot Id */
+            base_snapshot_id: string;
+            /** Changed */
+            changed?: components["schemas"]["SnapshotDiffCollection"][];
+            /** Compare Snapshot Id */
+            compare_snapshot_id: string;
+            /**
+             * Items Added
+             * @default 0
+             */
+            items_added: number;
+            /**
+             * Items Removed
+             * @default 0
+             */
+            items_removed: number;
+            /** Removed */
+            removed?: components["schemas"]["SnapshotDiffCollection"][];
+            /** Renamed */
+            renamed?: components["schemas"]["SnapshotDiffCollection"][];
+        };
+        /** SnapshotDiffCollection */
+        SnapshotDiffCollection: {
+            /** Id */
+            id: string;
+            /**
+             * Item Count
+             * @default 0
+             */
+            item_count: number;
+            /** Name */
+            name: string;
+            /** Previous Item Count */
+            previous_item_count?: number | null;
+            /** Previous Name */
+            previous_name?: string | null;
+        };
+        /** SnapshotFailure */
+        SnapshotFailure: {
+            /** Collection Id */
+            collection_id?: string | null;
+            /** Message */
+            message: string;
+            /** Provider */
+            provider: string;
+            /** Source Key */
+            source_key: string;
+        };
+        /** SnapshotListView */
+        SnapshotListView: {
+            /** Snapshots */
+            snapshots?: components["schemas"]["SnapshotView"][];
+            /**
+             * Total Bytes
+             * @default 0
+             */
+            total_bytes: number;
+        };
+        /** SnapshotManifest */
+        SnapshotManifest: {
+            /** Collections */
+            collections?: components["schemas"]["SnapshotCollectionManifest"][];
+            counts?: components["schemas"]["SnapshotCounts"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Failures */
+            failures?: components["schemas"]["SnapshotFailure"][];
+            /**
+             * Format
+             * @default open-playlist-bundle
+             * @constant
+             */
+            format: "open-playlist-bundle";
+            /** Library Id */
+            library_id: string;
+            /** Profile Name */
+            profile_name?: string | null;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources?: components["schemas"]["SnapshotSourceManifest"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "partial";
+        };
+        /** SnapshotProfileCreate */
+        SnapshotProfileCreate: {
+            /** Name */
+            name: string;
+            /** Retention Count */
+            retention_count?: number | null;
+            /** Retention Days */
+            retention_days?: number | null;
+            /** Sources */
+            sources: components["schemas"]["SnapshotProfileSourceInput"][];
+        };
+        /** SnapshotProfileSourceInput */
+        SnapshotProfileSourceInput: {
+            /** Account Id */
+            account_id: string;
+            /** Collection Ids */
+            collection_ids: string[];
+            /** Provider */
+            provider: string;
+        };
+        /** SnapshotProfileSourceView */
+        SnapshotProfileSourceView: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Account Label */
+            account_label?: string | null;
+            /** Collection Ids */
+            collection_ids?: string[];
+            /** Id */
+            id: string;
+            /** Provider */
+            provider: string;
+        };
+        /** SnapshotProfileUpdate */
+        SnapshotProfileUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Retention Count */
+            retention_count?: number | null;
+            /** Retention Days */
+            retention_days?: number | null;
+        };
+        /** SnapshotProfileView */
+        SnapshotProfileView: {
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Retention Count */
+            retention_count?: number | null;
+            /** Retention Days */
+            retention_days?: number | null;
+            /**
+             * Snapshot Count
+             * @default 0
+             */
+            snapshot_count: number;
+            /** Sources */
+            sources?: components["schemas"]["SnapshotProfileSourceView"][];
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** SnapshotSourceManifest */
+        SnapshotSourceManifest: {
+            /** Account Label */
+            account_label?: string | null;
+            /** Key */
+            key: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Selected Collection Count
+             * @default 0
+             */
+            selected_collection_count: number;
+        };
+        /** SnapshotVerificationView */
+        SnapshotVerificationView: {
+            /** Archive Sha256 */
+            archive_sha256?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Status */
+            status: string;
+            /** Verified At */
+            verified_at?: string | null;
+        };
+        /** SnapshotView */
+        SnapshotView: {
+            /** Bundle Id */
+            bundle_id: string;
+            counts?: components["schemas"]["SnapshotCounts"];
+            /** Created At */
+            created_at?: string | null;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Id */
+            id: string;
+            /** Library Id */
+            library_id: string;
+            /** Profile Id */
+            profile_id?: string | null;
+            /** Profile Name */
+            profile_name?: string | null;
+            /** Schema Version */
+            schema_version: number;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+            /** Source Labels */
+            source_labels?: string[];
+            /** Source Providers */
+            source_providers?: string[];
+            /** Status */
+            status: string;
+            /** Verification Error */
+            verification_error?: string | null;
+            /** Verification Status */
+            verification_status: string;
+            /** Verified At */
+            verified_at?: string | null;
         };
         /** SourceConnectionRequiredDetail */
         SourceConnectionRequiredDetail: {
@@ -4281,6 +4806,407 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShareDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_snapshots_api_snapshots_get: {
+        parameters: {
+            query?: {
+                profile_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotListView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_snapshot_api_snapshots_import_post: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+                "application/zip": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_snapshot_profiles_api_snapshots_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotProfileView"][];
+                };
+            };
+        };
+    };
+    create_snapshot_profile_api_snapshots_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnapshotProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotProfileView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_snapshot_profile_api_snapshots_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_snapshot_profile_api_snapshots_profiles__profile_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnapshotProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotProfileView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cleanup_snapshots_api_snapshots_profiles__profile_id__cleanup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotCleanupView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_snapshot_api_snapshots_profiles__profile_id__snapshots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_snapshot_api_snapshots__snapshot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotDetailView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_snapshot_api_snapshots__snapshot_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_snapshot_api_snapshots__snapshot_id__diff_get: {
+        parameters: {
+            query: {
+                base_snapshot_id: string;
+            };
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotDiff"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_snapshot_api_snapshots__snapshot_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_snapshot_api_snapshots__snapshot_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotVerificationView"];
                 };
             };
             /** @description Validation Error */

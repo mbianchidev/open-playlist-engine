@@ -1,9 +1,8 @@
 """Guard against divergent Alembic migration history (multiple heads).
 
-The merge of issue #24 into main's migration history added
-``0009_public_source_imports`` after ``0008_local_playlist_imports``; this
-test ensures the migration graph still has exactly one head so ``alembic
-upgrade head`` remains unambiguous.
+The snapshot branch and main's public-import chain diverge after
+``0002_playlist_read_cache``. ``0010_merge_snapshots`` joins those histories so
+``alembic upgrade head`` remains unambiguous.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ def test_migrations_have_a_single_head() -> None:
     script = _script_directory()
     heads = script.get_heads()
 
-    assert heads == ["0009_public_source_imports"]
+    assert heads == ["0010_merge_snapshots"]
 
 
 def test_public_source_imports_migration_chains_after_local_playlist_imports() -> None:
@@ -35,3 +34,14 @@ def test_public_source_imports_migration_chains_after_local_playlist_imports() -
 
     assert revision is not None
     assert revision.down_revision == "0008_local_playlist_imports"
+
+
+def test_snapshot_merge_revision_joins_both_heads() -> None:
+    script = _script_directory()
+    revision = script.get_revision("0010_merge_snapshots")
+
+    assert revision is not None
+    assert revision.down_revision == (
+        "0009_public_source_imports",
+        "0003_local_library_snapshots",
+    )

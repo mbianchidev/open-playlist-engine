@@ -15,6 +15,7 @@ from app.imports.service import cleanup_local_imports
 from app.jobs.history_cleanup import cleanup_expired_migration_details
 from app.jobs.migration import run_migration
 from app.jobs.organizer import run_organizer
+from app.jobs.snapshot import run_snapshot, snapshot_worker_startup
 from app.jobs.sync import finalize_sync_review, run_sync, schedule_syncs
 from app.settings import get_settings
 
@@ -30,6 +31,7 @@ class WorkerSettings:
         func(run_organizer, timeout=get_settings().organizer_worker_job_timeout_s),
         func(run_sync, timeout=get_settings().migration_worker_job_timeout_s),
         func(finalize_sync_review, timeout=get_settings().migration_worker_job_timeout_s),
+        func(run_snapshot, timeout=get_settings().snapshot_worker_job_timeout_s),
     ]
     cron_jobs = [
         cron(schedule_syncs, minute=None, second=0, run_at_startup=True),
@@ -40,4 +42,6 @@ class WorkerSettings:
     job_timeout = max(
         get_settings().migration_worker_job_timeout_s,
         get_settings().organizer_worker_job_timeout_s,
+        get_settings().snapshot_worker_job_timeout_s,
     )
+    on_startup = snapshot_worker_startup

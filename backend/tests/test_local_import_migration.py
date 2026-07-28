@@ -277,7 +277,16 @@ async def test_create_migration_leases_local_import_once(
         )
 
         async def no_warnings(*args, **kwargs):
-            return [], migrations.MigrationSelectionSummary(playlists=1, tracks=1)
+            return migrations._ValidatedPreflight(
+                source=migrations.MigrationSource(
+                    kind="import",
+                    provider=LOCAL_FILE_PROVIDER,
+                    account_id=record.id,
+                    display_name=record.filename,
+                ),
+                warnings=[],
+                summary=migrations.MigrationSelectionSummary(playlists=1, tracks=1),
+            )
 
         async def no_enqueue(*args, **kwargs):
             return None
