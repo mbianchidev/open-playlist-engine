@@ -10,9 +10,10 @@ from datetime import datetime
 from typing import Any
 
 from app.core.migration_state import uri_keys
+from app.core.models import MigrationEntityType
 from app.db import models as orm
 
-REPORT_VERSION = "1"
+REPORT_VERSION = "2"
 REPORT_FIELDS = (
     "report_version",
     "job_id",
@@ -29,6 +30,10 @@ REPORT_FIELDS = (
     "target_provider",
     "target_account_id",
     "item_id",
+    "entity_type",
+    "source_entity_id",
+    "source_entity_name",
+    "target_entity_id",
     "source_playlist_id",
     "source_playlist_name",
     "target_playlist_id",
@@ -66,6 +71,11 @@ def build_report_row(
 ) -> dict[str, Any]:
     metadata = item.source_metadata if isinstance(item.source_metadata, dict) else {}
     provider_uris = metadata.get("provider_uris")
+    entity_type = _entity_type_value(item.entity_type)
+    source_metadata_id = _string_or_none(metadata.get("id"))
+    source_entity_id = item.source_entity_id or source_metadata_id
+    source_entity_name = item.source_entity_name or item.title
+    target_entity_id = item.target_entity_id or _provider_item_id(item.target_uri)
     source_uri = (
         provider_uris.get(job.source_provider)
         if isinstance(provider_uris, dict)
@@ -88,6 +98,10 @@ def build_report_row(
         "target_provider": job.target_provider,
         "target_account_id": job.target_account_id,
         "item_id": item.id,
+        "entity_type": entity_type,
+        "source_entity_id": source_entity_id,
+        "source_entity_name": source_entity_name,
+        "target_entity_id": target_entity_id,
         "source_playlist_id": item.source_playlist_id,
         "source_playlist_name": item.source_playlist_name,
         "target_playlist_id": item.target_playlist_id,
@@ -99,12 +113,16 @@ def build_report_row(
         "release_year": item.release_year,
         "explicit": item.explicit,
         "isrc": item.isrc,
-        "source_track_id": _string_or_none(metadata.get("id")),
+        "source_track_id": (
+            source_metadata_id
+            if entity_type == MigrationEntityType.TRACK.value
+            else None
+        ),
         "source_item_id": _string_or_none(metadata.get("source_item_id")),
         "source_uri": source_uri,
         "source_metadata": metadata,
         "target_uri": item.target_uri,
-        "target_id": _provider_item_id(item.target_uri),
+        "target_id": target_entity_id,
         "confidence": item.confidence,
         "status": item.status,
         "reason": item.reason,
@@ -184,6 +202,12 @@ def _csv_value(value: Any) -> str:
 def _provider_item_id(uri: str | None) -> str | None:
     ids = sorted(key.removeprefix("id:") for key in uri_keys(uri) if key.startswith("id:"))
     return ids[0] if ids else None
+
+
+def _entity_type_value(value: str | MigrationEntityType | None) -> str:
+    if isinstance(value, MigrationEntityType):
+        return value.value
+    return value or MigrationEntityType.TRACK.value
 
 
 def _iso(value: datetime | None) -> str | None:

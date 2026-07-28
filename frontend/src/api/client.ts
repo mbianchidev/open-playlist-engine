@@ -7,6 +7,7 @@ import type {
   CreateMigrationBody,
   JobItemView,
   JobView,
+  LibraryView,
   MigrationItemFilters,
   MigrationItemPage,
   MigrationOptionView,
@@ -115,6 +116,15 @@ export async function getPlaylist(
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
 }
 
+export async function getLibrary(
+  provider: string,
+  accountId: string,
+  context?: PlaylistContext,
+): Promise<LibraryView> {
+  const params = playlistParams(provider, accountId, context);
+  return json<LibraryView>(await fetch(`/api/library?${params}`));
+}
+
 export async function createMigration(body: CreateMigrationBody): Promise<JobView> {
   return json<JobView>(
     await fetch("/api/migrations", {
@@ -211,11 +221,14 @@ export async function reviewMigrationItem(
   body: { action: "approve" | "skip"; target_uri?: string | null },
 ): Promise<JobItemView> {
   return json<JobItemView>(
-    await fetch(`/api/migrations/${jobId}/items/${itemId}/review`, {
+    await fetch(
+      `/api/migrations/${encodeURIComponent(jobId)}/items/${encodeURIComponent(itemId)}/review`,
+      {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
-    }),
+      },
+    ),
   );
 }
 
@@ -224,7 +237,7 @@ export async function reviewMigrationItems(
   body: { action: "approve" | "skip"; item_ids: string[] },
 ): Promise<JobItemView[]> {
   return json<JobItemView[]>(
-    await fetch(`/api/migrations/${jobId}/items/review`, {
+    await fetch(`/api/migrations/${encodeURIComponent(jobId)}/items/review`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -242,6 +255,7 @@ export function subscribeProgress(jobId: string, onMessage: (e: MessageEvent) =>
 function migrationItemParams(filters: MigrationItemFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.sourcePlaylistId) params.set("source_playlist_id", filters.sourcePlaylistId);
+  for (const entityType of filters.entityTypes ?? []) params.append("entity_type", entityType);
   for (const status of filters.statuses ?? []) params.append("status", status);
   if (filters.minConfidence !== null && filters.minConfidence !== undefined) {
     params.set("min_confidence", String(filters.minConfidence));

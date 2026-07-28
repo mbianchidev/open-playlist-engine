@@ -7,16 +7,17 @@ results, prior review decisions, and the terminal error when a job failed.
 
 ## Inspecting item history
 
-`GET /api/migrations/{job_id}/items` returns ledger rows ordered by playlist and
-position. Existing clients can omit paging parameters and continue receiving the
-full array. The History UI sends `limit` and `offset`; the response includes the
-matching total in `X-Total-Count`.
+`GET /api/migrations/{job_id}/items` returns entity-typed ledger rows ordered by
+type, collection/entity name, and position. Existing clients can omit paging
+parameters and continue receiving the full array. The History UI sends `limit` and
+`offset`; the response includes the matching total in `X-Total-Count`.
 
 Supported filters:
 
 | Query parameter | Meaning |
 |---|---|
 | `source_playlist_id` | Exact source collection ID |
+| `entity_type` | Repeatable `track`, `album`, or `artist` filter |
 | `status` | Repeatable exact status filter |
 | `min_confidence` / `max_confidence` | Inclusive `0.0`–`1.0` match confidence |
 | `reason` | Case-insensitive literal substring |
@@ -38,6 +39,8 @@ an exported file.
 - Every item filter above is also accepted.
 
 The UI provides one-click CSV and JSON downloads for all rows and for problem rows.
+Active entity, collection, status, confidence, title, artist, and reason filters are
+included in the download URL.
 Both formats stream from a server-side database cursor in configurable batches, so
 the complete result is never loaded into application memory.
 
@@ -48,7 +51,8 @@ JSON is a streamed object with report/job/filter metadata and an `items` array.
 
 ## Stable report fields
 
-Report schema version `1` uses the following item fields. JSON preserves
+Report schema version `2` adds explicit mixed-entity identity fields and uses the
+following columns. JSON preserves
 `source_metadata` and `job_warnings` as structured values; CSV serializes them as
 compact JSON strings.
 
@@ -69,21 +73,25 @@ compact JSON strings.
 | `target_provider` | Target provider key |
 | `target_account_id` | Historical target account ID |
 | `item_id` | Ledger item ID |
-| `source_playlist_id` | Source collection ID |
-| `source_playlist_name` | Source collection name |
-| `target_playlist_id` | Mapped target collection ID |
+| `entity_type` | `track`, `album`, or `artist` |
+| `source_entity_id` | Generic source entity ID; falls back to source metadata for tracks |
+| `source_entity_name` | Generic source display name |
+| `target_entity_id` | Generic matched/written target entity ID |
+| `source_playlist_id` | Source collection ID for track items; empty for albums/artists |
+| `source_playlist_name` | Source collection name for track items |
+| `target_playlist_id` | Mapped target collection ID for track items |
 | `position` | Source position |
-| `title` | Source title |
-| `artist` | Source artist |
-| `album` | Source album |
-| `duration_s` | Source duration in seconds |
+| `title` | Track/album title or artist name |
+| `artist` | Track/album artist; artist items repeat the source name in the raw ledger |
+| `album` | Track album; empty for album/artist entities |
+| `duration_s` | Track duration in seconds |
 | `release_year` | Source release year |
 | `explicit` | Explicit-content flag |
 | `isrc` | Source ISRC |
-| `source_track_id` | Provider source track ID from source metadata |
+| `source_track_id` | Provider source track ID; empty for albums/artists |
 | `source_item_id` | Provider source collection-entry ID |
 | `source_uri` | Source provider URI |
-| `source_metadata` | Complete universal source-track metadata |
+| `source_metadata` | Complete universal Track, Album, or Artist metadata |
 | `target_uri` | Selected/written target URI |
 | `target_id` | Provider item ID parsed from the target URI |
 | `confidence` | Match confidence from `0.0` to `1.0` |
@@ -104,14 +112,16 @@ authentication responses, or another user's jobs.
 `OPE_MIGRATION_HISTORY_RETENTION_DAYS` defaults to `90`.
 
 - `0` retains item detail indefinitely.
-- Job summaries, counts, warnings, lifecycle timestamps, selected collection
-  mappings, and terminal errors are retained indefinitely.
+- Job summaries, per-entity counts, warnings, lifecycle timestamps, selected
+  collection mappings, and terminal errors are retained indefinitely.
 - After the deadline, item and report endpoints return `410` immediately.
 - The ARQ worker runs bounded cleanup hourly at minute 17. It snapshots the ledger
   summary, then deletes expired `job_item` and `operation_ledger` rows in batches
   controlled by `OPE_MIGRATION_HISTORY_CLEANUP_BATCH_SIZE`.
-- Accepted low-confidence review decisions are retained separately so cleanup does
-  not make future migrations forget previously approved matches.
+- Accepted track, album, and artist review decisions are retained separately so
+  cleanup does not make future migrations forget previously approved matches.
+  Decisions are scoped by user, provider/account history, and entity type; a
+  validated album or artist decision can never become a track candidate.
 - `OPE_MIGRATION_REPORT_BATCH_SIZE` controls the database streaming batch size.
 
 Changing the retention setting applies to new jobs and to older terminal jobs that

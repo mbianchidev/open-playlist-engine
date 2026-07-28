@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "gen:api": "openapi-typescript ../openapi/open-playlist-engine.json -o src/api/schema.d.ts"
+    "gen:api": "npx --yes openapi-typescript@7.13.0 ../openapi/open-playlist-engine.json -o src/api/schema.d.ts"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",
@@ -20,7 +20,6 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.2",
-    "openapi-typescript": "^7.4.4",
     "typescript": "^5.7.2",
     "vite": "^8.0.16"
   }

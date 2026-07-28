@@ -13,6 +13,7 @@ from app.core.migration_reports import (
     json_report_prefix,
     json_report_suffix,
 )
+from app.core.models import MigrationEntityType
 from app.db import models as orm
 
 
@@ -72,12 +73,16 @@ def test_report_row_has_stable_complete_fields() -> None:
     row = build_report_row(_job(), _item(), outcome="partial")
 
     assert tuple(row) == REPORT_FIELDS
-    assert row["report_version"] == "1"
+    assert row["report_version"] == "2"
     assert row["job_id"] == "job-123"
     assert row["job_status"] == "done"
     assert row["job_outcome"] == "partial"
     assert row["job_error"] == "One provider write failed"
     assert row["job_warnings"] == [{"code": "large_job", "message": "Large migration"}]
+    assert row["entity_type"] == "track"
+    assert row["source_entity_id"] == "source-track"
+    assert row["source_entity_name"] == "Song"
+    assert row["target_entity_id"] == "target-video"
     assert row["source_playlist_name"] == "Road Trip"
     assert row["source_track_id"] == "source-track"
     assert row["source_item_id"] == "source-entry"
@@ -86,6 +91,32 @@ def test_report_row_has_stable_complete_fields() -> None:
     assert row["review_action"] == "approve"
     assert row["review_original_reason"] == "Low confidence"
     assert row["item_updated_at"] == "2026-07-14T12:02:00+00:00"
+
+
+def test_report_row_preserves_album_entity_metadata() -> None:
+    item = _item()
+    item.entity_type = MigrationEntityType.ALBUM
+    item.source_playlist_id = None
+    item.source_playlist_name = None
+    item.target_playlist_id = None
+    item.source_entity_id = "album-source"
+    item.source_entity_name = "Album"
+    item.target_entity_id = "album-target"
+    item.target_uri = "spotify:album:album-target"
+    item.source_metadata = {
+        "id": "album-source",
+        "title": "Album",
+        "artists": ["Artist"],
+        "provider_uris": {"spotify": "spotify:album:album-source"},
+    }
+
+    row = build_report_row(_job(), item, outcome="partial")
+
+    assert row["entity_type"] == "album"
+    assert row["source_entity_id"] == "album-source"
+    assert row["source_entity_name"] == "Album"
+    assert row["target_entity_id"] == "album-target"
+    assert row["source_uri"] == "spotify:album:album-source"
 
 
 def test_csv_report_quotes_unicode_newlines_and_neutralizes_formulas() -> None:
@@ -111,7 +142,7 @@ def test_csv_report_quotes_unicode_newlines_and_neutralizes_formulas() -> None:
 
 def test_empty_json_report_is_valid_and_contains_no_items() -> None:
     metadata = {
-        "report_version": "1",
+        "report_version": "2",
         "job_id": "job-123",
         "scope": "problems",
         "filters": {},

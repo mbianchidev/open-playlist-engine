@@ -23,25 +23,32 @@ frontend-only filter/page shapes:
 ```bash
 npm run gen:api
 ```
+The script invokes a pinned code generator ephemerally, keeping codegen-only parser
+dependencies out of the installed/audited frontend dependency graph.
 
 ## Flow (maps to the phased design)
 1. Pick source/target providers from `/api/providers`.
 2. Connect accounts through generic auth challenges.
-3. Load source playlists and optional per-playlist track details from `/api/playlists`.
-4. Create a migration with selected playlist and track IDs. Warning popups guard
-   slow defaults and same-name target playlist conflicts.
+3. Load source playlists from `/api/playlists` and saved albums/artists from
+   `/api/library`, including target limitations and follow/favorite semantics.
+4. Create a migration with selected playlist, track, album, and artist IDs. The
+   preflight confirms per-entity counts; warning popups guard slow defaults,
+   semantic conversions, and same-name target playlist conflicts.
 5. Render live job/item progress from SSE.
 6. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
    denying all doubtful items.
-7. Reopen migrations in **History**, filter item results, inspect prior decisions
-   and errors, follow target links, and download all/problem CSV or JSON reports.
+7. Reopen migrations in **History**, filter track/album/artist results, inspect prior
+   decisions and errors, follow entity-aware target links, and download filtered
+   all/problem CSV or JSON reports.
 
 The current UI supports checked account refresh/test-connection, partial-migration
 labels, playlist-level song group selection, and any provider direction advertised
 by backend capabilities, including Spotify ↔ Tidal and YouTube Music ↔ Tidal.
 Native liked-track collections map across Spotify Liked Songs, Tidal My Collection,
-and YouTube Music Liked Songs.
+and YouTube Music Liked Songs. Spotify and Tidal also expose explicit saved-album
+and followed/favorite-artist selection. Unsupported target types remain disabled
+instead of being represented as playlists.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
 

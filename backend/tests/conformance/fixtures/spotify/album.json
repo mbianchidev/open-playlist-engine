@@ -1,0 +1,10 @@
+{
+  "id": "album-1",
+  "name": "Album One",
+  "uri": "spotify:album:album-1",
+  "artists": [{"name": "Artist One"}],
+  "external_ids": {"upc": "0123456789012"},
+  "release_date": "2020-01-02",
+  "release_date_precision": "day",
+  "images": [{"url": "https://img.example.com/album-one.jpg"}]
+}

@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Library */
+        get: operations["get_library_api_library_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/migrations": {
         parameters: {
             query?: never;
@@ -363,12 +380,21 @@ export interface components {
              * @default false
              */
             empty: boolean;
+            /** Entity Counts */
+            entity_counts?: {
+                [key: string]: components["schemas"]["StatusCounts"];
+            };
             /** Message */
             message?: string | null;
             /** Source Provider */
             source_provider?: string | null;
             /** Target Provider */
             target_provider?: string | null;
+            /**
+             * Total Followed Artists
+             * @default 0
+             */
+            total_followed_artists: number;
             /**
              * Total Migrations
              * @default 0
@@ -379,6 +405,70 @@ export interface components {
              * @default 0
              */
             total_playlists: number;
+            /**
+             * Total Saved Albums
+             * @default 0
+             */
+            total_saved_albums: number;
+        };
+        /** Album */
+        Album: {
+            /** Added At */
+            added_at?: string | null;
+            /** Artists */
+            artists?: string[];
+            /** Artwork Uri */
+            artwork_uri?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Provider Uris */
+            provider_uris?: {
+                [key: string]: string;
+            };
+            /** Release Date */
+            release_date?: string | null;
+            /** Release Year */
+            release_year?: number | null;
+            /** Source Item Id */
+            source_item_id?: string | null;
+            /** Title */
+            title: string;
+            /** Upc */
+            upc?: string | null;
+        };
+        /** Artist */
+        Artist: {
+            /** Added At */
+            added_at?: string | null;
+            /** Artwork Uri */
+            artwork_uri?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Provider Uris */
+            provider_uris?: {
+                [key: string]: string;
+            };
+            /** Source Item Id */
+            source_item_id?: string | null;
+        };
+        /** ArtistCapabilityView */
+        ArtistCapabilityView: {
+            /** Read */
+            read: boolean;
+            /** Semantics */
+            semantics?: string | null;
+            /** Write */
+            write: boolean;
         };
         /** AuthChallenge */
         AuthChallenge: {
@@ -466,6 +556,28 @@ export interface components {
             /** Uri */
             uri?: string | null;
         };
+        /** FollowedArtistsView */
+        FollowedArtistsView: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Items */
+            items?: components["schemas"]["Artist"][];
+            /** Source Limitation */
+            source_limitation?: string | null;
+            /** Source Semantics */
+            source_semantics?: string | null;
+            /** Source Supported */
+            source_supported: boolean;
+            /** Target Limitation */
+            target_limitation?: string | null;
+            /** Target Semantics */
+            target_semantics?: string | null;
+            /** Target Supported */
+            target_supported: boolean;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -483,6 +595,8 @@ export interface components {
             created_at?: string | null;
             /** Duration S */
             duration_s?: number | null;
+            /** Entity Type */
+            entity_type: string;
             /** Explicit */
             explicit?: boolean | null;
             /** Id */
@@ -503,16 +617,22 @@ export interface components {
             review_original_status?: string | null;
             /** Reviewed At */
             reviewed_at?: string | null;
+            /** Source Entity Id */
+            source_entity_id?: string | null;
+            /** Source Entity Name */
+            source_entity_name?: string | null;
             /** Source Metadata */
             source_metadata?: {
                 [key: string]: unknown;
             };
             /** Source Playlist Id */
-            source_playlist_id: string;
+            source_playlist_id?: string | null;
             /** Source Playlist Name */
             source_playlist_name?: string | null;
             /** Status */
             status: string;
+            /** Target Entity Id */
+            target_entity_id?: string | null;
             /** Target Playlist Id */
             target_playlist_id?: string | null;
             /** Target Uri */
@@ -550,11 +670,28 @@ export interface components {
              */
             total: number;
         };
+        /** LibraryCapabilityView */
+        LibraryCapabilityView: {
+            /** Read */
+            read: boolean;
+            /** Write */
+            write: boolean;
+        };
+        /** LibraryView */
+        LibraryView: {
+            followed_artists: components["schemas"]["FollowedArtistsView"];
+            saved_albums: components["schemas"]["SavedAlbumsView"];
+        };
         /**
          * MediaType
          * @enum {string}
          */
         MediaType: "track" | "episode" | "video" | "local_file" | "unknown";
+        /**
+         * MigrationEntityType
+         * @enum {string}
+         */
+        MigrationEntityType: "track" | "album" | "artist";
         /** MigrationOptionView */
         MigrationOptionView: {
             /** Created At */
@@ -574,12 +711,36 @@ export interface components {
             outcome?: string | null;
             /** Playlist Names */
             playlist_names?: string[];
+            selection_summary?: components["schemas"]["MigrationSelectionSummary"];
             /** Source Provider */
             source_provider: string;
             /** Status */
             status: string;
             /** Target Provider */
             target_provider: string;
+        };
+        /** MigrationSelectionSummary */
+        MigrationSelectionSummary: {
+            /**
+             * Followed Artists
+             * @default 0
+             */
+            followed_artists: number;
+            /**
+             * Playlists
+             * @default 0
+             */
+            playlists: number;
+            /**
+             * Saved Albums
+             * @default 0
+             */
+            saved_albums: number;
+            /**
+             * Tracks
+             * @default 0
+             */
+            tracks: number;
         };
         /** MigrationStatsView */
         MigrationStatsView: {
@@ -604,8 +765,17 @@ export interface components {
              * @default false
              */
             empty: boolean;
+            /** Entity Counts */
+            entity_counts?: {
+                [key: string]: components["schemas"]["StatusCounts"];
+            };
             /** Error */
             error?: string | null;
+            /**
+             * Followed Artist Count
+             * @default 0
+             */
+            followed_artist_count: number;
             /** Id */
             id: string;
             /** Label */
@@ -628,6 +798,11 @@ export interface components {
              * @default 0
              */
             retention_days: number;
+            /**
+             * Saved Album Count
+             * @default 0
+             */
+            saved_album_count: number;
             source_account?: components["schemas"]["AccountHistoryView"] | null;
             /** Source Provider */
             source_provider: string;
@@ -655,11 +830,9 @@ export interface components {
              * @default Review and acknowledge migration warnings before starting.
              */
             message: string;
-            /**
-             * Warnings
-             * @default []
-             */
-            warnings: {
+            summary: components["schemas"]["MigrationSelectionSummary"];
+            /** Warnings */
+            warnings?: {
                 [key: string]: string;
             }[];
         };
@@ -744,12 +917,14 @@ export interface components {
             can_target: boolean;
             /** Display Name */
             display_name: string;
+            followed_artists: components["schemas"]["ArtistCapabilityView"];
             /** Has Isrc */
             has_isrc: boolean;
             /** Name */
             name: string;
             /** Official */
             official: boolean;
+            saved_albums: components["schemas"]["LibraryCapabilityView"];
             /** Stability */
             stability: string;
             /** Warning */
@@ -765,18 +940,34 @@ export interface components {
             /** Target Uri */
             target_uri?: string | null;
         };
+        /** SavedAlbumsView */
+        SavedAlbumsView: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Items */
+            items?: components["schemas"]["Album"][];
+            /** Source Limitation */
+            source_limitation?: string | null;
+            /** Source Supported */
+            source_supported: boolean;
+            /** Target Limitation */
+            target_limitation?: string | null;
+            /** Target Supported */
+            target_supported: boolean;
+        };
         /** Selection */
         Selection: {
-            /**
-             * Playlist Ids
-             * @default []
-             */
-            playlist_ids: string[];
-            /**
-             * Tracks
-             * @default {}
-             */
-            tracks: {
+            /** Followed Artist Ids */
+            followed_artist_ids?: string[];
+            /** Playlist Ids */
+            playlist_ids?: string[];
+            /** Saved Album Ids */
+            saved_album_ids?: string[];
+            /** Tracks */
+            tracks?: {
                 [key: string]: string[];
             };
         };
@@ -1088,6 +1279,40 @@ export interface operations {
             };
         };
     };
+    get_library_api_library_get: {
+        parameters: {
+            query: {
+                provider: string;
+                account_id: string;
+                target_provider?: string | null;
+                target_account_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_migrations_api_migrations_get: {
         parameters: {
             query?: never;
@@ -1272,6 +1497,7 @@ export interface operations {
         parameters: {
             query?: {
                 source_playlist_id?: string | null;
+                entity_type?: components["schemas"]["MigrationEntityType"][] | null;
                 status?: string[] | null;
                 min_confidence?: number | null;
                 max_confidence?: number | null;
@@ -1387,6 +1613,7 @@ export interface operations {
                 format?: "csv" | "json";
                 scope?: "all" | "problems";
                 source_playlist_id?: string | null;
+                entity_type?: components["schemas"]["MigrationEntityType"][] | null;
                 status?: string[] | null;
                 min_confidence?: number | null;
                 max_confidence?: number | null;

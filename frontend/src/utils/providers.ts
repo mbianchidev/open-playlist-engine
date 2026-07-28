@@ -25,20 +25,37 @@ export function targetPlaylistUrl(provider: string, playlistId: string): string 
   return null;
 }
 
-export function providerTrackUrl(provider: string, uri: string): string | null {
+export function providerEntityUrl(
+  provider: string,
+  uri: string,
+  entityType: "track" | "album" | "artist",
+): string | null {
   const trimmed = uri.trim();
   if (/^https?:\/\//.test(trimmed)) return trimmed;
   if (provider === "spotify") {
-    const match = trimmed.match(/^spotify:track:([^/?#&\s]+)$/);
-    return match ? `https://open.spotify.com/track/${encodeURIComponent(match[1])}` : null;
+    const match = trimmed.match(
+      new RegExp(`^spotify:${entityType}:([^/?#&\\s]+)$`),
+    );
+    return match
+      ? `https://open.spotify.com/${entityType}/${encodeURIComponent(match[1])}`
+      : null;
   }
   if (provider === "ytmusic" || provider === "youtube" || provider === "youtube_music") {
+    if (entityType !== "track") return null;
     const match = trimmed.match(/^ytmusic:video:([^/?#&\s]+)$/);
     return match ? `https://music.youtube.com/watch?v=${encodeURIComponent(match[1])}` : null;
   }
   if (provider === "tidal") {
-    const match = trimmed.match(/^(?:tidal:track:)?([^/?#&\s]+)$/);
-    return match ? `https://tidal.com/browse/track/${encodeURIComponent(match[1])}` : null;
+    const match = trimmed.match(
+      new RegExp(`^(?:tidal:${entityType}:)?([^/?#&\\s]+)$`),
+    );
+    return match
+      ? `https://tidal.com/browse/${entityType}/${encodeURIComponent(match[1])}`
+      : null;
   }
   return null;
+}
+
+export function providerTrackUrl(provider: string, uri: string): string | null {
+  return providerEntityUrl(provider, uri, "track");
 }

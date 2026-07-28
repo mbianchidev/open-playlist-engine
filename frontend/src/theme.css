@@ -714,6 +714,30 @@ textarea,
   background: var(--surface-soft);
 }
 
+.library-collection {
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+.library-item-row {
+  border: 1px solid transparent;
+  color: var(--ink);
+}
+
+.library-item-row:hover:not(.disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+}
+
+.library-artwork.placeholder {
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+.library-limitation {
+  color: var(--warning);
+}
+
 .playlist-row,
 .track-row,
 .progress-row {
@@ -1235,6 +1259,14 @@ input[type="checkbox"] {
   margin-top: 0.35rem;
   color: var(--info);
   font-size: 0.75rem;
+}
+
+.history-entity-badge {
+  justify-self: start;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .history-pagination {

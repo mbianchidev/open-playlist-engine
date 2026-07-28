@@ -27,6 +27,17 @@ class PlaylistKind(StrEnum):
     LIKED_TRACKS = "liked_tracks"
 
 
+class MigrationEntityType(StrEnum):
+    TRACK = "track"
+    ALBUM = "album"
+    ARTIST = "artist"
+
+
+class ArtistCollectionSemantics(StrEnum):
+    FOLLOW = "follow"
+    FAVORITE = "favorite"
+
+
 class Credit(BaseModel):
     role: str
     name: str
@@ -74,6 +85,30 @@ class Track(BaseModel):
     @property
     def is_migratable(self) -> bool:
         return self.media_type is MediaType.TRACK and not self.is_local
+
+
+class Album(BaseModel):
+    id: str | None = None
+    title: str
+    artists: list[str] = Field(default_factory=list)
+    upc: str | None = None
+    release_date: date | None = None
+    release_year: int | None = None
+    artwork_uri: str | None = None
+    provider_uris: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    source_item_id: str | None = None
+    added_at: datetime | None = None
+
+
+class Artist(BaseModel):
+    id: str | None = None
+    name: str
+    artwork_uri: str | None = None
+    provider_uris: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    source_item_id: str | None = None
+    added_at: datetime | None = None
 
 
 class PlaylistRef(BaseModel):

@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.models import MigrationEntityType
 from app.db import models as orm
 
 KNOWN_ITEM_STATUSES = ("pending", "matched", "needs_review", "written", "skipped", "failed")
@@ -21,6 +22,7 @@ TERMINAL_JOB_STATUSES = ("done", "failed")
 @dataclass(frozen=True, slots=True)
 class MigrationItemFilters:
     source_playlist_id: str | None = None
+    entity_types: tuple[str, ...] = ()
     statuses: tuple[str, ...] = ()
     min_confidence: float | None = None
     max_confidence: float | None = None
@@ -41,8 +43,10 @@ def migration_items_stmt(
         .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
         .where(*_migration_item_conditions(job_id=job_id, user_id=user_id, filters=filters))
         .order_by(
+            orm.JobItem.entity_type,
             orm.JobItem.source_playlist_name,
             orm.JobItem.source_playlist_id,
+            orm.JobItem.source_entity_name,
             orm.JobItem.position,
             orm.JobItem.id,
         )
@@ -160,9 +164,21 @@ async def collect_job_result_summary(
                 orm.JobItem.status,
                 func.count(),
             )
-            .where(orm.JobItem.job_id == job.id)
+            .where(
+                orm.JobItem.job_id == job.id,
+                orm.JobItem.entity_type == MigrationEntityType.TRACK.value,
+                orm.JobItem.source_playlist_id.is_not(None),
+            )
             .group_by(orm.JobItem.source_playlist_id, orm.JobItem.status)
             .order_by(orm.JobItem.source_playlist_id, orm.JobItem.status)
+        )
+    ).all()
+    entity_count_rows = (
+        await session.execute(
+            select(orm.JobItem.entity_type, orm.JobItem.status, func.count())
+            .where(orm.JobItem.job_id == job.id)
+            .group_by(orm.JobItem.entity_type, orm.JobItem.status)
+            .order_by(orm.JobItem.entity_type, orm.JobItem.status)
         )
     ).all()
     grouped: dict[str, list[tuple[str, int]]] = defaultdict(list)
@@ -186,9 +202,17 @@ async def collect_job_result_summary(
                 "counts": status_counts(rows),
             }
         )
+    entity_grouped: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    for entity_type, item_status, count in entity_count_rows:
+        normalized = entity_type or MigrationEntityType.TRACK.value
+        entity_grouped[normalized].append((item_status, int(count)))
     return {
         "counts": status_counts(count_rows, total_hint=job.total),
         "playlists": playlists,
+        "entity_counts": {
+            entity_type.value: status_counts(entity_grouped.get(entity_type.value, ()))
+            for entity_type in MigrationEntityType
+        },
     }
 
 
@@ -208,6 +232,28 @@ def summary_playlists(job: orm.MigrationJob) -> list[dict[str, Any]]:
     return [playlist for playlist in playlists if isinstance(playlist, dict)]
 
 
+def summary_entity_counts(job: orm.MigrationJob) -> dict[str, dict[str, Any]]:
+    summary = job.result_summary if isinstance(job.result_summary, dict) else {}
+    raw = summary.get("entity_counts")
+    if not isinstance(raw, dict):
+        return {
+            MigrationEntityType.TRACK.value: summary_counts(job),
+            MigrationEntityType.ALBUM.value: status_counts(()),
+            MigrationEntityType.ARTIST.value: status_counts(()),
+        }
+    return {
+        entity_type.value: (
+            {
+                **status_counts(()),
+                **raw.get(entity_type.value),
+            }
+            if isinstance(raw.get(entity_type.value), dict)
+            else status_counts(())
+        )
+        for entity_type in MigrationEntityType
+    }
+
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -224,6 +270,8 @@ def _migration_item_conditions(
     ]
     if filters.source_playlist_id:
         conditions.append(orm.JobItem.source_playlist_id == filters.source_playlist_id)
+    if filters.entity_types:
+        conditions.append(orm.JobItem.entity_type.in_(filters.entity_types))
     if filters.statuses:
         conditions.append(orm.JobItem.status.in_(filters.statuses))
     if filters.problem_only:

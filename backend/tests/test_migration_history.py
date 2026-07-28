@@ -44,13 +44,19 @@ def _item(
     reason: str,
     status: str = "failed",
     confidence: float | None = 0.42,
+    entity_type: str = "track",
 ) -> orm.JobItem:
+    is_track = entity_type == "track"
     return orm.JobItem(
         id=item_id,
         job_id=job_id,
-        source_playlist_id="playlist",
-        source_playlist_name="Road Trip",
-        target_playlist_id="target-playlist",
+        entity_type=entity_type,
+        source_playlist_id="playlist" if is_track else None,
+        source_playlist_name="Road Trip" if is_track else None,
+        target_playlist_id="target-playlist" if is_track else None,
+        source_entity_id=None if is_track else f"{entity_type}-source",
+        source_entity_name=None if is_track else title,
+        target_entity_id=None if is_track else f"{entity_type}-target",
         position=0,
         title=title,
         artist="The Artist",
@@ -113,6 +119,28 @@ def test_item_filters_are_owner_scoped_and_escape_literal_wildcards() -> None:
     assert [row.id for row in rows] == ["match"]
     assert count == 1
     assert hidden == []
+
+
+def test_item_filters_support_mixed_entity_types() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    filters = MigrationItemFilters(entity_types=("album",))
+    with Session(engine) as session:
+        session.add_all(
+            [
+                _job("job"),
+                _item("track", "job", title="Track", reason="", entity_type="track"),
+                _item("album", "job", title="Album", reason="", entity_type="album"),
+                _item("artist", "job", title="Artist", reason="", entity_type="artist"),
+            ]
+        )
+        session.commit()
+
+        rows = session.scalars(
+            migration_items_stmt(job_id="job", user_id="alice", filters=filters)
+        ).all()
+
+    assert [row.id for row in rows] == ["album"]
 
 
 def test_migration_outcome_distinguishes_completed_partial_and_failed() -> None:
@@ -179,6 +207,10 @@ def test_review_decisions_survive_item_and_operation_retention_cleanup() -> None
                     target_provider="ytmusic",
                     source_account_id="alice-source",
                     target_account_id="alice-target",
+                    entity_type="album",
+                    source_entity_id="album-source",
+                    source_entity_name="Album",
+                    target_entity_id="album-target",
                     title="Song",
                     artist="The Artist",
                     source_metadata={"id": "source-track"},
@@ -198,6 +230,8 @@ def test_review_decisions_survive_item_and_operation_retention_cleanup() -> None
         decision = session.get(orm.ReviewDecision, "decision")
 
     assert decision is not None
+    assert decision.entity_type == "album"
+    assert decision.source_entity_id == "album-source"
     assert decision.target_uri == "ytmusic:video:target"
 
 
@@ -238,6 +272,7 @@ async def test_item_history_returns_explicit_not_found_for_another_users_job() -
             _OwnedJobSession(None),
             "bob",
             source_playlist_id=None,
+            entity_types=None,
             statuses=None,
             min_confidence=None,
             max_confidence=None,
@@ -265,6 +300,7 @@ async def test_item_history_returns_gone_after_retention_expiry() -> None:
             _OwnedJobSession(job),
             "alice",
             source_playlist_id=None,
+            entity_types=None,
             statuses=None,
             min_confidence=None,
             max_confidence=None,

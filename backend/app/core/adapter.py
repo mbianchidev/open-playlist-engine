@@ -14,7 +14,14 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 from app.core.capabilities import Capability, CapabilityDescriptor
-from app.core.models import Playlist, PlaylistRef, Track
+from app.core.models import (
+    Album,
+    Artist,
+    ArtistCollectionSemantics,
+    Playlist,
+    PlaylistRef,
+    Track,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -138,9 +145,27 @@ class TrackCandidate(BaseModel):
     market: str | None = None
 
 
+class AlbumCandidate(BaseModel):
+    provider_album_id: str
+    uri: str
+    title: str
+    artists: list[str] = Field(default_factory=list)
+    upc: str | None = None
+    release_date: str | None = None
+    artwork_uri: str | None = None
+
+
+class ArtistCandidate(BaseModel):
+    provider_artist_id: str
+    uri: str
+    name: str
+    artwork_uri: str | None = None
+
+
 class AddItemResult(BaseModel):
     uri: str
     ok: bool
+    already_present: bool = False
     position: int | None = None
     error: str | None = None
 
@@ -153,6 +178,11 @@ class ProviderInfo(BaseModel):
     liked_tracks_playlist_id: str | None = None
     library_read_scope: str | None = None
     library_write_scope: str | None = None
+    saved_albums_read_scope: str | None = None
+    saved_albums_write_scope: str | None = None
+    followed_artists_read_scope: str | None = None
+    followed_artists_write_scope: str | None = None
+    artist_collection_semantics: ArtistCollectionSemantics | None = None
 
     def require_liked_tracks_target(self, cred: ProviderCredential) -> str:
         if not self.capabilities.can(Capability.WRITE_LIBRARY):
@@ -170,6 +200,68 @@ class ProviderInfo(BaseModel):
                 f"Reconnect {self.display_name} to grant the required library scopes: {scopes}"
             )
         return self.liked_tracks_playlist_id
+
+    def require_saved_albums_source(self, cred: ProviderCredential) -> None:
+        self._require_library_capability(
+            cred,
+            Capability.READ_SAVED_ALBUMS,
+            self.saved_albums_read_scope,
+            "read saved albums",
+        )
+
+    def require_saved_albums_target(self, cred: ProviderCredential) -> None:
+        self._require_library_capability(
+            cred,
+            Capability.WRITE_SAVED_ALBUMS,
+            self.saved_albums_write_scope,
+            "write saved albums",
+        )
+        self._require_scope(cred, self.saved_albums_read_scope, "check saved albums")
+
+    def require_followed_artists_source(self, cred: ProviderCredential) -> None:
+        self._require_library_capability(
+            cred,
+            Capability.READ_FOLLOWED_ARTISTS,
+            self.followed_artists_read_scope,
+            "read followed or favorite artists",
+        )
+        if self.artist_collection_semantics is None:
+            raise Unsupported(f"{self.display_name} does not define artist library semantics")
+
+    def require_followed_artists_target(self, cred: ProviderCredential) -> None:
+        self._require_library_capability(
+            cred,
+            Capability.WRITE_FOLLOWED_ARTISTS,
+            self.followed_artists_write_scope,
+            "write followed or favorite artists",
+        )
+        self._require_scope(
+            cred,
+            self.followed_artists_read_scope,
+            "check followed or favorite artists",
+        )
+        if self.artist_collection_semantics is None:
+            raise Unsupported(f"{self.display_name} does not define artist library semantics")
+
+    def _require_library_capability(
+        self,
+        cred: ProviderCredential,
+        capability: Capability,
+        scope: str | None,
+        action: str,
+    ) -> None:
+        if not self.capabilities.can(capability):
+            raise Unsupported(f"{self.display_name} cannot {action}")
+        self._require_scope(cred, scope, action)
+
+    def _require_scope(
+        self, cred: ProviderCredential, scope: str | None, action: str
+    ) -> None:
+        if scope and scope not in cred.scopes:
+            raise AccessDenied(
+                f"Reconnect {self.display_name} to grant the required scope before "
+                f"{action}: {scope}"
+            )
 
 
 @runtime_checkable
@@ -200,4 +292,68 @@ class ProviderAdapter(Protocol):
 
     async def add_tracks(
         self, cred: ProviderCredential, playlist_id: str, uris: Sequence[str]
+    ) -> list[AddItemResult]: ...
+
+
+@runtime_checkable
+class SavedAlbumReader(Protocol):
+    info: ProviderInfo
+
+    def iter_saved_albums(self, cred: ProviderCredential) -> AsyncIterator[Album]: ...
+
+    async def read_saved_album(self, cred: ProviderCredential, album_id: str) -> Album: ...
+
+    async def contains_saved_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]: ...
+
+
+@runtime_checkable
+class SavedAlbumWriter(Protocol):
+    info: ProviderInfo
+
+    async def search_albums(
+        self, cred: ProviderCredential, album: Album, *, limit: int = 5
+    ) -> list[AlbumCandidate]: ...
+
+    async def validate_album_uri(self, cred: ProviderCredential, uri: str) -> bool: ...
+
+    async def contains_saved_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]: ...
+
+    async def save_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]: ...
+
+
+@runtime_checkable
+class FollowedArtistReader(Protocol):
+    info: ProviderInfo
+
+    def iter_followed_artists(self, cred: ProviderCredential) -> AsyncIterator[Artist]: ...
+
+    async def read_followed_artist(self, cred: ProviderCredential, artist_id: str) -> Artist: ...
+
+    async def contains_followed_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]: ...
+
+
+@runtime_checkable
+class FollowedArtistWriter(Protocol):
+    info: ProviderInfo
+
+    async def search_artists(
+        self, cred: ProviderCredential, artist: Artist, *, limit: int = 5
+    ) -> list[ArtistCandidate]: ...
+
+    async def validate_artist_uri(self, cred: ProviderCredential, uri: str) -> bool: ...
+
+    async def contains_followed_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]: ...
+
+    async def follow_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
     ) -> list[AddItemResult]: ...

@@ -80,6 +80,13 @@
             "title": "Empty",
             "type": "boolean"
           },
+          "entity_counts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StatusCounts"
+            },
+            "title": "Entity Counts",
+            "type": "object"
+          },
           "message": {
             "anyOf": [
               {
@@ -113,6 +120,11 @@
             ],
             "title": "Target Provider"
           },
+          "total_followed_artists": {
+            "default": 0,
+            "title": "Total Followed Artists",
+            "type": "integer"
+          },
           "total_migrations": {
             "default": 0,
             "title": "Total Migrations",
@@ -122,12 +134,227 @@
             "default": 0,
             "title": "Total Playlists",
             "type": "integer"
+          },
+          "total_saved_albums": {
+            "default": 0,
+            "title": "Total Saved Albums",
+            "type": "integer"
           }
         },
         "required": [
           "counts"
         ],
         "title": "AggregateMigrationStatsView",
+        "type": "object"
+      },
+      "Album": {
+        "properties": {
+          "added_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added At"
+          },
+          "artists": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Artists",
+            "type": "array"
+          },
+          "artwork_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Uri"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "provider_uris": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provider Uris",
+            "type": "object"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "release_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Year"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "upc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upc"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "Album",
+        "type": "object"
+      },
+      "Artist": {
+        "properties": {
+          "added_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added At"
+          },
+          "artwork_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Uri"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provider_uris": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provider Uris",
+            "type": "object"
+          },
+          "source_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Item Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Artist",
+        "type": "object"
+      },
+      "ArtistCapabilityView": {
+        "properties": {
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "semantics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantics"
+          },
+          "write": {
+            "title": "Write",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read",
+          "write"
+        ],
+        "title": "ArtistCapabilityView",
         "type": "object"
       },
       "AuthChallenge": {
@@ -382,6 +609,80 @@
         "title": "Credit",
         "type": "object"
       },
+      "FollowedArtistsView": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Artist"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Limitation"
+          },
+          "source_semantics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Semantics"
+          },
+          "source_supported": {
+            "title": "Source Supported",
+            "type": "boolean"
+          },
+          "target_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Limitation"
+          },
+          "target_semantics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Semantics"
+          },
+          "target_supported": {
+            "title": "Target Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_supported",
+          "target_supported"
+        ],
+        "title": "FollowedArtistsView",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -445,6 +746,10 @@
               }
             ],
             "title": "Duration S"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
           },
           "explicit": {
             "anyOf": [
@@ -547,14 +852,43 @@
             ],
             "title": "Reviewed At"
           },
+          "source_entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Entity Id"
+          },
+          "source_entity_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Entity Name"
+          },
           "source_metadata": {
             "additionalProperties": true,
             "title": "Source Metadata",
             "type": "object"
           },
           "source_playlist_id": {
-            "title": "Source Playlist Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Playlist Id"
           },
           "source_playlist_name": {
             "anyOf": [
@@ -570,6 +904,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "target_entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Entity Id"
           },
           "target_playlist_id": {
             "anyOf": [
@@ -612,7 +957,7 @@
         },
         "required": [
           "id",
-          "source_playlist_id",
+          "entity_type",
           "position",
           "title",
           "artist",
@@ -675,6 +1020,40 @@
         "title": "JobView",
         "type": "object"
       },
+      "LibraryCapabilityView": {
+        "properties": {
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "write": {
+            "title": "Write",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read",
+          "write"
+        ],
+        "title": "LibraryCapabilityView",
+        "type": "object"
+      },
+      "LibraryView": {
+        "properties": {
+          "followed_artists": {
+            "$ref": "#/components/schemas/FollowedArtistsView"
+          },
+          "saved_albums": {
+            "$ref": "#/components/schemas/SavedAlbumsView"
+          }
+        },
+        "required": [
+          "saved_albums",
+          "followed_artists"
+        ],
+        "title": "LibraryView",
+        "type": "object"
+      },
       "MediaType": {
         "enum": [
           "track",
@@ -684,6 +1063,15 @@
           "unknown"
         ],
         "title": "MediaType",
+        "type": "string"
+      },
+      "MigrationEntityType": {
+        "enum": [
+          "track",
+          "album",
+          "artist"
+        ],
+        "title": "MigrationEntityType",
         "type": "string"
       },
       "MigrationOptionView": {
@@ -743,6 +1131,9 @@
             "title": "Playlist Names",
             "type": "array"
           },
+          "selection_summary": {
+            "$ref": "#/components/schemas/MigrationSelectionSummary"
+          },
           "source_provider": {
             "title": "Source Provider",
             "type": "string"
@@ -764,6 +1155,32 @@
           "target_provider"
         ],
         "title": "MigrationOptionView",
+        "type": "object"
+      },
+      "MigrationSelectionSummary": {
+        "properties": {
+          "followed_artists": {
+            "default": 0,
+            "title": "Followed Artists",
+            "type": "integer"
+          },
+          "playlists": {
+            "default": 0,
+            "title": "Playlists",
+            "type": "integer"
+          },
+          "saved_albums": {
+            "default": 0,
+            "title": "Saved Albums",
+            "type": "integer"
+          },
+          "tracks": {
+            "default": 0,
+            "title": "Tracks",
+            "type": "integer"
+          }
+        },
+        "title": "MigrationSelectionSummary",
         "type": "object"
       },
       "MigrationStatsView": {
@@ -840,6 +1257,13 @@
             "title": "Empty",
             "type": "boolean"
           },
+          "entity_counts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StatusCounts"
+            },
+            "title": "Entity Counts",
+            "type": "object"
+          },
           "error": {
             "anyOf": [
               {
@@ -850,6 +1274,11 @@
               }
             ],
             "title": "Error"
+          },
+          "followed_artist_count": {
+            "default": 0,
+            "title": "Followed Artist Count",
+            "type": "integer"
           },
           "id": {
             "title": "Id",
@@ -903,6 +1332,11 @@
           "retention_days": {
             "default": 0,
             "title": "Retention Days",
+            "type": "integer"
+          },
+          "saved_album_count": {
+            "default": 0,
+            "title": "Saved Album Count",
             "type": "integer"
           },
           "source_account": {
@@ -983,8 +1417,10 @@
             "title": "Message",
             "type": "string"
           },
+          "summary": {
+            "$ref": "#/components/schemas/MigrationSelectionSummary"
+          },
           "warnings": {
-            "default": [],
             "items": {
               "additionalProperties": {
                 "type": "string"
@@ -995,6 +1431,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "summary"
+        ],
         "title": "MigrationWarningsView",
         "type": "object"
       },
@@ -1282,6 +1721,9 @@
             "title": "Display Name",
             "type": "string"
           },
+          "followed_artists": {
+            "$ref": "#/components/schemas/ArtistCapabilityView"
+          },
           "has_isrc": {
             "title": "Has Isrc",
             "type": "boolean"
@@ -1293,6 +1735,9 @@
           "official": {
             "title": "Official",
             "type": "boolean"
+          },
+          "saved_albums": {
+            "$ref": "#/components/schemas/LibraryCapabilityView"
           },
           "stability": {
             "title": "Stability",
@@ -1318,7 +1763,9 @@
           "stability",
           "has_isrc",
           "can_source",
-          "can_target"
+          "can_target",
+          "saved_albums",
+          "followed_artists"
         ],
         "title": "ProviderView",
         "type": "object"
@@ -1351,14 +1798,79 @@
         "title": "ReviewItem",
         "type": "object"
       },
+      "SavedAlbumsView": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Album"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Limitation"
+          },
+          "source_supported": {
+            "title": "Source Supported",
+            "type": "boolean"
+          },
+          "target_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Limitation"
+          },
+          "target_supported": {
+            "title": "Target Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_supported",
+          "target_supported"
+        ],
+        "title": "SavedAlbumsView",
+        "type": "object"
+      },
       "Selection": {
         "properties": {
+          "followed_artist_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Followed Artist Ids",
+            "type": "array"
+          },
           "playlist_ids": {
-            "default": [],
             "items": {
               "type": "string"
             },
             "title": "Playlist Ids",
+            "type": "array"
+          },
+          "saved_album_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Saved Album Ids",
             "type": "array"
           },
           "tracks": {
@@ -1368,7 +1880,6 @@
               },
               "type": "array"
             },
-            "default": {},
             "title": "Tracks",
             "type": "object"
           }
@@ -2082,6 +2593,89 @@
         ]
       }
     },
+    "/api/library": {
+      "get": {
+        "operationId": "get_library_api_library_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Library",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/api/migrations": {
       "get": {
         "operationId": "list_migrations_api_migrations_get",
@@ -2361,6 +2955,25 @@
                 }
               ],
               "title": "Source Playlist Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationEntityType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
             }
           },
           {
@@ -2713,6 +3326,25 @@
                 }
               ],
               "title": "Source Playlist Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationEntityType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
             }
           },
           {

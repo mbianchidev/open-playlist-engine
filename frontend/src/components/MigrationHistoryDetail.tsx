@@ -19,13 +19,14 @@ import {
 import type {
   AccountHistoryView,
   JobItemView,
+  MigrationEntityType,
   MigrationItemFilters,
   MigrationItemPage,
   MigrationStatsView,
 } from "../api/types";
 import {
+  providerEntityUrl,
   providerLabel,
-  providerTrackUrl,
 } from "../utils/providers";
 
 const PAGE_SIZE = 50;
@@ -36,6 +37,7 @@ interface Props {
 
 interface FilterDraft {
   sourcePlaylistId: string;
+  entityType: "" | MigrationEntityType;
   status: string;
   minConfidence: string;
   maxConfidence: string;
@@ -46,6 +48,7 @@ interface FilterDraft {
 
 const EMPTY_FILTERS: FilterDraft = {
   sourcePlaylistId: "",
+  entityType: "",
   status: "",
   minConfidence: "",
   maxConfidence: "",
@@ -181,14 +184,14 @@ export default function MigrationHistoryDetail({ stats }: Props) {
         <div>
           <strong>Download migration report</strong>
           <p className="muted">
-            Export every ledger row or only tracks that need attention.
+            Export every ledger row or only items that need attention.
           </p>
         </div>
         <div className="history-report-actions">
-          <ReportLink stats={stats} format="csv" scope="all" />
-          <ReportLink stats={stats} format="csv" scope="problems" />
-          <ReportLink stats={stats} format="json" scope="all" />
-          <ReportLink stats={stats} format="json" scope="problems" />
+          <ReportLink stats={stats} format="csv" scope="all" filters={apiFilters} />
+          <ReportLink stats={stats} format="csv" scope="problems" filters={apiFilters} />
+          <ReportLink stats={stats} format="json" scope="all" filters={apiFilters} />
+          <ReportLink stats={stats} format="json" scope="problems" filters={apiFilters} />
         </div>
       </div>
 
@@ -227,6 +230,23 @@ export default function MigrationHistoryDetail({ stats }: Props) {
                       {playlist.source_playlist_name ?? playlist.source_playlist_id}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Item type
+                <select
+                  value={draft.entityType}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      entityType: event.target.value as FilterDraft["entityType"],
+                    }))
+                  }
+                >
+                  <option value="">Any type</option>
+                  <option value="track">Tracks</option>
+                  <option value="album">Albums</option>
+                  <option value="artist">Artists</option>
                 </select>
               </label>
               <label>
@@ -321,7 +341,7 @@ export default function MigrationHistoryDetail({ stats }: Props) {
             <div>
               <strong>Item ledger</strong>
               <p className="muted">
-                {page.total} matching {page.total === 1 ? "track" : "tracks"}
+                {page.total} matching {page.total === 1 ? "item" : "items"}
               </p>
             </div>
             <span className="muted">
@@ -339,8 +359,8 @@ export default function MigrationHistoryDetail({ stats }: Props) {
                 <thead>
                   <tr>
                     <th>Status</th>
-                    <th>Track</th>
-                    <th>Playlist</th>
+                    <th>Item</th>
+                    <th>Collection</th>
                     <th>Confidence</th>
                     <th>Result</th>
                     <th>Target</th>
@@ -362,7 +382,7 @@ export default function MigrationHistoryDetail({ stats }: Props) {
           ) : null}
           <div className="history-pagination">
             <button
-              className="button-link secondary compact"
+              className="secondary compact"
               disabled={offset === 0 || loading}
               onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
             >
@@ -416,16 +436,18 @@ function ReportLink({
   stats,
   format,
   scope,
+  filters,
 }: {
   stats: MigrationStatsView;
   format: "csv" | "json";
   scope: "all" | "problems";
+  filters: MigrationItemFilters;
 }) {
   const label = `${scope === "all" ? "All items" : "Problem items"} ${format.toUpperCase()}`;
   return (
     <a
-      className="secondary compact"
-      href={migrationReportUrl(stats.id, format, scope)}
+      className="button-link secondary compact"
+      href={migrationReportUrl(stats.id, format, scope, filters)}
       download
       aria-disabled={!stats.detail_available}
       onClick={(event) => {
@@ -452,20 +474,30 @@ function HistoryRow({
   sourceProvider: string;
   targetProvider: string;
 }) {
+  const entityType = item.entity_type ?? "track";
   const targetUrl = item.target_uri
-    ? providerTrackUrl(targetProvider, item.target_uri)
+    ? providerEntityUrl(targetProvider, item.target_uri, entityType)
     : null;
   const sourceUri = sourceProviderUri(item, sourceProvider);
-  const sourceUrl = sourceUri ? providerTrackUrl(sourceProvider, sourceUri) : null;
+  const sourceUrl = sourceUri
+    ? providerEntityUrl(sourceProvider, sourceUri, entityType)
+    : null;
+  const collectionLabel =
+    item.source_playlist_name ??
+    item.source_playlist_id ??
+    (entityType === "album" ? "Saved albums" : entityType === "artist" ? "Artists" : "Library");
   return (
     <tr>
       <td>
         <span className={`status status-${item.status}`}>{statusLabel(item.status)}</span>
       </td>
       <td>
-        <strong>{item.title}</strong>
-        <span>{item.artist}</span>
-        {item.album ? <span className="muted">{item.album}</span> : null}
+        <span className="badge history-entity-badge">{entityType}</span>
+        <strong>{item.source_entity_name ?? item.title}</strong>
+        {entityType !== "artist" ? <span>{item.artist}</span> : null}
+        {entityType === "track" && item.album ? (
+          <span className="muted">{item.album}</span>
+        ) : null}
         {sourceUrl ? (
           <a href={sourceUrl} target="_blank" rel="noreferrer">
             Source
@@ -473,7 +505,7 @@ function HistoryRow({
           </a>
         ) : null}
       </td>
-      <td>{item.source_playlist_name ?? item.source_playlist_id}</td>
+      <td>{collectionLabel}</td>
       <td>{formatConfidence(item.confidence)}</td>
       <td>
         {item.reason ? <span>{item.reason}</span> : <span className="muted">No issue recorded</span>}
@@ -508,6 +540,7 @@ function HistoryRow({
 function itemFilters(draft: FilterDraft): MigrationItemFilters {
   return {
     sourcePlaylistId: draft.sourcePlaylistId || null,
+    entityTypes: draft.entityType ? [draft.entityType] : [],
     statuses: draft.status ? [draft.status] : [],
     minConfidence: confidenceValue(draft.minConfidence),
     maxConfidence: confidenceValue(draft.maxConfidence),

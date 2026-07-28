@@ -1,7 +1,7 @@
 """Add detailed migration history and retained review decisions.
 
-Revision ID: 0003_migration_history_reports
-Revises: 0002_playlist_read_cache
+Revision ID: 0004_migration_history_reports
+Revises: 0003_library_entities
 Create Date: 2026-07-14
 """
 
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0003_migration_history_reports"
-down_revision: str | None = "0002_playlist_read_cache"
+revision: str = "0004_migration_history_reports"
+down_revision: str | None = "0003_library_entities"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -63,6 +63,15 @@ def upgrade() -> None:
         sa.Column("target_provider", sa.String(), nullable=False),
         sa.Column("source_account_id", sa.String(), nullable=False),
         sa.Column("target_account_id", sa.String(), nullable=False),
+        sa.Column(
+            "entity_type",
+            sa.String(),
+            server_default="track",
+            nullable=False,
+        ),
+        sa.Column("source_entity_id", sa.String(), nullable=True),
+        sa.Column("source_entity_name", sa.String(), nullable=True),
+        sa.Column("target_entity_id", sa.String(), nullable=True),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("artist", sa.String(), nullable=False),
         sa.Column("album", sa.String(), nullable=True),
@@ -84,9 +93,13 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_review_decision_job_id"), "review_decision", ["job_id"])
     op.create_index(op.f("ix_review_decision_user_id"), "review_decision", ["user_id"])
+    op.create_index(
+        op.f("ix_review_decision_entity_type"), "review_decision", ["entity_type"]
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(op.f("ix_review_decision_entity_type"), table_name="review_decision")
     op.drop_index(op.f("ix_review_decision_user_id"), table_name="review_decision")
     op.drop_index(op.f("ix_review_decision_job_id"), table_name="review_decision")
     op.drop_table("review_decision")
