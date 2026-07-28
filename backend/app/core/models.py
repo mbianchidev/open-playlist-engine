@@ -27,6 +27,17 @@ class PlaylistKind(StrEnum):
     LIKED_TRACKS = "liked_tracks"
 
 
+class MigrationEntityType(StrEnum):
+    TRACK = "track"
+    ALBUM = "album"
+    ARTIST = "artist"
+
+
+class ArtistCollectionSemantics(StrEnum):
+    FOLLOW = "follow"
+    FAVORITE = "favorite"
+
+
 class Credit(BaseModel):
     role: str
     name: str
@@ -76,6 +87,35 @@ class Track(BaseModel):
         return self.media_type is MediaType.TRACK and not self.is_local
 
 
+class PlaylistSelection(BaseModel):
+    playlist_ids: list[str] = Field(default_factory=list)
+    tracks: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class Album(BaseModel):
+    id: str | None = None
+    title: str
+    artists: list[str] = Field(default_factory=list)
+    upc: str | None = None
+    release_date: date | None = None
+    release_year: int | None = None
+    artwork_uri: str | None = None
+    provider_uris: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    source_item_id: str | None = None
+    added_at: datetime | None = None
+
+
+class Artist(BaseModel):
+    id: str | None = None
+    name: str
+    artwork_uri: str | None = None
+    provider_uris: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    source_item_id: str | None = None
+    added_at: datetime | None = None
+
+
 class PlaylistRef(BaseModel):
     """Lightweight handle returned while listing, before full read."""
 
@@ -83,9 +123,14 @@ class PlaylistRef(BaseModel):
     name: str
     track_count: int | None = None
     owner_id: str | None = None
+    owner_name: str | None = None
+    is_owned: bool | None = None
+    is_followed: bool | None = None
     collaborative: bool | None = None
     snapshot_id: str | None = None
     tracks_href: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     migration_status: str | None = None
     migrated_track_count: int = 0
     remaining_track_count: int | None = None
@@ -100,6 +145,10 @@ class Playlist(BaseModel):
     photo: str | None = None
     tracks: list[Track] = Field(default_factory=list)
     owner_id: str | None = None
+    owner_name: str | None = None
+    is_owned: bool | None = None
+    is_followed: bool | None = None
+    collaborative: bool | None = None
     snapshot_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

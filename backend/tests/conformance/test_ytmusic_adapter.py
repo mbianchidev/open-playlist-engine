@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from app.core.adapter import (
+    AccessDenied,
     AuthExpired,
     AuthKind,
     ChallengeShape,
@@ -17,6 +18,7 @@ from app.core.adapter import (
     NotFound,
     ProviderCredential,
     ProviderError,
+    TrackRemoval,
 )
 from app.core.models import PlaylistKind, PlaylistRef, Track
 from app.providers.ytmusic.adapter import (
@@ -366,6 +368,85 @@ async def test_iter_and_read_liked_songs() -> None:
     playlist = await adapter.read_playlist(_cred(), liked)
     assert playlist.kind is PlaylistKind.LIKED_TRACKS
     assert [track.id for track in playlist.tracks] == ["yt_song_one"]
+
+
+async def test_read_owned_playlist_preserves_occurrence_ids() -> None:
+    fake = FakeYTMusic()
+    playlist_id = fake.create_playlist("Owned", "", "PRIVATE", ["aaa111", "aaa111"])
+    playlist = await _adapter(fake).read_playlist(
+        _cred(),
+        PlaylistRef(id=playlist_id, name="Owned"),
+    )
+
+    assert playlist.is_owned is True
+    assert [track.source_item_id for track in playlist.tracks] == [
+        "set_aaa111_0",
+        "set_aaa111_1",
+    ]
+
+
+async def test_delete_playlist_requires_confirmed_ownership() -> None:
+    fake = FakeYTMusic()
+    playlist_id = fake.create_playlist("Owned", "", "PRIVATE")
+    adapter = _adapter(fake)
+
+    with pytest.raises(AccessDenied, match="ownership"):
+        await adapter.delete_playlist(
+            _cred(),
+            PlaylistRef(id=playlist_id, name="Owned", is_owned=None),
+        )
+
+    result = await adapter.delete_playlist(
+        _cred(),
+        PlaylistRef(id=playlist_id, name="Owned", is_owned=True),
+    )
+
+    assert result.ok is True
+    assert playlist_id not in fake.playlists
+
+
+async def test_remove_tracks_uses_video_and_set_video_ids() -> None:
+    fake = FakeYTMusic()
+    playlist_id = fake.create_playlist("Owned", "", "PRIVATE", ["aaa111", "aaa111"])
+    adapter = _adapter(fake)
+
+    result = await adapter.remove_tracks(
+        _cred(),
+        PlaylistRef(id=playlist_id, name="Owned", is_owned=True),
+        [
+            TrackRemoval(
+                source_item_id="set_aaa111_1",
+                provider_uri="ytmusic:video:aaa111",
+                position=1,
+            )
+        ],
+    )
+
+    assert result.items[0].ok is True
+    assert fake.playlists[playlist_id]["tracks"] == ["aaa111"]
+    remaining = await adapter.read_playlist(
+        _cred(),
+        PlaylistRef(id=playlist_id, name="Owned"),
+    )
+    assert remaining.tracks[0].source_item_id == "set_aaa111_0"
+
+
+async def test_remove_tracks_requires_confirmed_ownership() -> None:
+    fake = FakeYTMusic()
+    playlist_id = fake.create_playlist("Owned", "", "PRIVATE", ["aaa111"])
+
+    with pytest.raises(AccessDenied, match="ownership"):
+        await _adapter(fake).remove_tracks(
+            _cred(),
+            PlaylistRef(id=playlist_id, name="Owned", is_owned=False),
+            [
+                TrackRemoval(
+                    source_item_id="set_aaa111_0",
+                    provider_uri="ytmusic:video:aaa111",
+                    position=0,
+                )
+            ],
+        )
 
 
 async def test_read_playlist_maps_missing_contents_parser_error_to_not_found() -> None:

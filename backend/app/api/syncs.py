@@ -176,12 +176,14 @@ async def create_sync(
             account_id=job.source_account_id,
             adapter=source,
             provider=job.source_provider,
+            user_id=user_id,
         )
         target_cred, _ = await load_fresh_credential(
             session,
             account_id=job.target_account_id,
             adapter=target,
             provider=job.target_provider,
+            user_id=user_id,
         )
         source_playlist = await source.read_playlist(
             source_cred, PlaylistRef(id=playlist_id, name=playlist_id)

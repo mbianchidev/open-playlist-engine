@@ -25,6 +25,8 @@ import httpx
 from app.core.adapter import (
     AccessDenied,
     AddItemResult,
+    AlbumCandidate,
+    ArtistCandidate,
     AuthChallenge,
     AuthExpired,
     AuthKind,
@@ -32,12 +34,16 @@ from app.core.adapter import (
     ChallengeShape,
     CreatePlaylistSpec,
     NotFound,
+    PlaylistMutationResult,
     ProviderCredential,
     ProviderError,
     ProviderInfo,
     RateLimited,
     RefreshTokenExpired,
+    RemoveItemResult,
+    RemoveTracksResult,
     TrackCandidate,
+    TrackRemoval,
     Unsupported,
 )
 from app.core.capabilities import (
@@ -46,7 +52,16 @@ from app.core.capabilities import (
     SearchMode,
     Stability,
 )
-from app.core.models import MediaType, Playlist, PlaylistKind, PlaylistRef, Track
+from app.core.models import (
+    Album,
+    Artist,
+    ArtistCollectionSemantics,
+    MediaType,
+    Playlist,
+    PlaylistKind,
+    PlaylistRef,
+    Track,
+)
 from app.core.registry import register
 from app.settings import get_settings
 
@@ -63,6 +78,8 @@ _SAVED_TRACKS_NAME = "Liked Songs"
 _SAVED_TRACKS_HREF = "/me/tracks"
 _SAVED_TRACKS_SCOPE = "user-library-read"
 _SAVED_TRACKS_WRITE_SCOPE = "user-library-modify"
+_FOLLOWED_ARTISTS_READ_SCOPE = "user-follow-read"
+_FOLLOWED_ARTISTS_WRITE_SCOPE = "user-follow-modify"
 _SAVED_TRACKS_SCOPE_MESSAGE = (
     "Spotify saved songs need the user-library-read scope; reconnect Spotify to migrate "
     "saved songs."
@@ -71,11 +88,17 @@ _SAVED_TRACKS_WRITE_SCOPE_MESSAGE = (
     "Spotify saved songs need the user-library-modify scope; reconnect Spotify to "
     "write liked songs."
 )
+_PLAYLIST_UNFOLLOW_SCOPE_MESSAGE = (
+    "Spotify playlist removal needs the user-library-modify scope; reconnect Spotify "
+    "before removing playlists from your library."
+)
 
 _SCOPES = [
     "user-read-private",
     _SAVED_TRACKS_SCOPE,
     _SAVED_TRACKS_WRITE_SCOPE,
+    _FOLLOWED_ARTISTS_READ_SCOPE,
+    _FOLLOWED_ARTISTS_WRITE_SCOPE,
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",
@@ -224,6 +247,13 @@ def _spotify_user_id(cred: ProviderCredential) -> str | None:
     return provider_user_id if isinstance(provider_user_id, str) and provider_user_id else None
 
 
+def _ownership(owner_id: str | None, cred: ProviderCredential) -> bool | None:
+    user_id = _spotify_user_id(cred)
+    if not owner_id or not user_id:
+        return None
+    return owner_id == user_id
+
+
 def _saved_tracks_snapshot(total: int | None) -> str | None:
     return f"{SPOTIFY_SAVED_TRACKS_PLAYLIST_ID}:total:{total}" if total is not None else None
 
@@ -236,6 +266,8 @@ def _saved_tracks_ref(
         name=_SAVED_TRACKS_NAME,
         track_count=track_count,
         owner_id=_spotify_user_id(cred),
+        is_owned=True,
+        is_followed=False,
         collaborative=False,
         snapshot_id=_saved_tracks_snapshot(track_count),
         tracks_href=_SAVED_TRACKS_HREF,
@@ -358,7 +390,11 @@ async def _iter_tracks_from_page(client: httpx.AsyncClient, page: dict) -> Async
         page = next_page
 
 
-async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _SavedPlaylist | None:
+async def _saved_playlist_ref(
+    client: httpx.AsyncClient,
+    cred: ProviderCredential,
+    playlist_id: str,
+) -> _SavedPlaylist | None:
     offset = 0
     while True:
         resp = _raise_for_status(
@@ -375,7 +411,10 @@ async def _saved_playlist_ref(client: httpx.AsyncClient, playlist_id: str) -> _S
                         id=pl["id"],
                         name=pl.get("name") or "",
                         track_count=tracks.get("total"),
-                        owner_id=(pl.get("owner") or {}).get("id"),
+                        owner_id=(owner := pl.get("owner") or {}).get("id"),
+                        owner_name=owner.get("display_name"),
+                        is_owned=(owned := _ownership(owner.get("id"), cred)),
+                        is_followed=None if owned is None else not owned,
                         collaborative=pl.get("collaborative"),
                         snapshot_id=pl.get("snapshot_id"),
                         tracks_href=_href_from_page(tracks),
@@ -476,6 +515,115 @@ def _track_id(uri: str) -> str | None:
         tail = uri.split("/track/", 1)[1]
         return tail.split("?", 1)[0].split("/", 1)[0] or None
     return uri or None
+
+
+def _album_id(uri: str) -> str | None:
+    uri = uri.strip()
+    if uri.startswith("spotify:album:"):
+        return uri.rsplit(":", 1)[-1] or None
+    if "/album/" in uri:
+        tail = uri.split("/album/", 1)[1]
+        return tail.split("?", 1)[0].split("/", 1)[0] or None
+    return uri if uri and ":" not in uri else None
+
+
+def _artist_id(uri: str) -> str | None:
+    uri = uri.strip()
+    if uri.startswith("spotify:artist:"):
+        return uri.rsplit(":", 1)[-1] or None
+    if "/artist/" in uri:
+        tail = uri.split("/artist/", 1)[1]
+        return tail.split("?", 1)[0].split("/", 1)[0] or None
+    return uri if uri and ":" not in uri else None
+
+
+def _album_from_object(obj: dict, *, added_at: str | None = None) -> Album:
+    album_id = str(obj.get("id") or "")
+    release_date, release_year = _release_date(obj)
+    uri = obj.get("uri") or (f"spotify:album:{album_id}" if album_id else None)
+    return Album(
+        id=album_id or None,
+        title=str(obj.get("name") or album_id),
+        artists=[
+            str(artist.get("name"))
+            for artist in obj.get("artists") or []
+            if isinstance(artist, dict) and artist.get("name")
+        ],
+        upc=(obj.get("external_ids") or {}).get("upc"),
+        release_date=release_date,
+        release_year=release_year,
+        artwork_uri=_image_uri(obj),
+        provider_uris={"spotify": uri} if uri else {},
+        metadata={
+            key: value
+            for key, value in {
+                "album_type": obj.get("album_type"),
+                "total_tracks": obj.get("total_tracks"),
+                "spotify_release_date": obj.get("release_date"),
+                "release_date_precision": obj.get("release_date_precision"),
+            }.items()
+            if value is not None
+        },
+        source_item_id=album_id or None,
+        added_at=added_at,
+    )
+
+
+def _artist_from_object(obj: dict, *, added_at: str | None = None) -> Artist:
+    artist_id = str(obj.get("id") or "")
+    uri = obj.get("uri") or (f"spotify:artist:{artist_id}" if artist_id else None)
+    images = obj.get("images") or []
+    artwork_uri = (
+        images[0].get("url")
+        if images and isinstance(images[0], dict) and images[0].get("url")
+        else None
+    )
+    return Artist(
+        id=artist_id or None,
+        name=str(obj.get("name") or artist_id),
+        artwork_uri=artwork_uri,
+        provider_uris={"spotify": uri} if uri else {},
+        metadata={
+            key: value
+            for key, value in {
+                "genres": obj.get("genres"),
+                "followers": (obj.get("followers") or {}).get("total"),
+                "popularity": obj.get("popularity"),
+            }.items()
+            if value is not None
+        },
+        source_item_id=artist_id or None,
+        added_at=added_at,
+    )
+
+
+def _album_candidate(obj: dict) -> AlbumCandidate:
+    album = _album_from_object(obj)
+    album_id = album.id or ""
+    return AlbumCandidate(
+        provider_album_id=album_id,
+        uri=album.provider_uris.get("spotify") or f"spotify:album:{album_id}",
+        title=album.title,
+        artists=album.artists,
+        upc=album.upc,
+        release_date=(
+            str(album.release_date)
+            if album.release_date
+            else str(album.release_year) if album.release_year else None
+        ),
+        artwork_uri=album.artwork_uri,
+    )
+
+
+def _artist_candidate(obj: dict) -> ArtistCandidate:
+    artist = _artist_from_object(obj)
+    artist_id = artist.id or ""
+    return ArtistCandidate(
+        provider_artist_id=artist_id,
+        uri=artist.provider_uris.get("spotify") or f"spotify:artist:{artist_id}",
+        name=artist.name,
+        artwork_uri=artist.artwork_uri,
+    )
 
 
 def _code_challenge(verifier: str) -> str:
@@ -653,10 +801,15 @@ class SpotifyAdapter:
                 Capability.READ_TRACKS,
                 Capability.READ_LIBRARY,
                 Capability.WRITE_LIBRARY,
+                Capability.READ_SAVED_ALBUMS,
+                Capability.WRITE_SAVED_ALBUMS,
+                Capability.READ_FOLLOWED_ARTISTS,
+                Capability.WRITE_FOLLOWED_ARTISTS,
                 Capability.CREATE_PLAYLIST,
                 Capability.ADD_TRACKS,
                 Capability.REMOVE_TRACKS,
                 Capability.REORDER,
+                Capability.UNFOLLOW_PLAYLIST,
                 Capability.SET_DESCRIPTION,
             },
             has_isrc=True,
@@ -664,11 +817,17 @@ class SpotifyAdapter:
             official=True,
             stability=Stability.STABLE,
             max_add_batch=100,
+            max_library_batch=_LIBRARY_WRITE_BATCH,
             max_playlist_size=10_000,
         ),
         liked_tracks_playlist_id=SPOTIFY_SAVED_TRACKS_PLAYLIST_ID,
         library_read_scope=_SAVED_TRACKS_SCOPE,
         library_write_scope=_SAVED_TRACKS_WRITE_SCOPE,
+        saved_albums_read_scope=_SAVED_TRACKS_SCOPE,
+        saved_albums_write_scope=_SAVED_TRACKS_WRITE_SCOPE,
+        followed_artists_read_scope=_FOLLOWED_ARTISTS_READ_SCOPE,
+        followed_artists_write_scope=_FOLLOWED_ARTISTS_WRITE_SCOPE,
+        artist_collection_semantics=ArtistCollectionSemantics.FOLLOW,
     )
     auth = SpotifyAuth()
 
@@ -701,11 +860,17 @@ class SpotifyAdapter:
                 data = resp.json()
                 for pl in data.get("items", []):
                     items = _playlist_items_summary(pl)
+                    owner = pl.get("owner") or {}
+                    owner_id = owner.get("id")
+                    owned = _ownership(owner_id, cred)
                     yield PlaylistRef(
                         id=pl["id"],
                         name=pl.get("name") or "",
                         track_count=items.get("total"),
-                        owner_id=(pl.get("owner") or {}).get("id"),
+                        owner_id=owner_id,
+                        owner_name=owner.get("display_name"),
+                        is_owned=owned,
+                        is_followed=None if owned is None else not owned,
                         collaborative=pl.get("collaborative"),
                         snapshot_id=pl.get("snapshot_id"),
                         tracks_href=_href_from_page(items),
@@ -757,7 +922,7 @@ class SpotifyAdapter:
                 )
             resp = await _spotify_request(client, "GET", f"/playlists/{ref.id}")
             if resp.status_code in {400, 403, 404}:
-                fallback = await self._read_saved_playlist(client, resp, ref)
+                fallback = await self._read_saved_playlist(client, cred, resp, ref)
                 if fallback is not None:
                     return fallback
             meta = _raise_for_status(resp).json()
@@ -774,15 +939,23 @@ class SpotifyAdapter:
             id=meta.get("id") or ref.id,
             name=meta.get("name") or ref.name,
             description=meta.get("description"),
-            owner_id=(meta.get("owner") or {}).get("id"),
+            owner_id=(owner := meta.get("owner") or {}).get("id"),
+            owner_name=owner.get("display_name"),
+            is_owned=(owned := _ownership(owner.get("id"), cred)),
+            is_followed=None if owned is None else not owned,
+            collaborative=meta.get("collaborative"),
             snapshot_id=meta.get("snapshot_id") or ref.snapshot_id,
             tracks=tracks,
         )
 
     async def _read_saved_playlist(
-        self, client: httpx.AsyncClient, original_resp: httpx.Response, ref: PlaylistRef
+        self,
+        client: httpx.AsyncClient,
+        cred: ProviderCredential,
+        original_resp: httpx.Response,
+        ref: PlaylistRef,
     ) -> Playlist | None:
-        saved = await _saved_playlist_ref(client, ref.id)
+        saved = await _saved_playlist_ref(client, cred, ref.id)
         if saved is None:
             if original_resp.status_code == 403:
                 _raise_playlist_tracks_forbidden()
@@ -798,6 +971,10 @@ class SpotifyAdapter:
             id=saved.ref.id,
             name=saved.ref.name,
             owner_id=saved.ref.owner_id,
+            owner_name=saved.ref.owner_name,
+            is_owned=saved.ref.is_owned,
+            is_followed=saved.ref.is_followed,
+            collaborative=saved.ref.collaborative,
             snapshot_id=saved.ref.snapshot_id,
             tracks=tracks,
         )
@@ -877,6 +1054,61 @@ class SpotifyAdapter:
         async with self._client(cred) as client:
             _raise_for_status(await _spotify_request(client, "GET", "/me"))
 
+    async def iter_saved_albums(self, cred: ProviderCredential) -> AsyncIterator[Album]:
+        self.info.require_saved_albums_source(cred)
+        async with self._client(cred) as client:
+            url = "/me/albums"
+            params: dict[str, int] | None = {"limit": _SAVED_ITEMS_PAGE, "offset": 0}
+            while url:
+                resp = _raise_for_status(await _spotify_request(client, "GET", url, params=params))
+                payload = resp.json()
+                for item in payload.get("items") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    obj = item.get("album")
+                    if isinstance(obj, dict):
+                        yield _album_from_object(obj, added_at=item.get("added_at"))
+                next_url = payload.get("next")
+                url = next_url if isinstance(next_url, str) else ""
+                params = None
+
+    async def read_saved_album(self, cred: ProviderCredential, album_id: str) -> Album:
+        self.info.require_saved_albums_source(cred)
+        normalized = _album_id(album_id)
+        if not normalized:
+            raise NotFound(album_id)
+        async with self._client(cred) as client:
+            resp = _raise_for_status(
+                await _spotify_request(client, "GET", f"/albums/{normalized}")
+            )
+        return _album_from_object(resp.json())
+
+    async def iter_followed_artists(self, cred: ProviderCredential) -> AsyncIterator[Artist]:
+        self.info.require_followed_artists_source(cred)
+        async with self._client(cred) as client:
+            url = "/me/following"
+            params: dict[str, object] | None = {"type": "artist", "limit": _SAVED_ITEMS_PAGE}
+            while url:
+                resp = _raise_for_status(await _spotify_request(client, "GET", url, params=params))
+                page = resp.json().get("artists") or {}
+                for obj in page.get("items") or []:
+                    if isinstance(obj, dict):
+                        yield _artist_from_object(obj)
+                next_url = page.get("next")
+                url = next_url if isinstance(next_url, str) else ""
+                params = None
+
+    async def read_followed_artist(self, cred: ProviderCredential, artist_id: str) -> Artist:
+        self.info.require_followed_artists_source(cred)
+        normalized = _artist_id(artist_id)
+        if not normalized:
+            raise NotFound(artist_id)
+        async with self._client(cred) as client:
+            resp = _raise_for_status(
+                await _spotify_request(client, "GET", f"/artists/{normalized}")
+            )
+        return _artist_from_object(resp.json())
+
     # SEARCH ---------------------------------------------------------------- #
     async def search_tracks(
         self, cred: ProviderCredential, track: Track, *, limit: int = 5
@@ -904,6 +1136,72 @@ class SpotifyAdapter:
             return False
         async with self._client(cred) as client:
             resp = await _spotify_request(client, "GET", f"/tracks/{track_id}")
+        if resp.status_code == 404:
+            return False
+        _raise_for_status(resp)
+        return True
+
+    async def search_albums(
+        self, cred: ProviderCredential, album: Album, *, limit: int = 5
+    ) -> list[AlbumCandidate]:
+        queries = []
+        if album.upc:
+            queries.append(f"upc:{album.upc}")
+        query = f'album:"{album.title}"'
+        if album.artists:
+            query += f' artist:"{album.artists[0]}"'
+        queries.append(query)
+        async with self._client(cred) as client:
+            for search_query in queries:
+                resp = _raise_for_status(
+                    await _spotify_request(
+                        client,
+                        "GET",
+                        "/search",
+                        params={"q": search_query, "type": "album", "limit": min(limit, 10)},
+                    )
+                )
+                items = ((resp.json().get("albums") or {}).get("items")) or []
+                if items:
+                    return [_album_candidate(obj) for obj in items[:limit]]
+        return []
+
+    async def search_artists(
+        self, cred: ProviderCredential, artist: Artist, *, limit: int = 5
+    ) -> list[ArtistCandidate]:
+        async with self._client(cred) as client:
+            resp = _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "GET",
+                    "/search",
+                    params={
+                        "q": f'artist:"{artist.name}"',
+                        "type": "artist",
+                        "limit": min(limit, 10),
+                    },
+                )
+            )
+        items = ((resp.json().get("artists") or {}).get("items")) or []
+        return [_artist_candidate(obj) for obj in items[:limit]]
+
+    async def validate_album_uri(self, cred: ProviderCredential, uri: str) -> bool:
+        album_id = _album_id(uri)
+        if not album_id:
+            return False
+        async with self._client(cred) as client:
+            resp = await _spotify_request(client, "GET", f"/albums/{album_id}")
+        if resp.status_code == 404:
+            return False
+        _raise_for_status(resp)
+        return True
+
+    async def validate_artist_uri(self, cred: ProviderCredential, uri: str) -> bool:
+        artist_id = _artist_id(uri)
+        if not artist_id:
+            return False
+        async with self._client(cred) as client:
+            resp = await _spotify_request(client, "GET", f"/artists/{artist_id}")
         if resp.status_code == 404:
             return False
         _raise_for_status(resp)
@@ -968,6 +1266,166 @@ class SpotifyAdapter:
                     )
                 )
 
+    async def unfollow_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("Spotify Liked Songs cannot be removed as a playlist")
+        if _SAVED_TRACKS_WRITE_SCOPE not in cred.scopes:
+            raise AccessDenied(_PLAYLIST_UNFOLLOW_SCOPE_MESSAGE)
+        async with self._client(cred) as client:
+            _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "DELETE",
+                    "/me/library",
+                    params={"uris": f"spotify:playlist:{ref.id}"},
+                )
+            )
+        return PlaylistMutationResult()
+
+    async def delete_playlist(
+        self, cred: ProviderCredential, ref: PlaylistRef
+    ) -> PlaylistMutationResult:
+        raise Unsupported(
+            "Spotify does not expose destructive playlist deletion; remove it from "
+            "your library instead"
+        )
+
+    async def remove_tracks(
+        self,
+        cred: ProviderCredential,
+        ref: PlaylistRef,
+        items: Sequence[TrackRemoval],
+    ) -> RemoveTracksResult:
+        if ref.kind is PlaylistKind.LIKED_TRACKS:
+            raise Unsupported("Removing songs from Spotify Liked Songs is not a playlist edit")
+        if ref.is_owned is False and ref.collaborative is not True:
+            raise AccessDenied("Spotify track removal requires an owned or collaborative playlist")
+        if not ref.snapshot_id:
+            raise ProviderError("Spotify track removal requires a current playlist snapshot")
+        removals = list(items)
+        if len(removals) > self.info.capabilities.max_remove_batch:
+            raise ProviderError(
+                "Spotify can remove at most "
+                f"{self.info.capabilities.max_remove_batch} selected songs per job"
+            )
+
+        grouped: dict[str, list[int]] = {}
+        for item in removals:
+            track_id = _track_id(item.provider_uri)
+            if not track_id:
+                raise ProviderError(f"invalid Spotify track URI: {item.provider_uri}")
+            uri = f"spotify:track:{track_id}"
+            grouped.setdefault(uri, []).append(item.position)
+        payload = {
+            "items": [
+                {"uri": uri, "positions": positions}
+                for uri, positions in grouped.items()
+            ],
+            "snapshot_id": ref.snapshot_id,
+        }
+        async with self._client(cred) as client:
+            response = _raise_for_status(
+                await _spotify_request(
+                    client,
+                    "DELETE",
+                    f"/playlists/{ref.id}/items",
+                    json=payload,
+                )
+            )
+        data = response.json() if response.content else {}
+        snapshot_id = data.get("snapshot_id")
+        return RemoveTracksResult(
+            items=[
+                RemoveItemResult(
+                    source_item_id=item.source_item_id,
+                    provider_uri=item.provider_uri,
+                    position=item.position,
+                    ok=True,
+                )
+                for item in removals
+            ],
+            snapshot_id=snapshot_id if isinstance(snapshot_id, str) else None,
+        )
+
+    async def contains_saved_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]:
+        self.info.require_saved_albums_source(cred)
+        return await self._contains_library_items(cred, uris, _album_id, "album")
+
+    async def contains_followed_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[bool]:
+        self.info.require_followed_artists_source(cred)
+        return await self._contains_library_items(cred, uris, _artist_id, "artist")
+
+    async def save_albums(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        self.info.require_saved_albums_target(cred)
+        return await self._write_library_uris(cred, uris, _album_id, "album")
+
+    async def follow_artists(
+        self, cred: ProviderCredential, uris: Sequence[str]
+    ) -> list[AddItemResult]:
+        self.info.require_followed_artists_target(cred)
+        return await self._write_library_uris(cred, uris, _artist_id, "artist")
+
+    async def _contains_library_items(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        normalizer,
+        item_type: str,
+    ) -> list[bool]:
+        originals = list(uris)
+        normalized = [
+            f"spotify:{item_type}:{item_id}" if (item_id := normalizer(uri)) else None
+            for uri in originals
+        ]
+        results = [False] * len(originals)
+        valid = [(index, uri) for index, uri in enumerate(normalized) if uri]
+        async with self._client(cred) as client:
+            for start in range(0, len(valid), self.info.capabilities.max_library_batch):
+                chunk = valid[start : start + self.info.capabilities.max_library_batch]
+                resp = _raise_for_status(
+                    await _spotify_request(
+                        client,
+                        "GET",
+                        "/me/library/contains",
+                        params={"uris": ",".join(uri for _, uri in chunk)},
+                    )
+                )
+                payload = resp.json()
+                values = payload.get("contains") if isinstance(payload, dict) else payload
+                if not isinstance(values, list):
+                    raise ProviderError("spotify library contains response was not a list")
+                for (index, _), present in zip(chunk, values, strict=False):
+                    results[index] = bool(present)
+        return results
+
+    async def _write_library_uris(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        normalizer,
+        item_type: str,
+    ) -> list[AddItemResult]:
+        return await self._write_uris(
+            cred,
+            uris,
+            normalize=lambda uri: (
+                f"spotify:{item_type}:{item_id}" if (item_id := normalizer(uri)) else None
+            ),
+            invalid_error=f"invalid Spotify {item_type} URI",
+            batch_size=self.info.capabilities.max_library_batch,
+            method="PUT",
+            url="/me/library",
+            query_param=True,
+        )
+
     async def _save_library_tracks(
         self, cred: ProviderCredential, uris: Sequence[str]
     ) -> list[AddItemResult]:
@@ -1005,11 +1463,35 @@ class SpotifyAdapter:
         query_param: bool = False,
         scope_error=None,
     ) -> list[AddItemResult]:
+        return await self._write_uris(
+            cred,
+            uris,
+            normalize=lambda uri: (
+                f"spotify:track:{track_id}" if (track_id := _track_id(uri)) else None
+            ),
+            invalid_error="invalid Spotify track URI",
+            batch_size=batch_size,
+            method=method,
+            url=url,
+            query_param=query_param,
+            scope_error=scope_error,
+        )
+
+    async def _write_uris(
+        self,
+        cred: ProviderCredential,
+        uris: Sequence[str],
+        *,
+        normalize,
+        invalid_error: str,
+        batch_size: int,
+        method: str,
+        url: str,
+        query_param: bool = False,
+        scope_error=None,
+    ) -> list[AddItemResult]:
         originals = list(uris)
-        normalized = [
-            f"spotify:track:{track_id}" if (track_id := _track_id(uri)) else None
-            for uri in originals
-        ]
+        normalized = [normalize(uri) for uri in originals]
         results: list[AddItemResult | None] = [None] * len(originals)
         valid = [(index, uri) for index, uri in enumerate(normalized) if uri]
         for index, uri in enumerate(normalized):
@@ -1017,7 +1499,7 @@ class SpotifyAdapter:
                 results[index] = AddItemResult(
                     uri=originals[index],
                     ok=False,
-                    error="invalid Spotify track URI",
+                    error=invalid_error,
                 )
 
         position = 0

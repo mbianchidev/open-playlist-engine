@@ -301,12 +301,14 @@ async def _execute_sync(ctx: dict, *, run_id: str, lease_token: str) -> None:
             account_id=rule.source_account_id,
             adapter=source,
             provider=rule.source_provider,
+            user_id=rule.user_id,
         )
         target_cred, _ = await load_fresh_credential(
             session,
             account_id=rule.target_account_id,
             adapter=target,
             provider=rule.target_provider,
+            user_id=rule.user_id,
         )
         source_playlist = await source.read_playlist(
             source_cred,
@@ -432,7 +434,7 @@ async def _finalize_reviewed_run(*, run_id: str, lease_token: str) -> None:
                 )
             ).scalars()
         )
-        if not review_finalization_ready(items):
+        if not _checkpoint_review_resolved(checkpoint, items):
             raise RuntimeError("sync review still has unresolved tracks")
         mappings = dict(checkpoint.mappings or {})
         mappings.update(_job_item_mappings(items))
@@ -445,6 +447,7 @@ async def _finalize_reviewed_run(*, run_id: str, lease_token: str) -> None:
             account_id=rule.target_account_id,
             adapter=target,
             provider=rule.target_provider,
+            user_id=rule.user_id,
         )
         target_playlist = await target.read_playlist(
             target_cred,
@@ -789,20 +792,47 @@ async def resolved_review_runs(session: AsyncSession) -> list[orm.SyncRun]:
 
 
 async def _review_ready_for_run(session: AsyncSession, run_id: str) -> bool:
-    job_id = await session.scalar(
-        select(orm.MigrationJob.id).where(orm.MigrationJob.sync_run_id == run_id)
-    )
-    if job_id is None:
-        return False
-    unresolved = await session.scalar(
-        select(orm.JobItem.id)
-        .where(
-            orm.JobItem.job_id == job_id,
-            orm.JobItem.status.in_(["needs_review", "failed"]),
+    row = (
+        await session.execute(
+            select(orm.MigrationJob.id, orm.SyncRun.rule_id)
+            .join(orm.SyncRun, orm.SyncRun.id == orm.MigrationJob.sync_run_id)
+            .where(orm.SyncRun.id == run_id)
         )
-        .limit(1)
+    ).one_or_none()
+    if row is None:
+        return False
+    job_id, rule_id = row
+    checkpoint = await session.get(orm.SyncCheckpoint, rule_id)
+    if checkpoint is None:
+        return False
+    items = list(
+        (
+            await session.execute(
+                select(orm.JobItem).where(orm.JobItem.job_id == job_id)
+            )
+        ).scalars()
     )
-    return unresolved is None
+    return _checkpoint_review_resolved(checkpoint, items)
+
+
+def _checkpoint_review_resolved(
+    checkpoint: orm.SyncCheckpoint,
+    items: list[orm.JobItem],
+) -> bool:
+    unresolved_ids = {
+        item_id
+        for item_id in (checkpoint.unresolved or [])
+        if isinstance(item_id, str) and item_id
+    }
+    if not unresolved_ids:
+        return False
+    items_by_id = {item.id: item for item in items}
+    if not unresolved_ids <= items_by_id.keys():
+        return False
+    return review_finalization_ready(items) and all(
+        items_by_id[item_id].status not in {"needs_review", "failed"}
+        for item_id in unresolved_ids
+    )
 
 
 async def _enqueue_runs(ctx: dict, runs: list[orm.SyncRun]) -> None:

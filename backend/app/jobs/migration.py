@@ -11,21 +11,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable, Sequence
 from enum import StrEnum
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.adapter import (
+    AlbumCandidate,
+    ArtistCandidate,
     AuthExpired,
     CreatePlaylistSpec,
+    FollowedArtistReader,
+    FollowedArtistWriter,
     NotFound,
     ProviderAdapter,
     ProviderCredential,
     ProviderError,
     RateLimited,
+    SavedAlbumReader,
+    SavedAlbumWriter,
     TrackCandidate,
 )
+from app.core.library_match import LibraryMatchResult, LibraryMatchService
 from app.core.match_service import MatchResult, MatchService
 from app.core.migration_state import (
     has_track_overlap,
@@ -34,12 +42,29 @@ from app.core.migration_state import (
     track_selected,
     uri_keys,
 )
-from app.core.models import Playlist, PlaylistKind, PlaylistRef, Track
+from app.core.models import (
+    Album,
+    Artist,
+    MigrationEntityType,
+    Playlist,
+    PlaylistKind,
+    PlaylistRef,
+    Track,
+)
 from app.core.registry import get
+from app.core.sharing import SharedPlaylistSnapshot, snapshot_to_playlist
 from app.db import models as orm
 from app.db.account_scope import provider_account_history
 from app.db.base import get_sessionmaker
+from app.db.migration_history import (
+    TERMINAL_JOB_STATUSES,
+    collect_job_result_summary,
+    mark_job_started,
+    mark_job_terminal,
+    summary_playlists,
+)
 from app.db.repositories import load_fresh_credential
+from app.exports.history import store_playlist_snapshot
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -85,55 +110,98 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
     job = await session.get(orm.MigrationJob, job_id)
     if job is None:
         return
-    job.status = "failed"
+    job.result_summary = await collect_job_result_summary(session, job)
+    mark_job_terminal(
+        job,
+        status="failed",
+        retention_days=get_settings().migration_history_retention_days,
+    )
     job.error = error
     await session.commit()
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
-    source = get(job.source_provider)
-    target = get(job.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session, account_id=job.source_account_id, adapter=source, provider=job.source_provider
-    )
-    target_cred, _ = await load_fresh_credential(
-        session, account_id=job.target_account_id, adapter=target, provider=job.target_provider
-    )
-    job.status = "running"
-    job.error = None
+    mark_job_started(job)
     await session.commit()
-
+    target = get(job.target_provider)
+    target_cred, _ = await load_fresh_credential(
+        session,
+        account_id=job.target_account_id,
+        adapter=target,
+        provider=job.target_provider,
+        user_id=job.user_id,
+    )
+    source_snapshot = (
+        SharedPlaylistSnapshot.model_validate(job.source_snapshot)
+        if job.source_snapshot is not None
+        else None
+    )
+    source = None
+    source_cred = None
+    if source_snapshot is None:
+        source = get(job.source_provider)
+        source_cred, _ = await load_fresh_credential(
+            session,
+            account_id=job.source_account_id,
+            adapter=source,
+            provider=job.source_provider,
+            user_id=job.user_id,
+        )
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
-    if not playlist_ids:
-        raise ValueError("migration has no selected playlists")
+    saved_album_ids = list(selection.get("saved_album_ids") or [])
+    followed_artist_ids = list(selection.get("followed_artist_ids") or [])
+    if source_snapshot is not None and (saved_album_ids or followed_artist_ids):
+        raise ValueError("shared migrations support playlist tracks only")
+    if not (playlist_ids or saved_album_ids or followed_artist_ids):
+        raise ValueError("migration has no selected items")
     logger.info(
-        "migration job_id=%s running source=%s target=%s playlist_count=%s",
+        "migration job_id=%s running source=%s target=%s playlist_count=%s "
+        "saved_album_count=%s followed_artist_count=%s",
         job.id,
         job.source_provider,
         job.target_provider,
         len(playlist_ids),
+        len(saved_album_ids),
+        len(followed_artist_ids),
     )
 
     review_threshold = get_settings().review_confidence_threshold
     matcher = MatchService(graph=None, review_threshold=review_threshold)
-    reviewed_history = await _previous_reviewed_items(
-        session, job=job, review_threshold=review_threshold
+    reviewed_history = (
+        []
+        if source_snapshot is not None
+        else await _previous_reviewed_items(
+            session,
+            job=job,
+            entity_type=MigrationEntityType.TRACK,
+            review_threshold=review_threshold,
+        )
     )
     for playlist_id in playlist_ids:
-        logger.info(
-            "migration job_id=%s reading source playlist playlist_id=%s", job.id, playlist_id
-        )
-        snapshot_payload = (selection.get("playlist_snapshots") or {}).get(playlist_id)
-        if snapshot_payload:
-            playlist = Playlist.model_validate(snapshot_payload)
-            tracks = playlist.tracks
+        if source_snapshot is not None:
+            if playlist_id != (job.source_share_id or job.source_account_id):
+                raise ValueError("shared migration playlist does not match its snapshot")
+            playlist = snapshot_to_playlist(source_snapshot)
         else:
-            playlist = await source.read_playlist(
-                source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+            logger.info(
+                "migration job_id=%s reading source playlist playlist_id=%s",
+                job.id,
+                playlist_id,
             )
-            wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
-            tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
+            if source is None or source_cred is None:
+                raise ValueError("migration source is unavailable")
+            snapshot_payload = (selection.get("playlist_snapshots") or {}).get(playlist_id)
+            if snapshot_payload:
+                playlist = Playlist.model_validate(snapshot_payload)
+            else:
+                playlist = await source.read_playlist(
+                    source_cred, PlaylistRef(id=playlist_id, name=playlist_id)
+                )
+        store_playlist_snapshot(job, playlist, playlist_id=playlist_id)
+        await session.commit()
+        wanted = set((selection.get("tracks") or {}).get(playlist_id) or [])
+        tracks = [track for track in playlist.tracks if track_selected(track, wanted)]
         logger.info(
             "migration job_id=%s loaded source playlist playlist_id=%s name=%r "
             "total_tracks=%s selected_tracks=%s",
@@ -152,7 +220,11 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             playlist_id=playlist_id,
             playlist_name=playlist.name,
             description=playlist.description
-            or f"Migrated from {source.info.display_name} by Open Playlist Engine.",
+            or (
+                "Imported from a shared playlist by Open Playlist Engine."
+                if source_snapshot is not None
+                else f"Migrated from {source.info.display_name} by Open Playlist Engine."
+            ),
             playlist_kind=playlist.kind,
             source_tracks=tracks,
             forced_target_playlist_id=(selection.get("target_playlist_ids") or {}).get(
@@ -257,8 +329,66 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             status_counts,
         )
 
+    if saved_album_ids or followed_artist_ids:
+        if source is None or source_cred is None:
+            raise ValueError("migration source is unavailable for library items")
+        library_matcher = LibraryMatchService(review_threshold=review_threshold)
+        if saved_album_ids:
+            source_albums = _require_saved_album_reader(source)
+            target_albums = _require_saved_album_writer(target)
+            source.info.require_saved_albums_source(source_cred)
+            target.info.require_saved_albums_target(target_cred)
+            album_reviewed_history = await _previous_reviewed_items(
+                session,
+                job=job,
+                entity_type=MigrationEntityType.ALBUM,
+                review_threshold=review_threshold,
+            )
+            await _migrate_library_entities(
+                session,
+                job=job,
+                source=source_albums,
+                target=target_albums,
+                source_cred=source_cred,
+                target_cred=target_cred,
+                entity_type=MigrationEntityType.ALBUM,
+                entity_ids=saved_album_ids,
+                read_entity=source_albums.read_saved_album,
+                resolve=library_matcher.resolve_album,
+                reviewed_history=album_reviewed_history,
+            )
+        if followed_artist_ids:
+            source_artists = _require_followed_artist_reader(source)
+            target_artists = _require_followed_artist_writer(target)
+            source.info.require_followed_artists_source(source_cred)
+            target.info.require_followed_artists_target(target_cred)
+            artist_reviewed_history = await _previous_reviewed_items(
+                session,
+                job=job,
+                entity_type=MigrationEntityType.ARTIST,
+                review_threshold=review_threshold,
+            )
+            await _migrate_library_entities(
+                session,
+                job=job,
+                source=source_artists,
+                target=target_artists,
+                source_cred=source_cred,
+                target_cred=target_cred,
+                entity_type=MigrationEntityType.ARTIST,
+                entity_ids=followed_artist_ids,
+                read_entity=source_artists.read_followed_artist,
+                resolve=library_matcher.resolve_artist,
+                reviewed_history=artist_reviewed_history,
+            )
+
     await commit_job_counts(session, job)
-    job.status = "done"
+    job.result_summary = await collect_job_result_summary(session, job)
+    mark_job_terminal(
+        job,
+        status="done",
+        retention_days=get_settings().migration_history_retention_days,
+    )
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
 
@@ -364,6 +494,7 @@ async def _create_items(
     for fallback_position, track in enumerate(tracks):
         item = orm.JobItem(
             job_id=job.id,
+            entity_type=MigrationEntityType.TRACK,
             source_playlist_id=playlist_id,
             source_playlist_name=playlist_name,
             position=track.position if track.position is not None else fallback_position,
@@ -381,6 +512,336 @@ async def _create_items(
         pairs.append((item, track))
     await commit_job_counts(session, job)
     return pairs
+
+
+LibraryEntity = Album | Artist
+LibrarySource = SavedAlbumReader | FollowedArtistReader
+LibraryTarget = SavedAlbumWriter | FollowedArtistWriter
+LibraryReader = Callable[[ProviderCredential, str], Awaitable[LibraryEntity]]
+LibraryResolver = Callable[
+    [LibraryEntity, LibraryTarget, ProviderCredential],
+    Awaitable[LibraryMatchResult],
+]
+
+
+def _require_saved_album_reader(adapter: ProviderAdapter) -> SavedAlbumReader:
+    if not isinstance(adapter, SavedAlbumReader):
+        raise ProviderError(f"{adapter.info.display_name} cannot read saved albums")
+    return adapter
+
+
+def _require_saved_album_writer(adapter: ProviderAdapter) -> SavedAlbumWriter:
+    if not isinstance(adapter, SavedAlbumWriter):
+        raise ProviderError(f"{adapter.info.display_name} cannot write saved albums")
+    return adapter
+
+
+def _require_followed_artist_reader(adapter: ProviderAdapter) -> FollowedArtistReader:
+    if not isinstance(adapter, FollowedArtistReader):
+        raise ProviderError(
+            f"{adapter.info.display_name} cannot read followed or favorite artists"
+        )
+    return adapter
+
+
+def _require_followed_artist_writer(adapter: ProviderAdapter) -> FollowedArtistWriter:
+    if not isinstance(adapter, FollowedArtistWriter):
+        raise ProviderError(
+            f"{adapter.info.display_name} cannot write followed or favorite artists"
+        )
+    return adapter
+
+
+async def _migrate_library_entities(
+    session: AsyncSession,
+    *,
+    job: orm.MigrationJob,
+    source: LibrarySource,
+    target: LibraryTarget,
+    source_cred: ProviderCredential,
+    target_cred: ProviderCredential,
+    entity_type: MigrationEntityType,
+    entity_ids: list[str],
+    read_entity: LibraryReader,
+    resolve: LibraryResolver,
+    reviewed_history: Sequence[orm.ReviewDecision] = (),
+) -> None:
+    items = [
+        _pending_library_job_item(
+            job.id,
+            entity_type,
+            entity_id,
+            position=position,
+        )
+        for position, entity_id in enumerate(entity_ids)
+    ]
+    for item in items:
+        session.add(item)
+    await commit_job_counts(session, job)
+
+    try:
+        if entity_type is MigrationEntityType.ALBUM:
+            source_present = await source.contains_saved_albums(source_cred, entity_ids)
+        else:
+            source_present = await source.contains_followed_artists(source_cred, entity_ids)
+    except ProviderError as exc:
+        for item in items:
+            item.status = "failed"
+            item.reason = str(exc)
+        await commit_job_counts(session, job)
+        return
+    if len(source_present) != len(items):
+        for item in items:
+            item.status = "failed"
+            item.reason = "source returned an invalid library membership response"
+        await commit_job_counts(session, job)
+        return
+
+    matched: list[orm.JobItem] = []
+    for item, entity_id, is_present in zip(
+        items, entity_ids, source_present, strict=True
+    ):
+        if not is_present:
+            item.status = "skipped"
+            item.reason = _source_library_missing_reason(source, entity_type)
+            await commit_job_counts(session, job)
+            continue
+        try:
+            entity = await read_entity(source_cred, entity_id)
+        except ProviderError as exc:
+            item.status = "failed"
+            item.reason = str(exc)
+            await commit_job_counts(session, job)
+            continue
+
+        _populate_library_job_item(item, entity_type, entity)
+        await commit_job_counts(session, job)
+        try:
+            result = await _library_review_history_result(
+                entity_type,
+                entity,
+                target,
+                target_cred,
+                reviewed_history,
+            )
+            if result is None:
+                result = await resolve(entity, target, target_cred)
+        except ProviderError as exc:
+            item.status = "failed"
+            item.reason = str(exc)
+            await commit_job_counts(session, job)
+            continue
+        item.confidence = result.confidence
+        if result.candidate is None:
+            item.status = "needs_review"
+            item.reason = result.review_reason or "no target match found"
+            await commit_job_counts(session, job)
+            continue
+        item.target_uri = result.candidate.uri
+        item.target_entity_id = (
+            result.candidate.provider_album_id
+            if entity_type is MigrationEntityType.ALBUM
+            else result.candidate.provider_artist_id
+        )
+        if result.needs_review:
+            item.status = "needs_review"
+            item.reason = result.review_reason or "target match requires review"
+            await commit_job_counts(session, job)
+            continue
+        item.status = "matched"
+        matched.append(item)
+        await commit_job_counts(session, job)
+        if len(matched) >= target.info.capabilities.max_library_batch:
+            chunk = matched[: target.info.capabilities.max_library_batch]
+            del matched[: target.info.capabilities.max_library_batch]
+            await _write_library_items(
+                session,
+                job,
+                target,
+                target_cred,
+                entity_type,
+                chunk,
+            )
+
+    if matched:
+        await _write_library_items(
+            session,
+            job,
+            target,
+            target_cred,
+            entity_type,
+            matched,
+        )
+
+
+def _library_job_item(
+    job_id: str,
+    entity_type: MigrationEntityType,
+    entity: LibraryEntity,
+    *,
+    position: int,
+) -> orm.JobItem:
+    item = _pending_library_job_item(
+        job_id,
+        entity_type,
+        entity.source_item_id or entity.id or "",
+        position=position,
+    )
+    _populate_library_job_item(item, entity_type, entity)
+    return item
+
+
+def _pending_library_job_item(
+    job_id: str,
+    entity_type: MigrationEntityType,
+    entity_id: str,
+    *,
+    position: int,
+) -> orm.JobItem:
+    return orm.JobItem(
+        job_id=job_id,
+        entity_type=entity_type,
+        source_entity_id=entity_id,
+        source_entity_name=entity_id,
+        position=position,
+        title=entity_id,
+        artist=entity_id,
+        source_metadata={"id": entity_id},
+        status="pending",
+    )
+
+
+def _populate_library_job_item(
+    item: orm.JobItem,
+    entity_type: MigrationEntityType,
+    entity: LibraryEntity,
+) -> None:
+    if entity_type is MigrationEntityType.ALBUM and isinstance(entity, Album):
+        source_id = entity.source_item_id or entity.id
+        name = entity.title
+        artist = ", ".join(entity.artists) or "Unknown"
+        release_year = (
+            entity.release_date.year if entity.release_date else entity.release_year
+        )
+    elif entity_type is MigrationEntityType.ARTIST and isinstance(entity, Artist):
+        source_id = entity.source_item_id or entity.id
+        name = entity.name
+        artist = entity.name
+        release_year = None
+    else:
+        raise ValueError(f"invalid {entity_type} entity")
+    item.source_entity_id = source_id
+    item.source_entity_name = name
+    item.title = name
+    item.artist = artist
+    item.release_year = release_year
+    item.source_metadata = entity.model_dump(mode="json")
+
+
+def _source_library_missing_reason(
+    source: LibrarySource, entity_type: MigrationEntityType
+) -> str:
+    if entity_type is MigrationEntityType.ALBUM:
+        return "album is no longer saved in the source library"
+    semantics = source.info.artist_collection_semantics
+    action = "favorited" if semantics and semantics.value == "favorite" else "followed"
+    return f"artist is no longer {action} in the source library"
+
+
+async def _write_library_items(
+    session: AsyncSession,
+    job: orm.MigrationJob,
+    target: LibraryTarget,
+    target_cred: ProviderCredential,
+    entity_type: MigrationEntityType,
+    items: list[orm.JobItem],
+) -> None:
+    uris = [item.target_uri or "" for item in items]
+    try:
+        if entity_type is MigrationEntityType.ALBUM:
+            present = await target.contains_saved_albums(target_cred, uris)
+        else:
+            present = await target.contains_followed_artists(target_cred, uris)
+    except ProviderError as exc:
+        for item in items:
+            item.status = "failed"
+            item.reason = str(exc)
+        await commit_job_counts(session, job)
+        return
+    if len(present) != len(items):
+        for item in items:
+            item.status = "failed"
+            item.reason = "target returned an invalid library contains response"
+        await commit_job_counts(session, job)
+        return
+
+    write_items = []
+    for item, exists in zip(items, present, strict=True):
+        if exists:
+            item.status = "skipped"
+            item.reason = _library_duplicate_reason(target, entity_type)
+        else:
+            write_items.append(item)
+        await commit_job_counts(session, job)
+    if not write_items:
+        return
+
+    try:
+        if entity_type is MigrationEntityType.ALBUM:
+            results = await target.save_albums(
+                target_cred, [item.target_uri or "" for item in write_items]
+            )
+        else:
+            results = await target.follow_artists(
+                target_cred, [item.target_uri or "" for item in write_items]
+            )
+    except ProviderError as exc:
+        for item in write_items:
+            item.status = "failed"
+            item.reason = str(exc)
+        await commit_job_counts(session, job)
+        return
+
+    operation = (
+        "save_album" if entity_type is MigrationEntityType.ALBUM else "follow_artist"
+    )
+    for item, result in zip(write_items, results, strict=False):
+        session.add(
+            orm.OperationLedger(
+                job_id=job.id,
+                op=operation,
+                intent={
+                    "entity_type": entity_type.value,
+                    "source_entity_id": item.source_entity_id,
+                    "uri": result.uri,
+                },
+                observed_target_id=item.target_entity_id if result.ok else None,
+                state="done" if result.ok else "ambiguous",
+            )
+        )
+        if result.already_present:
+            item.status = "skipped"
+            item.reason = _library_duplicate_reason(target, entity_type)
+        else:
+            item.status = "written" if result.ok else "failed"
+            item.reason = (
+                None if result.ok else result.error or "target rejected library item"
+            )
+        await commit_job_counts(session, job)
+    for item in write_items[len(results) :]:
+        item.status = "failed"
+        item.reason = "target did not return a result for this library item"
+        await commit_job_counts(session, job)
+
+
+def _library_duplicate_reason(
+    target: LibraryTarget, entity_type: MigrationEntityType
+) -> str:
+    if entity_type is MigrationEntityType.ALBUM:
+        return "album already saved in target library"
+    semantics = target.info.artist_collection_semantics
+    action = "favorited" if semantics and semantics.value == "favorite" else "followed"
+    return f"artist already {action} in target library"
 
 
 async def _resolve_target_playlist(
@@ -442,19 +903,14 @@ async def _resolve_target_playlist(
 async def _previous_target_playlist_id(
     session: AsyncSession, *, job: orm.MigrationJob, playlist_id: str
 ) -> str | None:
-    return await session.scalar(
+    target_playlist_id = await session.scalar(
         select(orm.JobItem.target_playlist_id)
         .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
         .where(
             orm.MigrationJob.id != job.id,
             orm.MigrationJob.user_id == job.user_id,
             orm.MigrationJob.source_provider == job.source_provider,
-            provider_account_history(
-                orm.MigrationJob.source_account_id,
-                current_account_id=job.source_account_id,
-                user_id=job.user_id,
-                provider=job.source_provider,
-            ),
+            _source_account_history(orm.MigrationJob.source_account_id, job),
             orm.MigrationJob.target_provider == job.target_provider,
             provider_account_history(
                 orm.MigrationJob.target_account_id,
@@ -468,10 +924,53 @@ async def _previous_target_playlist_id(
         .order_by(orm.JobItem.updated_at.desc())
         .limit(1)
     )
+    if target_playlist_id:
+        return target_playlist_id
+
+    prior_jobs = list(
+        (
+            await session.execute(
+                select(orm.MigrationJob)
+                .where(
+                    orm.MigrationJob.id != job.id,
+                    orm.MigrationJob.user_id == job.user_id,
+                    orm.MigrationJob.source_provider == job.source_provider,
+                    _source_account_history(orm.MigrationJob.source_account_id, job),
+                    orm.MigrationJob.target_provider == job.target_provider,
+                    provider_account_history(
+                        orm.MigrationJob.target_account_id,
+                        current_account_id=job.target_account_id,
+                        user_id=job.user_id,
+                        provider=job.target_provider,
+                    ),
+                    orm.MigrationJob.status.in_(TERMINAL_JOB_STATUSES),
+                )
+                .order_by(
+                    orm.MigrationJob.completed_at.desc().nullslast(),
+                    orm.MigrationJob.created_at.desc(),
+                    orm.MigrationJob.id.desc(),
+                )
+            )
+        ).scalars()
+    )
+    return _target_playlist_id_from_summaries(prior_jobs, playlist_id)
+
+
+def _target_playlist_id_from_summaries(
+    jobs: list[orm.MigrationJob], playlist_id: str
+) -> str | None:
+    for prior_job in jobs:
+        for playlist in summary_playlists(prior_job):
+            if str(playlist.get("source_playlist_id") or "") != playlist_id:
+                continue
+            target_playlist_id = str(playlist.get("target_playlist_id") or "")
+            if target_playlist_id:
+                return target_playlist_id
+    return None
 
 
 def _apply_review_history_bonus(
-    prior_items: list[orm.JobItem],
+    prior_items: list[orm.JobItem | orm.ReviewDecision],
     *,
     track: Track,
     result: MatchResult,
@@ -505,46 +1004,61 @@ async def _previous_reviewed_items(
     session: AsyncSession,
     *,
     job: orm.MigrationJob,
+    entity_type: MigrationEntityType,
     review_threshold: float,
-) -> list[orm.JobItem]:
+) -> list[orm.ReviewDecision]:
+    conditions = [
+        orm.ReviewDecision.job_id != job.id,
+        orm.ReviewDecision.user_id == job.user_id,
+        orm.ReviewDecision.source_provider == job.source_provider,
+        _source_account_history(orm.ReviewDecision.source_account_id, job),
+        orm.ReviewDecision.target_provider == job.target_provider,
+        provider_account_history(
+            orm.ReviewDecision.target_account_id,
+            current_account_id=job.target_account_id,
+            user_id=job.user_id,
+            provider=job.target_provider,
+        ),
+        orm.ReviewDecision.entity_type == entity_type.value,
+        orm.ReviewDecision.status.in_(["written", "skipped"]),
+        orm.ReviewDecision.action == "approve",
+    ]
+    if entity_type is MigrationEntityType.TRACK:
+        conditions.append(orm.ReviewDecision.confidence < review_threshold)
     stmt = (
-        select(orm.JobItem)
-        .join(orm.MigrationJob, orm.MigrationJob.id == orm.JobItem.job_id)
-        .where(
-            orm.MigrationJob.id != job.id,
-            orm.MigrationJob.user_id == job.user_id,
-            orm.MigrationJob.source_provider == job.source_provider,
-            provider_account_history(
-                orm.MigrationJob.source_account_id,
-                current_account_id=job.source_account_id,
-                user_id=job.user_id,
-                provider=job.source_provider,
-            ),
-            orm.MigrationJob.target_provider == job.target_provider,
-            provider_account_history(
-                orm.MigrationJob.target_account_id,
-                current_account_id=job.target_account_id,
-                user_id=job.user_id,
-                provider=job.target_provider,
-            ),
-            orm.JobItem.status.in_(["written", "skipped"]),
-            orm.JobItem.target_uri.is_not(None),
-            orm.JobItem.confidence.is_not(None),
-            orm.JobItem.confidence < review_threshold,
-        )
-        .order_by(orm.JobItem.updated_at.desc())
+        select(orm.ReviewDecision)
+        .where(*conditions)
+        .order_by(orm.ReviewDecision.created_at.desc())
     )
     return list((await session.execute(stmt)).scalars())
 
 
+def _source_account_history(account_id_column, job: orm.MigrationJob):
+    if job.source_snapshot is not None:
+        return account_id_column == job.source_account_id
+    return provider_account_history(
+        account_id_column,
+        current_account_id=job.source_account_id,
+        user_id=job.user_id,
+        provider=job.source_provider,
+    )
+
+
 def _prior_reviewed_item(
-    track: Track, prior_items: list[orm.JobItem], review_threshold: float
-) -> orm.JobItem | None:
+    track: Track, prior_items: list[orm.JobItem | orm.ReviewDecision], review_threshold: float
+) -> orm.JobItem | orm.ReviewDecision | None:
     keys = track_keys(track)
     if not keys:
         return None
     for item in prior_items:
+        if getattr(item, "entity_type", None) not in (
+            None,
+            MigrationEntityType.TRACK.value,
+        ):
+            continue
         if not item.target_uri or item.confidence is None or item.confidence >= review_threshold:
+            continue
+        if _is_non_track_uri(item.target_uri):
             continue
         if item.status not in {"written", "skipped"}:
             continue
@@ -553,7 +1067,100 @@ def _prior_reviewed_item(
     return None
 
 
-def _candidate_from_reviewed_item(item: orm.JobItem) -> TrackCandidate:
+def _is_non_track_uri(uri: str) -> bool:
+    lowered = uri.lower()
+    return any(
+        marker in lowered
+        for marker in (":album:", ":artist:", "/album/", "/artist/")
+    )
+
+
+async def _library_review_history_result(
+    entity_type: MigrationEntityType,
+    entity: LibraryEntity,
+    target: LibraryTarget,
+    target_cred: ProviderCredential,
+    reviewed_history: Sequence[orm.ReviewDecision],
+) -> LibraryMatchResult | None:
+    decision = _prior_library_review_decision(entity_type, entity, reviewed_history)
+    if decision is None:
+        return None
+    if entity_type is MigrationEntityType.ALBUM:
+        if not isinstance(entity, Album):
+            return None
+        library = _require_saved_album_writer(target)
+        if not await library.validate_album_uri(target_cred, decision.target_uri):
+            return None
+        candidate = AlbumCandidate(
+            provider_album_id=decision.target_entity_id
+            or _provider_track_id(decision.target_uri),
+            uri=decision.target_uri,
+            title=entity.title,
+            artists=entity.artists,
+            upc=entity.upc,
+            release_date=(
+                str(entity.release_date)
+                if entity.release_date
+                else str(entity.release_year) if entity.release_year else None
+            ),
+            artwork_uri=entity.artwork_uri,
+        )
+    else:
+        if not isinstance(entity, Artist):
+            return None
+        library = _require_followed_artist_writer(target)
+        if not await library.validate_artist_uri(target_cred, decision.target_uri):
+            return None
+        candidate = ArtistCandidate(
+            provider_artist_id=decision.target_entity_id
+            or _provider_track_id(decision.target_uri),
+            uri=decision.target_uri,
+            name=entity.name,
+            artwork_uri=entity.artwork_uri,
+        )
+    return LibraryMatchResult(
+        candidate=candidate,
+        confidence=decision.confidence,
+        source="review_history",
+        needs_review=False,
+    )
+
+
+def _prior_library_review_decision(
+    entity_type: MigrationEntityType,
+    entity: LibraryEntity,
+    reviewed_history: Sequence[orm.ReviewDecision],
+) -> orm.ReviewDecision | None:
+    for decision in reviewed_history:
+        if decision.entity_type != entity_type.value:
+            continue
+        if entity.id and decision.source_entity_id == entity.id:
+            return decision
+        metadata = (
+            decision.source_metadata
+            if isinstance(decision.source_metadata, dict)
+            else {}
+        )
+        provider_uris = metadata.get("provider_uris")
+        source_uri = (
+            provider_uris.get(decision.source_provider)
+            if isinstance(provider_uris, dict)
+            else None
+        )
+        current_uri = entity.provider_uris.get(decision.source_provider)
+        if current_uri and source_uri == current_uri:
+            return decision
+        if (
+            entity_type is MigrationEntityType.ALBUM
+            and isinstance(entity, Album)
+            and entity.upc
+            and str(metadata.get("upc") or "").upper() == entity.upc.upper()
+        ):
+            return decision
+    return None
+
+
+def _candidate_from_reviewed_item(item: orm.JobItem | orm.ReviewDecision) -> TrackCandidate:
     target_uri = item.target_uri or ""
     return TrackCandidate(
         provider_track_id=_provider_track_id(target_uri),
@@ -571,7 +1178,7 @@ def _provider_track_id(uri: str) -> str:
     return keys[0] if keys else uri
 
 
-def _source_item_keys(item: orm.JobItem) -> set[str]:
+def _source_item_keys(item: orm.JobItem | orm.ReviewDecision) -> set[str]:
     return keys_from_metadata(
         item.source_metadata,
         title=item.title,

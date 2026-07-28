@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.adapter import RateLimited, RefreshTokenExpired
 from app.db import models as orm
 from app.db.base import Base
+from app.jobs.history_cleanup import _sync_review_not_pending
 from app.jobs.sync import (
     SyncAlreadyRunning,
     SyncPartialFailure,
@@ -132,6 +134,7 @@ async def test_stale_review_finalizer_returns_to_review_queue(session) -> None:
     await session.flush()
     session.add(
         orm.JobItem(
+            id="item",
             job_id=job.id,
             source_playlist_id="source-playlist",
             position=0,
@@ -243,7 +246,17 @@ async def test_resolved_review_runs_are_rediscovered(session) -> None:
     session.add(job)
     await session.flush()
     session.add(
+        orm.SyncCheckpoint(
+            rule_id=rule.id,
+            source_snapshot={},
+            target_snapshot={},
+            mappings={},
+            unresolved=["resolved-item"],
+        )
+    )
+    session.add(
         orm.JobItem(
+            id="resolved-item",
             job_id=job.id,
             source_playlist_id="source-playlist",
             position=0,
@@ -257,3 +270,51 @@ async def test_resolved_review_runs_are_rediscovered(session) -> None:
     await session.commit()
 
     assert [row.id for row in await resolved_review_runs(session)] == [run.id]
+
+
+async def test_missing_review_items_do_not_finalize_or_expire(session) -> None:
+    rule = _rule()
+    rule.status = "review_required"
+    session.add(rule)
+    await session.flush()
+    run = orm.SyncRun(
+        rule_id=rule.id,
+        trigger="scheduled",
+        status="review_required",
+        lease_token="review-lease",
+        queue_job_id="sync-run:review-missing",
+    )
+    session.add(run)
+    await session.flush()
+    job = orm.MigrationJob(
+        user_id="local",
+        source_provider="source",
+        target_provider="target",
+        source_account_id="source-account",
+        target_account_id="target-account",
+        selection={"playlist_ids": ["source-playlist"], "match_only": True},
+        status="done",
+        origin="sync",
+        sync_run_id=run.id,
+        details_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    session.add(job)
+    session.add(
+        orm.SyncCheckpoint(
+            rule_id=rule.id,
+            source_snapshot={},
+            target_snapshot={},
+            mappings={},
+            unresolved=["deleted-item"],
+        )
+    )
+    await session.commit()
+
+    assert await resolved_review_runs(session) == []
+    cleanup_candidate = await session.scalar(
+        select(orm.MigrationJob.id).where(
+            orm.MigrationJob.id == job.id,
+            _sync_review_not_pending(),
+        )
+    )
+    assert cleanup_candidate is None
