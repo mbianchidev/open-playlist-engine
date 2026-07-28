@@ -75,6 +75,14 @@ from app.db.repositories import (
     load_credential,
     load_fresh_credential,
 )
+from app.imports import LOCAL_FILE_PROVIDER
+from app.imports.service import (
+    LocalImportExpired,
+    LocalImportNotFound,
+    LocalImportStateError,
+    queue_import,
+)
+from app.imports.source import MigrationSource, open_migration_source
 from app.jobs.migration import commit_job_counts, run_migration
 from app.jobs.queue import enqueue_or_inline
 from app.jobs.sync import finalize_sync_review, review_finalization_ready
@@ -1068,6 +1076,8 @@ async def create_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
+        raise _local_import_http_error(exc) from exc
 
     if warnings and not body.acknowledge_warnings:
         await session.commit()
@@ -1087,6 +1097,19 @@ async def create_migration(
         warnings=warnings,
     )
     session.add(job)
+    await session.flush()
+    if body.source_provider == LOCAL_FILE_PROVIDER:
+        try:
+            await queue_import(
+                session,
+                import_id=body.source_account_id,
+                user_id=user_id,
+                job_id=job.id,
+                settings=get_settings(),
+            )
+        except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
+            await session.rollback()
+            raise _local_import_http_error(exc) from exc
     await session.commit()
     await _enqueue_or_inline(background_tasks, job.id)
     return _job_view(job)
@@ -1118,6 +1141,8 @@ async def preflight_migration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
+        raise _local_import_http_error(exc) from exc
 
 
 async def _validated_preflight(
@@ -1126,9 +1151,40 @@ async def _validated_preflight(
     *,
     user_id: str,
 ) -> tuple[list[dict[str, str]], MigrationSelectionSummary]:
-    source = get(body.source_provider)
     get(body.target_provider)
+    await load_credential(
+        session,
+        account_id=body.target_account_id,
+        provider=body.target_provider,
+        user_id=user_id,
+    )
 
+    if body.source_provider == LOCAL_FILE_PROVIDER:
+        if body.selection.saved_album_ids or body.selection.followed_artist_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Local playlist files support playlist tracks only",
+            )
+        source = await open_migration_source(
+            session,
+            provider=body.source_provider,
+            account_id=body.source_account_id,
+            user_id=user_id,
+            settings=get_settings(),
+        )
+        if body.selection.playlist_ids and not source.can_read_tracks:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{body.source_provider} cannot read tracks",
+            )
+        return await _preflight(
+            session,
+            body,
+            user_id=user_id,
+            local_source=source,
+        )
+
+    source = get(body.source_provider)
     source_caps = source.info.capabilities
     if body.selection.playlist_ids and not source_caps.can(Capability.READ_TRACKS):
         raise HTTPException(status_code=400, detail=f"{body.source_provider} cannot read tracks")
@@ -1136,12 +1192,6 @@ async def _validated_preflight(
         session,
         account_id=body.source_account_id,
         provider=body.source_provider,
-        user_id=user_id,
-    )
-    await load_credential(
-        session,
-        account_id=body.target_account_id,
-        provider=body.target_provider,
         user_id=user_id,
     )
     return await _preflight(session, body, user_id=user_id)
@@ -1152,17 +1202,10 @@ async def _preflight(
     body: CreateMigration,
     *,
     user_id: str,
+    local_source: MigrationSource | None = None,
 ) -> tuple[list[dict[str, str]], MigrationSelectionSummary]:
     settings = get_settings()
-    source = get(body.source_provider)
     target = get(body.target_provider)
-    source_cred, _ = await load_fresh_credential(
-        session,
-        account_id=body.source_account_id,
-        adapter=source,
-        provider=body.source_provider,
-        user_id=user_id,
-    )
     target_cred, _ = await load_fresh_credential(
         session,
         account_id=body.target_account_id,
@@ -1171,13 +1214,29 @@ async def _preflight(
         user_id=user_id,
     )
 
-    selected = await _selected_playlists(source, source_cred, body.selection)
+    source = None
+    source_cred = None
+    if local_source is not None:
+        selected = await local_source.selected_playlists(
+            playlist_ids=body.selection.playlist_ids,
+            track_filters=body.selection.tracks or {},
+        )
+    else:
+        source = get(body.source_provider)
+        source_cred, _ = await load_fresh_credential(
+            session,
+            account_id=body.source_account_id,
+            adapter=source,
+            provider=body.source_provider,
+            user_id=user_id,
+        )
+        selected = await _selected_playlists(source, source_cred, body.selection)
+        await _validate_selected_library_entities(
+            source,
+            source_cred,
+            body.selection,
+        )
     _validate_target_capabilities(target, target_cred, selected, body.selection)
-    await _validate_selected_library_entities(
-        source,
-        source_cred,
-        body.selection,
-    )
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     summary = MigrationSelectionSummary(
         playlists=len(body.selection.playlist_ids),
@@ -1200,6 +1259,20 @@ async def _preflight(
                 "track_count",
                 f"Safe default is {settings.migration_safe_max_tracks_per_job} tracks "
                 f"per job; this job has {total_tracks}.",
+            )
+        )
+
+    unsupported_items = sum(
+        not track.is_migratable
+        for playlist in selected.values()
+        for track in playlist.tracks
+    )
+    if unsupported_items:
+        warnings.append(
+            _warning(
+                "unsupported_items",
+                f"{unsupported_items} selected local or malformed "
+                "playlist entries cannot be matched and will be skipped.",
             )
         )
 
@@ -1236,13 +1309,22 @@ async def _preflight(
         )
 
     warnings.extend(await _same_name_warnings(target, target_cred, selected))
-    warnings.extend(_artist_semantics_warnings(source, target, body.selection))
+    if source is not None:
+        warnings.extend(_artist_semantics_warnings(source, target, body.selection))
     return warnings, summary
 
 
-async def _selected_playlists(
-    source, source_cred, selection: Selection
-) -> dict[str, Playlist]:
+async def _validated_preflight_warnings(
+    session: AsyncSession,
+    body: CreateMigration,
+    *,
+    user_id: str,
+) -> list[dict[str, str]]:
+    warnings, _ = await _validated_preflight(session, body, user_id=user_id)
+    return warnings
+
+
+async def _selected_playlists(source, source_cred, selection: Selection) -> dict[str, Playlist]:
     selected: dict[str, Playlist] = {}
     track_filters = selection.tracks or {}
     for playlist_id in selection.playlist_ids:
@@ -1456,6 +1538,26 @@ async def _job_wait_remaining(
 
 def _warning(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
+
+
+def _local_import_http_error(
+    exc: LocalImportNotFound | LocalImportExpired | LocalImportStateError,
+) -> HTTPException:
+    if isinstance(exc, LocalImportNotFound):
+        return HTTPException(status_code=404, detail="Local import not found")
+    if isinstance(exc, LocalImportExpired):
+        return HTTPException(
+            status_code=410,
+            detail={
+                "code": "import_expired",
+                "message": "This local import expired. Upload the file again.",
+            },
+        )
+    status_code = 409 if exc.code == "import_queued" else 400
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
 
 
 @router.get("/stats", response_model=AggregateMigrationStatsView)

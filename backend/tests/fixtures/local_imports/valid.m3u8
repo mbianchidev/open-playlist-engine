@@ -1,0 +1,10 @@
+#EXTM3U
+#PLAYLIST:Road Trip
+#EXTINF:239,Beyoncé - Déjà Vu
+spotify:track:abc
+#EXTINF:239,Beyoncé - Déjà Vu
+spotify:track:abc
+#EXTINF:180,Title without artist
+https://example.com/audio.mp3
+#EXTINF:200,Local Artist - Local Song
+file:///Users/example/Music/local.mp3

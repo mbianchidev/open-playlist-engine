@@ -12,6 +12,7 @@ import type {
   ExportFormat,
   JobItemView,
   JobView,
+  LocalImportPreview,
   LibraryView,
   MigrationItemFilters,
   MigrationItemPage,
@@ -154,6 +155,24 @@ export async function getPlaylist(
 ): Promise<Playlist> {
   const params = playlistParams(provider, accountId, context);
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
+export async function uploadPlaylistFile(file: File): Promise<LocalImportPreview> {
+  const params = new URLSearchParams({ filename: file.name });
+  return json<LocalImportPreview>(
+    await fetch(`/api/imports/preview?${params}`, {
+      method: "POST",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    }),
+  );
+}
+
+export async function discardPlaylistImport(importId: string): Promise<void> {
+  const response = await fetch(`/api/imports/${encodeURIComponent(importId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) await json<never>(response);
 }
 
 export async function getOrganizerPlaylists(

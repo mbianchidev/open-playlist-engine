@@ -1,0 +1,13 @@
+{
+  "playlists": [
+    {
+      "name": "Road Trip",
+      "tracks": [
+        {"title": "Déjà Vu", "artist": "Beyoncé", "album": "B'Day", "duration": "3:59", "isrc": "USSM10603689", "uri": "spotify:track:abc"},
+        {"title": "Déjà Vu", "artist": "Beyoncé", "album": "B'Day", "duration": "3:59", "isrc": "USSM10603689", "uri": "spotify:track:abc"},
+        {"title": "Title without artist", "duration": 180, "uri": "https://example.com/audio.mp3"},
+        {"title": "Local Song", "artist": "Local Artist", "duration": 200, "uri": "file:///Users/example/Music/local.mp3"}
+      ]
+    }
+  ]
+}

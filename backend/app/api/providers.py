@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.core.capabilities import Capability
 from app.core.registry import all_adapters
 from app.core.sync import mirror_unavailable_reason
+from app.imports import LOCAL_FILE_PROVIDER
 
 router = APIRouter(prefix="/api", tags=["providers"])
 
@@ -47,7 +48,26 @@ class ArtistCapabilityView(LibraryCapabilityView):
 
 @router.get("/providers", response_model=list[ProviderView])
 async def list_providers() -> list[ProviderView]:
-    views: list[ProviderView] = []
+    views: list[ProviderView] = [
+        ProviderView(
+            name=LOCAL_FILE_PROVIDER,
+            display_name="Local playlist file",
+            auth_kind="upload",
+            official=True,
+            stability="stable",
+            has_isrc=True,
+            can_source=True,
+            can_target=False,
+            can_mirror=False,
+            mirror_unavailable_reason="Local files are available for one-time playlist migrations.",
+            can_unfollow_playlist=False,
+            can_delete_playlist=False,
+            can_remove_tracks=False,
+            max_remove_batch=0,
+            saved_albums=LibraryCapabilityView(read=False, write=False),
+            followed_artists=ArtistCapabilityView(read=False, write=False),
+        )
+    ]
     for adapter in all_adapters():
         info = adapter.info
         caps = info.capabilities

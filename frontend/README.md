@@ -27,15 +27,18 @@ The script invokes a pinned code generator ephemerally, keeping codegen-only par
 dependencies out of the installed/audited frontend dependency graph.
 
 ## Flow (maps to the phased design)
-1. Pick a source and optional target provider from `/api/providers`.
-2. Connect accounts through generic auth challenges.
+1. Pick source/target providers from `/api/providers`, including the built-in
+   local playlist-file source.
+2. Connect provider accounts, or upload and validate a local playlist file.
 3. Load source playlists from `/api/playlists` and saved albums/artists from
-   `/api/library`, including target limitations and follow/favorite semantics.
+   `/api/library`, including target limitations and follow/favorite semantics, or
+   use the normalized preview returned by `/api/imports/preview`.
 4. Without a target account, download selected playlists through `/api/exports` as
-   JSON, CSV, TXT, M3U8, or XSPF.
+   JSON, CSV, TXT, M3U8, or XSPF (provider-backed sources only).
 5. Create a migration with selected playlist, track, album, and artist IDs. The
-   preflight confirms per-entity counts; warning popups guard slow defaults,
-   semantic conversions, and same-name target playlist conflicts.
+   local source remains playlist-only. The preflight confirms per-entity counts;
+   warning popups guard slow defaults, semantic conversions, unsupported file
+   entries, and same-name target playlist conflicts.
 6. Render live job/item progress from SSE.
 7. Review low-confidence matches by approving a suggested target URI, pasting a
    replacement URI/video ID, approving all suggested matches, skipping one item, or
@@ -70,6 +73,9 @@ Playlist Organizer defaults to safe library removal, never substitutes deletion,
 and requires explicit song-entry selection for playlist edits.
 Apple Music uses the same auth challenge interface with the
 official MusicKit JS v3 browser authorization flow.
+The local-file panel renders detected format/counts, parse findings, duplicates,
+unsupported entries, expiry, and playlist/track selection without exposing a
+server filesystem path.
 
 ## Visual system
 
@@ -77,4 +83,4 @@ official MusicKit JS v3 browser authorization flow.
 `src/theme.css` owns the product tokens, provider-aware presentation, responsive
 layout, and motion overrides. Keep dynamic status classes and the ARIA tab
 relationships intact when changing presentation. The accessible workspace tab order
-is Migration, Sync, Stats.
+is Migration, Sync, Organizer, History, Sharing.

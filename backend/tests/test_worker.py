@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db import models as orm
+from app.imports.service import cleanup_local_imports
 from app.jobs import migration
 from app.jobs.history_cleanup import cleanup_expired_migration_details
 from app.jobs.worker import WorkerSettings
@@ -38,6 +39,10 @@ def test_worker_schedules_history_cleanup() -> None:
     assert any(
         job.coroutine is cleanup_expired_migration_details for job in WorkerSettings.cron_jobs
     )
+
+
+def test_worker_schedules_local_import_cleanup() -> None:
+    assert any(job.coroutine is cleanup_local_imports for job in WorkerSettings.cron_jobs)
 
 
 async def test_mark_job_failed_persists_timeout_error(monkeypatch) -> None:

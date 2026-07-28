@@ -56,6 +56,9 @@ resolve the owner's local accounts.
 Persistent one-way sync rules reuse migration jobs for new-track matching and writes,
 store source/target checkpoints, catch up missed schedules in the self-hosted worker,
 and expose add-only plus capability-gated mirror controls.
+A built-in source-only local-file provider parses TXT, CSV, M3U/M3U8, PLS, WPL,
+XSPF, XML, and JSON into playlist models before the same match/review/write
+pipeline begins; local imports do not expose album or artist entities.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -72,10 +75,10 @@ created.
 
 | Phase | Step | Component |
 |---|---|---|
-| 0 | Get access to **source** | Backend auth (per-provider strategy) |
-| 1 | **Import**: fetch playlists, tracks, saved albums, and artists | Source adapter → universal model |
+| 0 | Get access to **source** | Backend auth, or bounded local-file upload |
+| 1 | **Import**: fetch playlists, tracks, saved albums, and artists; local files provide playlists/tracks only | Source adapter or local parser → universal model |
 | 2 | UI: select supported playlists, songs, albums, and artists | Frontend selection tree |
-| 2.5 | Optional local export: serialize selected playlists/tracks to a streamed file | Export service |
+| 2.5 | Optional portable export of provider-backed playlist selections | Export service |
 | 3 | Get access to **target** | Backend auth |
 | 3.5 | **Match**: resolve tracks, albums, and artists on the target | Core match services |
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
@@ -189,7 +192,8 @@ Apple   ┘                 │                └ Apple
 ### Frontend / backend separation
 - **Backend** owns all OAuth/tokens, provider API calls, matching, jobs, export
   serialization/orchestration, organizer preflight, and destructive confirmation
-  enforcement. Emits OpenAPI.
+  enforcement, plus local-file parsing and expiring normalized previews. Emits
+  OpenAPI.
 - **Frontend** owns the source→target wizard, organizer workbench, selection,
   review, progress, history, exports, and sharing. It
   consumes a client **generated from the backend OpenAPI**. No business logic, no
@@ -223,6 +227,17 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
   with `--no-cache`.
 - **Portable files**: stdlib CSV, ZIP64, XML, JSON, and temporary-file streaming;
   no cloud storage or delivery service.
+
+### Local-file trust boundary
+
+Local imports use an application upload endpoint, never an arbitrary host path.
+The backend streams each request into a bounded spooled temporary file, rejects
+configured byte/playlist/track limits, blocks XML entities and document types,
+and never opens paths referenced by M3U, PLS, WPL, XSPF, XML, or JSON entries.
+The raw stream is closed after parsing. Only normalized `Playlist`/`Track` JSON
+and bounded validation issues are retained in an owner-scoped expiring row.
+Queued jobs lease that row; successful jobs delete it atomically, while failures
+retain a short retry grace before scheduled cleanup.
 
 ### YouTube write path
 - **Default: `ytmusicapi`** (unofficial) — real YouTube Music, **no quota**,

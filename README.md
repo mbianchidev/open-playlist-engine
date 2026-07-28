@@ -1,8 +1,9 @@
 # Open Playlist Engine
 
 Any-to-any music **playlist and library migration plus portable export** — move
-playlists, liked tracks, saved albums, and followed/favorite artists between supported
-providers, or download playlists as local files.
+playlists, liked tracks, saved albums, and followed/favorite artists between
+supported providers, import local playlist files, or download playlists as
+portable local files.
 
 This is the first reference implementation of the
 [`open-playlist`](https://github.com/mbianchidev/open-playlist) universal
@@ -18,7 +19,8 @@ instantly works with all the others — both as source and target.
 > partial-migration detection, migration jobs, review actions, SSE progress,
 > reopenable migration history, mixed-entity statistics, streamed CSV/JSON
 > reports, opt-in immutable public playlist shares, and a capability-gated Playlist
-> Organizer are wired. Other provider
+> Organizer are wired. Local TXT, CSV, M3U/M3U8, PLS, WPL, XSPF, XML, and JSON
+> playlist sources are built in. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. Persistent scheduled sync
 > rules can keep completed single-playlist migrations updated in add-only mode,
@@ -28,7 +30,7 @@ instantly works with all the others — both as source and target.
 ## How it works
 
 ```
-source provider ─ read ─▶ [ Open Playlist hub ] ─ write ─▶ target provider
+provider or local file ─▶ [ Open Playlist hub ] ─ write ─▶ target provider
                               │ (identity graph)
                               └─ export ─▶ local CSV/TXT/M3U8/XSPF/JSON
 ```
@@ -45,7 +47,7 @@ ledger instead of maintaining a second migration engine.
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
 | `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
-| `docs/` | Design, provider setup, Organizer, sharing, history, portable export documentation, and ADRs. |
+| `docs/` | Design, local imports, provider setup, sync, Organizer, sharing, history, portable exports, and ADRs. |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
 the generated OpenAPI client.
@@ -90,7 +92,8 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_EXPORT_MAX_PLAYLISTS`, `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`, and
 `OPE_MIGRATION_HISTORY_RETENTION_DAYS`. Public playlist sharing additionally uses
 `OPE_PUBLIC_BASE_URL` and `OPE_OWNER_ACCESS_TOKEN`; it remains disabled while the
-public URL is empty.
+public URL is empty. Local imports use the `OPE_LOCAL_IMPORT_*` size, item-count,
+spool, lease, and retention controls.
 Self-host mode resolves the migration owner server-side as the local user. Hosted
 mode fails closed until a real user-authentication dependency is configured; it
 does not accept a caller-provided user ID.
@@ -142,6 +145,21 @@ changes. Owners can change visibility, expire, or revoke a link at any time.
 
 See [`docs/PLAYLIST_SHARING.md`](docs/PLAYLIST_SHARING.md) for setup, reverse
 proxy, security, recipient credential retention, and usage details.
+
+## Local playlist files
+
+Choose **Local playlist file** as the source to upload TXT, CSV, M3U, M3U8, PLS,
+WPL, XSPF, XML, or JSON. The app streams the request through configurable size
+and item limits, handles UTF BOMs and documented fallback encodings, previews
+malformed rows, duplicates, and unsupported local audio entries, then migrates
+selected tracks through the same match/review/write pipeline.
+
+Raw files are closed immediately after parsing and are never sent to an external
+service. Only the normalized preview is retained temporarily in Postgres; unused
+previews expire, successful jobs delete them, and failed jobs keep a short retry
+grace. Canonical CSV headers, accepted aliases, format behavior, limits, API
+usage, and retention rules are documented in
+[`docs/LOCAL_FILE_IMPORTS.md`](docs/LOCAL_FILE_IMPORTS.md).
 
 ## Spotify, Tidal, YouTube Music and Apple Music
 

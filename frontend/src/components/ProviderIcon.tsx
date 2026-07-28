@@ -1,4 +1,4 @@
-import { Music2 } from "lucide-react";
+import { FileMusic, Music2 } from "lucide-react";
 import type { IconType } from "react-icons";
 import { SiApplemusic, SiSpotify, SiTidal, SiYoutubemusic } from "react-icons/si";
 
@@ -19,6 +19,7 @@ interface Props {
 export default function ProviderIcon({ provider, className }: Props) {
   const normalized = provider?.toLowerCase() ?? "unknown";
   const Icon = PROVIDER_ICONS[normalized];
+  const isLocalFile = normalized === "local_file";
 
   return (
     <span
@@ -26,7 +27,7 @@ export default function ProviderIcon({ provider, className }: Props) {
       data-provider={normalized}
       aria-hidden="true"
     >
-      {Icon ? <Icon /> : <Music2 />}
+      {isLocalFile ? <FileMusic /> : Icon ? <Icon /> : <Music2 />}
     </span>
   );
 }

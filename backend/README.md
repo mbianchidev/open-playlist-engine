@@ -7,14 +7,16 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
+- `app/imports/` — bounded local-file streaming, format registry, normalized
+  previews, source loading, and retention cleanup.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker, import→match→review→write pipeline, persisted sync
-  scheduler, and durable playlist-organizer jobs.
+  scheduler, local-import cleanup, and durable playlist-organizer jobs.
 - `app/exports/` — versioned portable schemas, serializers, history reconstruction,
   and temporary-file-backed archive generation.
-- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/migrations`,
-  `/syncs`, `/library`, `/organizer`, `/exports`, owner `/shares`, and isolated
-  `/public/shares`).
+- `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/imports`,
+  `/migrations`, `/syncs`, `/library`, `/organizer`, `/exports`, owner `/shares`,
+  and isolated `/public/shares`).
 
 ## Develop
 ```bash
@@ -70,6 +72,12 @@ items, conservative matching, native contains checks, review, and entity-specifi
 statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+Local-file imports accept raw request bodies at `/api/imports/preview`, persist
+only normalized Open Playlist JSON with an expiry, and enter the same migration
+worker without a provider credential. Supported formats, CSV aliases, limits,
+retention, and API examples are in
+[`docs/LOCAL_FILE_IMPORTS.md`](../docs/LOCAL_FILE_IMPORTS.md).
 
 The worker also runs the playlist sync scheduler at startup and every minute.
 `sync_rule`, `sync_run`, and `sync_checkpoint` persist schedules, active-run leases,

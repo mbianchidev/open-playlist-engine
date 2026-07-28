@@ -123,6 +123,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Import */
+        post: operations["preview_import_api_imports_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{import_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import Preview */
+        get: operations["get_import_preview_api_imports__import_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Import */
+        delete: operations["delete_import_api_imports__import_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library": {
         parameters: {
             query?: never;
@@ -1193,6 +1228,71 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImportErrorDetail */
+        ImportErrorDetail: {
+            /** Code */
+            code: string;
+            /** Format */
+            format?: string | null;
+            /** Message */
+            message: string;
+        };
+        /** ImportErrorResponse */
+        ImportErrorResponse: {
+            detail: components["schemas"]["ImportErrorDetail"];
+        };
+        /**
+         * ImportFormat
+         * @enum {string}
+         */
+        ImportFormat: "txt" | "csv" | "m3u" | "m3u8" | "pls" | "wpl" | "xspf" | "xml" | "json";
+        /** ImportIssue */
+        ImportIssue: {
+            /** Code */
+            code: string;
+            /** Line Or Item */
+            line_or_item?: number | string | null;
+            /** Message */
+            message: string;
+            /** Playlist Name */
+            playlist_name?: string | null;
+            /** Raw Excerpt */
+            raw_excerpt?: string | null;
+            severity: components["schemas"]["ImportIssueSeverity"];
+        };
+        /**
+         * ImportIssueSeverity
+         * @enum {string}
+         */
+        ImportIssueSeverity: "warning" | "error";
+        /** ImportLimits */
+        ImportLimits: {
+            /**
+             * Max Issues
+             * @default 200
+             */
+            max_issues: number;
+            /**
+             * Max Playlists
+             * @default 100
+             */
+            max_playlists: number;
+            /**
+             * Max Tracks
+             * @default 5000
+             */
+            max_tracks: number;
+            /**
+             * Max Upload Bytes
+             * @default 10485760
+             */
+            max_upload_bytes: number;
+            /**
+             * Spool Memory Bytes
+             * @default 1048576
+             */
+            spool_memory_bytes: number;
+        };
         /** JobItemView */
         JobItemView: {
             /** Album */
@@ -1303,6 +1403,49 @@ export interface components {
         LibraryView: {
             followed_artists: components["schemas"]["FollowedArtistsView"];
             saved_albums: components["schemas"]["SavedAlbumsView"];
+        };
+        /** LocalImportPreview */
+        LocalImportPreview: {
+            detected_format: components["schemas"]["ImportFormat"];
+            /**
+             * Duplicate Count
+             * @default 0
+             */
+            duplicate_count: number;
+            /** Encoding */
+            encoding?: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** File Size */
+            file_size: number;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /** Issues */
+            issues?: components["schemas"]["ImportIssue"][];
+            limits: components["schemas"]["ImportLimits"];
+            /**
+             * Malformed Count
+             * @default 0
+             */
+            malformed_count: number;
+            /** Playlist Count */
+            playlist_count: number;
+            /** Playlists */
+            playlists: components["schemas"]["Playlist"][];
+            /** Status */
+            status: string;
+            /** Track Count */
+            track_count: number;
+            /**
+             * Unsupported Count
+             * @default 0
+             */
+            unsupported_count: number;
         };
         /**
          * MediaType
@@ -2437,6 +2580,119 @@ export interface operations {
                     "text/csv": string;
                     "text/plain": string;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_import_api_imports_preview_post: {
+        parameters: {
+            query: {
+                filename: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalImportPreview"];
+                };
+            };
+            /** @description Invalid upload request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
+                };
+            };
+            /** @description Upload-size limit exceeded. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
+                };
+            };
+            /** @description Playlist parsing failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
+                };
+            };
+        };
+    };
+    get_import_preview_api_imports__import_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalImportPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_import_api_imports__import_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

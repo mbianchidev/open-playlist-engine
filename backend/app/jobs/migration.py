@@ -65,6 +65,12 @@ from app.db.migration_history import (
 )
 from app.db.repositories import load_fresh_credential
 from app.exports.history import store_playlist_snapshot
+from app.imports import LOCAL_FILE_PROVIDER
+from app.imports.service import (
+    delete_import_for_job,
+    mark_import_failed,
+)
+from app.imports.source import open_migration_source
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -106,7 +112,11 @@ async def run_migration(ctx: dict, job_id: str, *, propagate: bool = False) -> N
                 raise
 
 
-async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> None:
+async def _mark_job_failed(
+    session: AsyncSession,
+    job_id: str,
+    error: str,
+) -> None:
     job = await session.get(orm.MigrationJob, job_id)
     if job is None:
         return
@@ -117,10 +127,18 @@ async def _mark_job_failed(session: AsyncSession, job_id: str, error: str) -> No
         retention_days=get_settings().migration_history_retention_days,
     )
     job.error = error
+    if job.source_provider == LOCAL_FILE_PROVIDER:
+        await mark_import_failed(
+            session,
+            import_id=job.source_account_id,
+            job_id=job.id,
+            settings=get_settings(),
+        )
     await session.commit()
 
 
 async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
+    settings = get_settings()
     mark_job_started(job)
     await session.commit()
     target = get(job.target_provider)
@@ -138,21 +156,38 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
     )
     source = None
     source_cred = None
+    local_source = None
+    source_display_name: str | None = None
     if source_snapshot is None:
-        source = get(job.source_provider)
-        source_cred, _ = await load_fresh_credential(
-            session,
-            account_id=job.source_account_id,
-            adapter=source,
-            provider=job.source_provider,
-            user_id=job.user_id,
-        )
+        if job.source_provider == LOCAL_FILE_PROVIDER:
+            local_source = await open_migration_source(
+                session,
+                provider=job.source_provider,
+                account_id=job.source_account_id,
+                user_id=job.user_id,
+                settings=settings,
+                job_id=job.id,
+            )
+            source_display_name = local_source.display_name
+        else:
+            source = get(job.source_provider)
+            source_cred, _ = await load_fresh_credential(
+                session,
+                account_id=job.source_account_id,
+                adapter=source,
+                provider=job.source_provider,
+                user_id=job.user_id,
+            )
+            source_display_name = source.info.display_name
     selection = job.selection or {}
     playlist_ids = list(selection.get("playlist_ids") or [])
     saved_album_ids = list(selection.get("saved_album_ids") or [])
     followed_artist_ids = list(selection.get("followed_artist_ids") or [])
-    if source_snapshot is not None and (saved_album_ids or followed_artist_ids):
-        raise ValueError("shared migrations support playlist tracks only")
+    if (source_snapshot is not None or local_source is not None) and (
+        saved_album_ids or followed_artist_ids
+    ):
+        source_kind = "shared" if source_snapshot is not None else "local-file"
+        raise ValueError(f"{source_kind} migrations support playlist tracks only")
     if not (playlist_ids or saved_album_ids or followed_artist_ids):
         raise ValueError("migration has no selected items")
     logger.info(
@@ -166,11 +201,11 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         len(followed_artist_ids),
     )
 
-    review_threshold = get_settings().review_confidence_threshold
+    review_threshold = settings.review_confidence_threshold
     matcher = MatchService(graph=None, review_threshold=review_threshold)
     reviewed_history = (
         []
-        if source_snapshot is not None
+        if source_snapshot is not None or local_source is not None
         else await _previous_reviewed_items(
             session,
             job=job,
@@ -183,6 +218,13 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             if playlist_id != (job.source_share_id or job.source_account_id):
                 raise ValueError("shared migration playlist does not match its snapshot")
             playlist = snapshot_to_playlist(source_snapshot)
+        elif local_source is not None:
+            logger.info(
+                "migration job_id=%s reading local source playlist playlist_id=%s",
+                job.id,
+                playlist_id,
+            )
+            playlist = await local_source.read_playlist(playlist_id)
         else:
             logger.info(
                 "migration job_id=%s reading source playlist playlist_id=%s",
@@ -223,7 +265,8 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             or (
                 "Imported from a shared playlist by Open Playlist Engine."
                 if source_snapshot is not None
-                else f"Migrated from {source.info.display_name} by Open Playlist Engine."
+                else f"Migrated from {source_display_name or job.source_provider} "
+                "by Open Playlist Engine."
             ),
             playlist_kind=playlist.kind,
             source_tracks=tracks,
@@ -258,6 +301,22 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         match_only = bool(selection.get("match_only"))
         for item, track in item_pairs:
             item.target_playlist_id = target_playlist_id
+            if item.status in {"written", "skipped", "needs_review"}:
+                continue
+            if item.status == "matched" and item.target_uri:
+                matched.append(item)
+                await _flush_matched_chunk(
+                    session,
+                    job,
+                    target,
+                    target_cred,
+                    target_playlist_id,
+                    matched,
+                    existing_keys=target_existing_keys,
+                )
+                continue
+            item.status = "pending"
+            item.reason = None
             if not track.is_migratable:
                 item.status = "skipped"
                 item.reason = track.unsupported_reason or "unsupported playlist item"
@@ -389,6 +448,12 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
         status="done",
         retention_days=get_settings().migration_history_retention_days,
     )
+    if job.source_provider == LOCAL_FILE_PROVIDER:
+        await delete_import_for_job(
+            session,
+            import_id=job.source_account_id,
+            job_id=job.id,
+        )
     await session.commit()
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
 
@@ -491,24 +556,40 @@ async def _create_items(
     tracks: list[Track],
 ) -> list[tuple[orm.JobItem, Track]]:
     pairs: list[tuple[orm.JobItem, Track]] = []
+    existing_items: dict[int, orm.JobItem] = {}
+    if job.source_provider == LOCAL_FILE_PROVIDER:
+        existing_items = {
+            item.position: item
+            for item in (
+                await session.execute(
+                    select(orm.JobItem).where(
+                        orm.JobItem.job_id == job.id,
+                        orm.JobItem.source_playlist_id == playlist_id,
+                    )
+                )
+            ).scalars()
+        }
     for fallback_position, track in enumerate(tracks):
-        item = orm.JobItem(
-            job_id=job.id,
-            entity_type=MigrationEntityType.TRACK,
-            source_playlist_id=playlist_id,
-            source_playlist_name=playlist_name,
-            position=track.position if track.position is not None else fallback_position,
-            title=track.title,
-            artist=track.artist,
-            album=track.album,
-            duration_s=track.duration_s,
-            release_year=track.release_year,
-            explicit=track.explicit,
-            isrc=track.isrc,
-            source_metadata=track.model_dump(mode="json"),
-            status="pending",
-        )
-        session.add(item)
+        position = track.position if track.position is not None else fallback_position
+        item = existing_items.get(position)
+        if item is None:
+            item = orm.JobItem(
+                job_id=job.id,
+                entity_type=MigrationEntityType.TRACK,
+                source_playlist_id=playlist_id,
+                source_playlist_name=playlist_name,
+                position=position,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                duration_s=track.duration_s,
+                release_year=track.release_year,
+                explicit=track.explicit,
+                isrc=track.isrc,
+                source_metadata=track.model_dump(mode="json"),
+                status="pending",
+            )
+            session.add(item)
         pairs.append((item, track))
     await commit_job_counts(session, job)
     return pairs

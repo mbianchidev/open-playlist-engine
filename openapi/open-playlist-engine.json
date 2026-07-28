@@ -889,6 +889,164 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImportErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ImportErrorDetail",
+        "type": "object"
+      },
+      "ImportErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ImportErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ImportErrorResponse",
+        "type": "object"
+      },
+      "ImportFormat": {
+        "enum": [
+          "txt",
+          "csv",
+          "m3u",
+          "m3u8",
+          "pls",
+          "wpl",
+          "xspf",
+          "xml",
+          "json"
+        ],
+        "title": "ImportFormat",
+        "type": "string"
+      },
+      "ImportIssue": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "line_or_item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Or Item"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "playlist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playlist Name"
+          },
+          "raw_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Excerpt"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ImportIssueSeverity"
+          }
+        },
+        "required": [
+          "severity",
+          "code",
+          "message"
+        ],
+        "title": "ImportIssue",
+        "type": "object"
+      },
+      "ImportIssueSeverity": {
+        "enum": [
+          "warning",
+          "error"
+        ],
+        "title": "ImportIssueSeverity",
+        "type": "string"
+      },
+      "ImportLimits": {
+        "properties": {
+          "max_issues": {
+            "default": 200,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Issues",
+            "type": "integer"
+          },
+          "max_playlists": {
+            "default": 100,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Playlists",
+            "type": "integer"
+          },
+          "max_tracks": {
+            "default": 5000,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Tracks",
+            "type": "integer"
+          },
+          "max_upload_bytes": {
+            "default": 10485760,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Upload Bytes",
+            "type": "integer"
+          },
+          "spool_memory_bytes": {
+            "default": 1048576,
+            "exclusiveMinimum": 0.0,
+            "title": "Spool Memory Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "ImportLimits",
+        "type": "object"
+      },
       "JobItemView": {
         "properties": {
           "album": {
@@ -1266,6 +1424,99 @@
           "followed_artists"
         ],
         "title": "LibraryView",
+        "type": "object"
+      },
+      "LocalImportPreview": {
+        "properties": {
+          "detected_format": {
+            "$ref": "#/components/schemas/ImportFormat"
+          },
+          "duplicate_count": {
+            "default": 0,
+            "title": "Duplicate Count",
+            "type": "integer"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoding"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "file_size": {
+            "title": "File Size",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ImportIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ImportLimits"
+          },
+          "malformed_count": {
+            "default": 0,
+            "title": "Malformed Count",
+            "type": "integer"
+          },
+          "playlist_count": {
+            "title": "Playlist Count",
+            "type": "integer"
+          },
+          "playlists": {
+            "items": {
+              "$ref": "#/components/schemas/Playlist"
+            },
+            "title": "Playlists",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "track_count": {
+            "title": "Track Count",
+            "type": "integer"
+          },
+          "unsupported_count": {
+            "default": 0,
+            "title": "Unsupported Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detected_format",
+          "file_size",
+          "playlists",
+          "playlist_count",
+          "track_count",
+          "id",
+          "filename",
+          "status",
+          "expires_at",
+          "limits"
+        ],
+        "title": "LocalImportPreview",
         "type": "object"
       },
       "MediaType": {
@@ -4377,6 +4628,156 @@
         "summary": "Create History Export",
         "tags": [
           "exports"
+        ]
+      }
+    },
+    "/api/imports/preview": {
+      "post": {
+        "operationId": "preview_import_api_imports_preview_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid upload request."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportErrorResponse"
+                }
+              }
+            },
+            "description": "Upload-size limit exceeded."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportErrorResponse"
+                }
+              }
+            },
+            "description": "Playlist parsing failed."
+          }
+        },
+        "summary": "Preview Import",
+        "tags": [
+          "local imports"
+        ]
+      }
+    },
+    "/api/imports/{import_id}": {
+      "delete": {
+        "operationId": "delete_import_api_imports__import_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "title": "Import Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Import",
+        "tags": [
+          "local imports"
+        ]
+      },
+      "get": {
+        "operationId": "get_import_preview_api_imports__import_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "title": "Import Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Import Preview",
+        "tags": [
+          "local imports"
         ]
       }
     },

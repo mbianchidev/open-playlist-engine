@@ -45,6 +45,27 @@ def test_providers_endpoint_capability_matrix(client: TestClient) -> None:
     assert rows["applemusic"]["can_delete_playlist"] is False
     assert rows["applemusic"]["can_remove_tracks"] is False
     assert rows["applemusic"]["auth_kind"] == "developer_user_token"
+    assert rows["local_file"] == {
+        "name": "local_file",
+        "display_name": "Local playlist file",
+        "auth_kind": "upload",
+        "official": True,
+        "stability": "stable",
+        "has_isrc": True,
+        "can_source": True,
+        "can_target": False,
+        "can_mirror": False,
+        "mirror_unavailable_reason": (
+            "Local files are available for one-time playlist migrations."
+        ),
+        "can_unfollow_playlist": False,
+        "can_delete_playlist": False,
+        "can_remove_tracks": False,
+        "max_remove_batch": 0,
+        "saved_albums": {"read": False, "write": False},
+        "followed_artists": {"read": False, "write": False, "semantics": None},
+        "warning": None,
+    }
     assert rows["spotify"]["can_mirror"] is True
     assert rows["spotify"]["mirror_unavailable_reason"] is None
     assert rows["tidal"]["can_mirror"] is False
