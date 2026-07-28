@@ -4,7 +4,8 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 
 ## Layout
 - `app/core/` — provider-agnostic hub: Open Playlist models, capabilities, plugin
-  contract (`adapter.py`), registry, `match_service.py`, rate limiting, security.
+  contract (`adapter.py`), registry, matching, generator model adapters, preflight,
+  rate limiting, and security.
 - `app/providers/<name>/` — provider adapters (applemusic, spotify, tidal, ytmusic).
   Self-register.
 - `app/imports/` — bounded local-file streaming, format registry, normalized
@@ -14,14 +15,14 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 - `app/db/` — SQLAlchemy models (private data + the evidence graph).
 - `app/jobs/` — arq worker, import→match→review→write pipeline, persisted sync
   scheduler, local-import cleanup, durable playlist-organizer jobs, and streamed
-  snapshot jobs.
+  snapshot jobs. Confirmed generator drafts enter the same migration ledger.
 - `app/snapshots/` — versioned bundle format, safe filesystem boundary, verification,
   diffing, retention, and storage reconciliation.
 - `app/exports/` — versioned portable schemas, serializers, history reconstruction,
   and temporary-file-backed archive generation.
 - `app/api/` — FastAPI routers (`/providers`, `/auth`, `/playlists`, `/imports`,
   `/migrations`, `/snapshots`, `/syncs`, `/library`, `/organizer`, `/exports`,
-  owner `/shares`, and isolated `/public/shares`).
+  `/generator`, owner `/shares`, and isolated `/public/shares`).
 
 ## Develop
 ```bash
@@ -82,6 +83,15 @@ items, conservative matching, native contains checks, review, and entity-specifi
 statistics. It performs a preflight that warns
 before exceeding the conservative defaults: 1 playlist/job, 50 tracks/job, 250
 tracks/day, and 120 seconds between jobs.
+
+The generator keeps raw prompts out of the database. `app/core/generator.py` validates
+bounded structured output from a local OpenAI-compatible endpoint or optional GitHub
+Copilot SDK session, then resolves every suggestion through the target adapter and
+`MatchService`. `app/api/generator.py` owns private preference summaries and editable
+drafts. Confirmation snapshots approved URIs into `MigrationJob`/`JobItem` rows with
+`source_kind="generated"`; the worker skips source credentials and never rematches a
+reviewed URI. See
+[`docs/PLAYLIST_GENERATOR.md`](../docs/PLAYLIST_GENERATOR.md).
 
 Local-file imports accept raw request bodies at `/api/imports/preview`, persist
 only normalized Open Playlist JSON with an expiry, and enter the same migration

@@ -16,6 +16,7 @@ import {
   Share2,
   ShieldCheck,
   Users,
+  WandSparkles,
   Wifi,
 } from "lucide-react";
 import {
@@ -53,6 +54,7 @@ import type {
   SourceImportPreview,
   Track,
 } from "./api/types";
+import GeneratorWorkspace from "./components/GeneratorWorkspace";
 import LocalFileImportPanel from "./components/LocalFileImportPanel";
 import SourceImportPanel from "./components/SourceImportPanel";
 import MigrationStatsPanel from "./components/MigrationStatsPanel";
@@ -126,6 +128,7 @@ export default function App() {
   const libraryLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const generatorTabRef = useRef<HTMLButtonElement>(null);
   const snapshotsTabRef = useRef<HTMLButtonElement>(null);
   const syncTabRef = useRef<HTMLButtonElement>(null);
   const organizerTabRef = useRef<HTMLButtonElement>(null);
@@ -1392,6 +1395,7 @@ export default function App() {
     event.preventDefault();
     const tabs: WorkspaceTab[] = [
       "migration",
+      "generator",
       "snapshots",
       "sync",
       "organizer",
@@ -1410,6 +1414,7 @@ export default function App() {
     setActiveTab(nextTab);
     const tabRefs = {
       migration: migrationTabRef,
+      generator: generatorTabRef,
       snapshots: snapshotsTabRef,
       sync: syncTabRef,
       organizer: organizerTabRef,
@@ -1417,6 +1422,18 @@ export default function App() {
       sharing: sharingTabRef,
     };
     tabRefs[nextTab].current?.focus();
+  }
+
+  function openMigrationConnections() {
+    setActiveTab("migration");
+    migrationTabRef.current?.focus();
+  }
+
+  function handleGeneratedJob(nextJobId: string) {
+    setJobId(nextJobId);
+    setStatsRefreshKey((value) => value + 1);
+    setActiveTab("migration");
+    migrationTabRef.current?.focus();
   }
 
   return (
@@ -1437,7 +1454,7 @@ export default function App() {
         </div>
         <div className="product-promise">
           <ShieldCheck aria-hidden="true" />
-          <span>Local-first migration</span>
+          <span>Local-first playlists</span>
         </div>
       </header>
 
@@ -1464,6 +1481,24 @@ export default function App() {
             Migration
           </span>
           <small>Move playlists</small>
+        </button>
+        <button
+          ref={generatorTabRef}
+          id="generator-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Generator"
+          aria-selected={activeTab === "generator"}
+          aria-controls="generator-panel"
+          tabIndex={activeTab === "generator" ? 0 : -1}
+          onClick={() => setActiveTab("generator")}
+        >
+          <span>
+            <WandSparkles aria-hidden="true" />
+            Generator
+          </span>
+          <small>Build and review</small>
         </button>
         <button
           ref={snapshotsTabRef}
@@ -2097,7 +2132,7 @@ export default function App() {
           )}
             </section>
           ) : null}
-          {jobId && isRecordImportSource && !sourceReady ? (
+          {jobId && !sourceReady ? (
             <ProgressBoard
               className="progress-popover flow local-import-progress"
               jobId={jobId}
@@ -2105,6 +2140,20 @@ export default function App() {
               onReconnectProvider={connect}
             />
           ) : null}
+        </div>
+      ) : activeTab === "generator" ? (
+        <div
+          id="generator-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="generator-tab"
+        >
+          <GeneratorWorkspace
+            providers={providers}
+            accounts={accounts}
+            onOpenConnections={openMigrationConnections}
+            onJobCreated={handleGeneratedJob}
+          />
         </div>
       ) : activeTab === "snapshots" ? (
         <div
@@ -2321,7 +2370,14 @@ interface DeviceChallenge {
   pollIntervalS: number;
 }
 
-type WorkspaceTab = "migration" | "snapshots" | "sync" | "organizer" | "stats" | "sharing";
+type WorkspaceTab =
+  | "migration"
+  | "generator"
+  | "snapshots"
+  | "sync"
+  | "organizer"
+  | "stats"
+  | "sharing";
 
 interface AppleMusicChallenge {
   developerToken: string;

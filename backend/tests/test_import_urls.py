@@ -73,4 +73,3 @@ def test_open_playlist_share_url_maps_to_public_share_api() -> None:
 def test_url_resolver_rejects_unsafe_or_unsupported_urls(url: str) -> None:
     with pytest.raises(UnsafePlaylistUrl):
         resolve_playlist_url(url, open_playlist_hosts={"playlists.example"})
-

@@ -59,6 +59,10 @@ and expose add-only plus capability-gated mirror controls.
 A built-in source-only local-file provider parses TXT, CSV, M3U/M3U8, PLS, WPL,
 XSPF, XML, and JSON into playlist models before the same match/review/write
 pipeline begins; local imports do not expose album or artist entities.
+A separate generator workspace uses an administrator-configured local
+OpenAI-compatible model by default, with optional Copilot SDK support. It validates
+structured intents, resolves real provider candidates, and holds an editable private
+draft before a `source_kind="generated"` migration job can write anything.
 
 ### Non-goals (for now)
 - Streaming/playback. We move playlists, not audio.
@@ -84,6 +88,17 @@ created.
 | 3.6 | **Review**: confirm/fix low-confidence matches | Frontend review queue |
 | 4 | **Write**: create playlists and add tracks, idempotently | arq job + operation ledger |
 | 5 | UI shows live progress | Frontend SSE progress board |
+
+Playlist generation enters before the normal write pipeline:
+
+| Generator phase | Step | Component |
+|---|---|---|
+| G0 | Prompt plus explicit music controls | React Generator workspace |
+| G1 | Bounded structured search intents | local OpenAI-compatible model or optional Copilot SDK |
+| G2 | Resolve and deduplicate real target tracks | target adapter + `MatchService` |
+| G3 | Rename, reorder, add/remove/replace, approve, regenerate | private generation draft |
+| G4 | Explicit confirmation snapshots approved URIs | `MigrationJob` + `JobItem` |
+| G5 | Create and add through durable write flow | arq worker + operation ledger |
 
 ### Public URL and pasted-text sources
 
@@ -215,11 +230,12 @@ Apple   ┘                 │                └ Apple
 ```
 
 ### Frontend / backend separation
-- **Backend** owns all OAuth/tokens, provider API calls, matching, jobs, export
+- **Backend** owns all OAuth/tokens, provider API calls, matching, generation model
+  calls and private drafts, jobs, export
   serialization/orchestration, organizer preflight, and destructive confirmation
   enforcement, plus local-file parsing and expiring normalized previews. Emits
   OpenAPI.
-- **Frontend** owns the source→target wizard, organizer workbench, selection,
+- **Frontend** owns the source→target wizard, generator controls, organizer workbench, selection,
   review, progress, history, exports, and sharing. It
   consumes a client **generated from the backend OpenAPI**. No business logic, no
   provider secrets.
@@ -521,6 +537,8 @@ graph as an open dataset is deferred pending legal review.
 | `provider_credential` | encrypted tokens, auth_kind, scopes, expiry, version | private |
 | `migration_job`, `job_item` | jobs + per-track/album/artist status | private |
 | `operation_ledger` | intent vs observed writes (idempotency) | private |
+| `generation_preference` | opt-in bounded local artist/genre summary | private |
+| `generation_draft`, `generation_draft_item` | editable resolved candidates before confirmation | private |
 | `sync_rule` | endpoints, mode, cadence/timezone, enabled and last/next metadata | private |
 | `sync_run` | trigger, lease, snapshots, changed counts, status and error | private |
 | `sync_checkpoint` | latest applied snapshots, mappings and unresolved review items | private |
@@ -538,11 +556,11 @@ open-playlist-engine/
   backend/
     app/
       core/        # models, capabilities, adapter contract, registry,
-                   # match_service, rate_limit, security  (provider-agnostic hub)
+                   # match/generator services, rate_limit, security
       providers/   # spotify/, ytmusic/  (self-registering adapters)
       db/          # SQLAlchemy models (private data + identity graph)
       jobs/        # arq worker + migration, sync, and playlist-organizer pipelines
-      api/         # /providers /auth /playlists /library /migrations /organizer
+      api/         # /providers /auth /playlists /library /migrations /generator /organizer
                    # /syncs /exports /shares and isolated public share routes
     tests/conformance/   # fake provider + contract suite
     migrations/          # Alembic
@@ -559,6 +577,11 @@ generated OpenAPI client.
 ## 12. Security & privacy
 
 - Encrypt provider credentials at rest via `KeyProvider`; never log/redact tokens.
+- Never persist or log raw generator prompts. Model calls receive only the prompt,
+  explicit controls, and an opt-in capped local preference summary.
+- Generator drafts are private per-user data. Copilot SDK sessions run without tools,
+  file context, memory, skills, config discovery, host Git operations, session store,
+  or session telemetry.
 - PKCE + `state`; refresh ahead of expiry; minimal scopes per capability.
 - Separate the PII-free global graph from private user data and per-account overlays.
 - Unofficial adapters: pace + jitter; surface "may break / ToS-grey" warnings.
@@ -623,6 +646,8 @@ generated OpenAPI client.
 - ✅ Self-host single-user v1 with SaaS-ready seams (`DEPLOYMENT_MODE` + `KeyProvider`).
 - ✅ Persistent worker-local playlist sync with restart catch-up, review finalization,
   add-only mode and capability-gated Spotify mirror.
+- ✅ Self-hosted OpenAI-compatible playlist generation with optional Copilot SDK,
+  provider-resolved editable drafts, and confirmation-gated durable writes.
 
 ## 16. Open questions
 

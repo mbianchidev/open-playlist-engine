@@ -422,6 +422,37 @@ export interface ProgressEvent {
   missing?: boolean;
 }
 
+export type GeneratorBackend = components["schemas"]["GeneratorBackend"];
+export type GeneratorConfigView = ApiSchema<"GeneratorConfigView">;
+export type GeneratorPreferenceSummary = ApiSchema<"PreferenceSummary">;
+export type GeneratorPreferenceView = Omit<ApiSchema<"PreferenceView">, "summary"> & {
+  summary: GeneratorPreferenceSummary;
+};
+export type ExplicitPreference = components["schemas"]["ExplicitPreference"];
+export type GeneratorControls = ApiSchema<"GeneratorControls">;
+export type GenerationSpec = ApiSchema<"GenerationSpec">;
+export type CreateGenerationDraftBody = ApiSchema<"CreateGenerationDraft">;
+export type GeneratedTrackIntent = ApiSchema<"GeneratedTrackIntent">;
+export type GeneratorCandidateView = ApiSchema<"CandidateView">;
+export type GenerationDraftItemView = Omit<
+  ApiSchema<"DraftItemView">,
+  "candidate" | "intent"
+> & {
+  candidate: GeneratorCandidateView | null;
+  intent: GeneratedTrackIntent;
+};
+export type GenerationDraftView = Omit<ApiSchema<"DraftView">, "items" | "playlist"> & {
+  items: GenerationDraftItemView[];
+  playlist: Playlist;
+};
+export type GeneratorTrackSearchBody = ApiSchema<"TrackSearchRequest">;
+
+export interface GeneratorWarningView {
+  code: "generation_warnings";
+  message: string;
+  warnings: { code: string; message: string }[];
+}
+
 export interface SnapshotProfileSourceInput {
   provider: string;
   account_id: string;

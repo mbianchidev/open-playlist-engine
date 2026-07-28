@@ -95,4 +95,3 @@ def test_text_parser_rejects_too_many_rows() -> None:
             name=None,
             limits=_limits(max_items=2),
         )
-

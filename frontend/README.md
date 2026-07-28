@@ -63,6 +63,12 @@ dependencies out of the installed/audited frontend dependency graph.
 12. Download the source playlist snapshot from a completed/failed migration while its
    retained item details remain available.
 
+The **Generator** workspace is a separate prompt-to-provider flow: select a connected
+target account, enter a prompt and controls, optionally enable the capped local
+preference summary, then review real provider candidates. Unresolved and low-confidence
+items block confirmation until they are removed, approved, or replaced. Confirmation
+creates a normal durable migration job and reuses the existing progress/history UI.
+
 The owner-only **Sharing** tab publishes and manages immutable snapshots. Public
 `/share/:token` metadata pages redirect to the SPA `/shared/:token` route, where
 recipients can inspect tracks, download portable formats, connect only their own
@@ -98,5 +104,5 @@ relationships intact when changing presentation.
 The snapshot workspace uses an archive-ledger timeline and checksum seals while
 reusing the same tokens, focus behavior, responsive breakpoints, and reduced-motion
 rules.
-The accessible workspace tab order is Migration, Snapshots, Sync, Organizer,
-History, Sharing.
+The accessible workspace tab order is Migration, Generator, Snapshots, Sync,
+Organizer, History, Sharing.

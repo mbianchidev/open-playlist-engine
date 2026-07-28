@@ -123,6 +123,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generator/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Generator Config */
+        get: operations["get_generator_config_api_generator_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generator/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Draft */
+        post: operations["create_draft_api_generator_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generator/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Draft */
+        get: operations["get_draft_api_generator_drafts__draft_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Draft */
+        delete: operations["delete_draft_api_generator_drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Draft */
+        patch: operations["update_draft_api_generator_drafts__draft_id__patch"];
+        trace?: never;
+    };
+    "/api/generator/drafts/{draft_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Draft */
+        post: operations["confirm_draft_api_generator_drafts__draft_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generator/drafts/{draft_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Draft Item */
+        post: operations["add_draft_item_api_generator_drafts__draft_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generator/drafts/{draft_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Draft Item */
+        delete: operations["delete_draft_item_api_generator_drafts__draft_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Draft Item */
+        patch: operations["update_draft_item_api_generator_drafts__draft_id__items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/generator/drafts/{draft_id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reorder Draft Items */
+        post: operations["reorder_draft_items_api_generator_drafts__draft_id__reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generator/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preferences */
+        get: operations["get_preferences_api_generator_preferences_get"];
+        /** Update Preferences */
+        put: operations["update_preferences_api_generator_preferences_put"];
+        post?: never;
+        /** Delete Preferences */
+        delete: operations["delete_preferences_api_generator_preferences_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generator/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Target Tracks */
+        post: operations["search_target_tracks_api_generator_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/preview": {
         parameters: {
             query?: never;
@@ -1149,6 +1307,10 @@ export interface components {
             /** Provider User Id */
             provider_user_id?: string | null;
         };
+        /** AddDraftItem */
+        AddDraftItem: {
+            candidate: components["schemas"]["CandidateSelection"];
+        };
         /** AggregateMigrationStatsView */
         AggregateMigrationStatsView: {
             counts: components["schemas"]["StatusCounts"];
@@ -1280,12 +1442,52 @@ export interface components {
              */
             item_ids: string[];
         };
+        /** CandidateSelection */
+        CandidateSelection: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /** Title */
+            title: string;
+            /** Uri */
+            uri: string;
+        };
+        /** CandidateView */
+        CandidateView: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Explicit */
+            explicit?: boolean | null;
+            /** Isrc */
+            isrc?: string | null;
+            /** Market */
+            market?: string | null;
+            /** Provider Track Id */
+            provider_track_id: string;
+            /** Title */
+            title: string;
+            /** Uri */
+            uri: string;
+        };
         /**
          * ChallengeShape
          * @description The three UI shapes every auth flow collapses into.
          * @enum {string}
          */
         ChallengeShape: "redirect" | "device_code" | "form";
+        /** ConfirmGenerationDraft */
+        ConfirmGenerationDraft: {
+            /**
+             * Acknowledge Warnings
+             * @default false
+             */
+            acknowledge_warnings: boolean;
+        };
         /** ConnectionTestView */
         ConnectionTestView: {
             /** Account Id */
@@ -1313,6 +1515,19 @@ export interface components {
             source_account_id: string;
             /** Source Provider */
             source_provider: string;
+        };
+        /** CreateGenerationDraft */
+        CreateGenerationDraft: {
+            generation: components["schemas"]["GenerationSpec"];
+            /** Target Account Id */
+            target_account_id: string;
+            /** Target Provider */
+            target_provider: string;
+            /**
+             * Use Personalization
+             * @default false
+             */
+            use_personalization: boolean;
         };
         /** CreateHistoryExport */
         CreateHistoryExport: {
@@ -1384,6 +1599,45 @@ export interface components {
             /** Uri */
             uri?: string | null;
         };
+        /** DraftItemView */
+        DraftItemView: {
+            candidate?: components["schemas"]["CandidateView"] | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Id */
+            id: string;
+            intent: components["schemas"]["GeneratedTrackIntent"];
+            /** Position */
+            position: number;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "resolved" | "needs_review" | "unresolved";
+        };
+        /** DraftView */
+        DraftView: {
+            /** Confirmed Job Id */
+            confirmed_job_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: string;
+            /** Items */
+            items: components["schemas"]["DraftItemView"][];
+            model_backend: components["schemas"]["GeneratorBackend"];
+            /** Name */
+            name: string;
+            playlist: components["schemas"]["Playlist"];
+            /** Status */
+            status: string;
+            /** Target Account Id */
+            target_account_id: string;
+            /** Target Provider */
+            target_provider: string;
+        };
         /** DuplicateCandidateView */
         DuplicateCandidateView: {
             /** Normalized Name */
@@ -1405,6 +1659,11 @@ export interface components {
             /** Reasons */
             reasons: string[];
         };
+        /**
+         * ExplicitPreference
+         * @enum {string}
+         */
+        ExplicitPreference: "allow" | "exclude" | "only";
         /**
          * ExportFormat
          * @enum {string}
@@ -1431,6 +1690,86 @@ export interface components {
             target_semantics?: string | null;
             /** Target Supported */
             target_supported: boolean;
+        };
+        /** GeneratedTrackIntent */
+        GeneratedTrackIntent: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /** Explicit */
+            explicit?: boolean | null;
+            /** Reason */
+            reason?: string | null;
+            /** Release Year */
+            release_year?: number | null;
+            /** Title */
+            title: string;
+        };
+        /** GenerationSpec */
+        GenerationSpec: {
+            controls?: components["schemas"]["GeneratorControls"];
+            /** Prompt */
+            prompt: string;
+        };
+        /**
+         * GeneratorBackend
+         * @enum {string}
+         */
+        GeneratorBackend: "openai_compatible" | "copilot_sdk";
+        /** GeneratorConfigView */
+        GeneratorConfigView: {
+            /** Available */
+            available: boolean;
+            backend: components["schemas"]["GeneratorBackend"];
+            limits: components["schemas"]["GeneratorLimitsView"];
+            /** Message */
+            message: string;
+            /** Model */
+            model: string;
+        };
+        /** GeneratorControls */
+        GeneratorControls: {
+            /**
+             * Discovery
+             * @default 50
+             */
+            discovery: number;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Energy */
+            energy?: number | null;
+            /** Eras */
+            eras?: string[];
+            /** @default allow */
+            explicit: components["schemas"]["ExplicitPreference"];
+            /**
+             * Familiarity
+             * @default 50
+             */
+            familiarity: number;
+            /** Genres */
+            genres?: string[];
+            /** Moods */
+            moods?: string[];
+            /** Seed Artists */
+            seed_artists?: string[];
+            /** Seed Tracks */
+            seed_tracks?: string[];
+            /**
+             * Track Count
+             * @default 20
+             */
+            track_count: number;
+        };
+        /** GeneratorLimitsView */
+        GeneratorLimitsView: {
+            /** Max Output Chars */
+            max_output_chars: number;
+            /** Max Prompt Chars */
+            max_prompt_chars: number;
+            /** Max Tracks */
+            max_tracks: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2112,6 +2451,29 @@ export interface components {
          * @enum {string}
          */
         PortableFormat: "json" | "csv" | "txt" | "m3u8" | "xspf";
+        /** PreferenceSummary */
+        PreferenceSummary: {
+            /**
+             * Source Track Count
+             * @default 0
+             */
+            source_track_count: number;
+            /** Top Artists */
+            top_artists?: string[];
+            /** Top Genres */
+            top_genres?: string[];
+        };
+        /** PreferenceUpdate */
+        PreferenceUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** PreferenceView */
+        PreferenceView: {
+            /** Enabled */
+            enabled: boolean;
+            summary?: components["schemas"]["PreferenceSummary"];
+        };
         /** ProviderView */
         ProviderView: {
             /** Auth Kind */
@@ -2167,6 +2529,11 @@ export interface components {
             target_account_id: string;
             /** Target Provider */
             target_provider: string;
+        };
+        /** ReorderDraftItems */
+        ReorderDraftItems: {
+            /** Item Ids */
+            item_ids: string[];
         };
         /** ReviewItem */
         ReviewItem: {
@@ -2919,6 +3286,24 @@ export interface components {
             /** Unsupported Reason */
             unsupported_reason?: string | null;
         };
+        /** TrackSearchRequest */
+        TrackSearchRequest: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /**
+             * Limit
+             * @default 5
+             */
+            limit: number;
+            /** Target Account Id */
+            target_account_id: string;
+            /** Target Provider */
+            target_provider: string;
+            /** Title */
+            title: string;
+        };
         /** TrackSelection */
         TrackSelection: {
             /** Position */
@@ -2935,6 +3320,22 @@ export interface components {
             playlist_name: string;
             /** Reason */
             reason: string;
+        };
+        /** UpdateDraft */
+        UpdateDraft: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** UpdateDraftItem */
+        UpdateDraftItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "approve" | "replace";
+            candidate?: components["schemas"]["CandidateSelection"] | null;
         };
         /** UpdateShare */
         UpdateShare: {
@@ -3219,6 +3620,433 @@ export interface operations {
                     "application/zip": string;
                     "text/csv": string;
                     "text/plain": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_generator_config_api_generator_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratorConfigView"];
+                };
+            };
+        };
+    };
+    create_draft_api_generator_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGenerationDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_api_generator_drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_generator_drafts__draft_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_draft_api_generator_drafts__draft_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_draft_api_generator_drafts__draft_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmGenerationDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_draft_item_api_generator_drafts__draft_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddDraftItem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_item_api_generator_drafts__draft_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_draft_item_api_generator_drafts__draft_id__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDraftItem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_draft_items_api_generator_drafts__draft_id__reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderDraftItems"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preferences_api_generator_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceView"];
+                };
+            };
+        };
+    };
+    update_preferences_api_generator_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_preferences_api_generator_preferences_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceView"];
+                };
+            };
+        };
+    };
+    search_target_tracks_api_generator_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateView"][];
                 };
             };
             /** @description Validation Error */

@@ -1,6 +1,7 @@
 # Open Playlist Engine
 
-Any-to-any music **playlist and library migration plus portable export** — move
+Any-to-any music **playlist and library migration, local-first generation, and
+portable export** — move
 playlists, liked tracks, saved albums, and followed/favorite artists between
 supported providers, import local playlist files, or download playlists as
 portable local files.
@@ -19,7 +20,10 @@ instantly works with all the others — both as source and target.
 > partial-migration detection, migration jobs, review actions, SSE progress,
 > reopenable migration history, mixed-entity statistics, streamed CSV/JSON
 > reports, opt-in immutable public playlist shares, and a capability-gated Playlist
-> Organizer are wired. Local TXT, CSV, M3U/M3U8, PLS, WPL, XSPF, XML, and JSON
+> Organizer are wired. A private Generator workspace uses an administrator-configured
+> OpenAI-compatible endpoint by default, optionally supports the GitHub Copilot SDK,
+> resolves real provider tracks, and requires review before writing. Local TXT, CSV,
+> M3U/M3U8, PLS, WPL, XSPF, XML, and JSON
 > playlist sources are built in. Other provider
 > directions remain gated until
 > their adapters advertise implemented capabilities. Persistent scheduled sync
@@ -40,6 +44,10 @@ Matching is ISRC-first with a self-enriching evidence graph and a human review s
 for low-confidence matches. Scheduled rules reuse the same pipeline and operation
 ledger instead of maintaining a second migration engine.
 
+Generation uses the same trust boundary:
+**prompt + controls → structured intents → provider resolution → editable draft →
+confirmation → durable write**.
+
 ## Layout
 
 | Path | What |
@@ -47,7 +55,7 @@ ledger instead of maintaining a second migration engine.
 | `backend/` | FastAPI app, provider adapters, matching, jobs, DB. See [`backend/README.md`](backend/README.md). |
 | `frontend/` | Vite + React SPA, consumes the backend OpenAPI. See [`frontend/README.md`](frontend/README.md). |
 | `openapi/` | Vendored [`open-playlist`](https://github.com/mbianchidev/open-playlist) spec the universal `Playlist`/`Track` model mirrors. |
-| `docs/` | Design, local imports, provider setup, sync, Organizer, sharing, history, portable exports, and ADRs. |
+| `docs/` | Design, generator setup, local imports, provider setup, sync, Organizer, sharing, history, portable exports, and ADRs. |
 
 Frontend and backend are **hard-separated** — no shared code; the FE talks only to
 the generated OpenAPI client.
@@ -62,6 +70,16 @@ docker compose up
 
 - Frontend: http://localhost:8080
 - Backend API + docs: http://localhost:8000/docs · health: http://localhost:8000/health
+
+The optional local Ollama example runs behind a Compose profile:
+
+```bash
+docker compose --profile generator up -d ollama
+docker compose exec ollama ollama pull qwen3:8b
+```
+
+Then set `OPE_GENERATOR_OPENAI_BASE_URL=http://ollama:11434/v1` and
+`OPE_GENERATOR_MODEL=qwen3:8b` in `.env`, and restart the backend and worker.
 
 ## Local development
 
@@ -90,6 +108,8 @@ Key flags: `OPE_DEPLOYMENT_MODE` (`self_host`/`hosted`), `OPE_YTMUSIC_ENABLED`,
 `OPE_APPLE_MUSIC_TEAM_ID`,
 `OPE_APPLE_MUSIC_KEY_ID`, `OPE_APPLE_MUSIC_PRIVATE_KEY_PATH`,
 `OPE_SECRET_KEY`, `OPE_FRONTEND_URL`, `OPE_SNAPSHOT_DIR`,
+`OPE_GENERATOR_BACKEND`, `OPE_GENERATOR_OPENAI_BASE_URL`,
+`OPE_GENERATOR_MODEL`,
 `OPE_SNAPSHOT_DEFAULT_RETENTION_COUNT`, `OPE_SNAPSHOT_DEFAULT_RETENTION_DAYS`,
 `OPE_EXPORT_MAX_PLAYLISTS`, `OPE_MIGRATION_HISTORY_RETENTION_DAYS`, and snapshot
 import/verification size limits shown in [`.env.example`](.env.example). Public
@@ -115,6 +135,25 @@ Organizer pacing and retries use `OPE_ORGANIZER_RATE_LIMIT_CAPACITY`,
 `OPE_ORGANIZER_WORKER_JOB_TIMEOUT_S`.
 Portable exports allow up to 100 playlists per
 download by default (`OPE_EXPORT_MAX_PLAYLISTS`) and do not impose a track cap.
+
+## Self-hosted playlist generator
+
+The **Generator** tab accepts a prompt plus genre, mood, era, energy, duration,
+track-count, seed, explicit-content, familiarity, and discovery controls. The model
+returns structured search intents only. The backend resolves them through the selected
+provider adapter, deduplicates real candidates, and stores a private editable draft.
+Users can rename, reorder, remove, add, replace, approve, or regenerate tracks. A
+provider playlist is created only after final confirmation.
+
+The default `openai_compatible` backend requires no hosted account or proprietary
+service. Generation remains disabled with a setup message until an administrator sets
+an endpoint and model. `copilot_sdk` is an optional alternative and may send the
+bounded prompt context to GitHub's configured model. Raw prompts are not persisted or
+logged; local personalization is opt-in, uses only a capped artist/genre summary, and
+has a visible delete control.
+
+Full setup, privacy boundaries, controls, and limitations are documented in
+[`docs/PLAYLIST_GENERATOR.md`](docs/PLAYLIST_GENERATOR.md).
 
 ## Portable local exports
 

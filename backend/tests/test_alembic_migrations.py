@@ -25,7 +25,7 @@ def test_migrations_have_a_single_head() -> None:
     script = _script_directory()
     heads = script.get_heads()
 
-    assert heads == ["0010_merge_snapshots"]
+    assert heads == ["0011_playlist_generator"]
 
 
 def test_public_source_imports_migration_chains_after_local_playlist_imports() -> None:
@@ -45,3 +45,11 @@ def test_snapshot_merge_revision_joins_both_heads() -> None:
         "0009_public_source_imports",
         "0003_local_library_snapshots",
     )
+
+
+def test_playlist_generator_chains_after_snapshot_merge() -> None:
+    script = _script_directory()
+    revision = script.get_revision("0011_playlist_generator")
+
+    assert revision is not None
+    assert revision.down_revision == "0010_merge_snapshots"

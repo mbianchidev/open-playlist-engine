@@ -186,4 +186,3 @@ def _resolve_open_playlist(
             "host": host,
         },
     )
-

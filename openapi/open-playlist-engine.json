@@ -70,6 +70,18 @@
         "title": "AccountView",
         "type": "object"
       },
+      "AddDraftItem": {
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/CandidateSelection"
+          }
+        },
+        "required": [
+          "candidate"
+        ],
+        "title": "AddDraftItem",
+        "type": "object"
+      },
       "AggregateMigrationStatsView": {
         "properties": {
           "counts": {
@@ -472,6 +484,130 @@
         "title": "BatchReview",
         "type": "object"
       },
+      "CandidateSelection": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Artist",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "uri": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri",
+          "title",
+          "artist"
+        ],
+        "title": "CandidateSelection",
+        "type": "object"
+      },
+      "CandidateView": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "title": "Artist",
+            "type": "string"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit"
+          },
+          "isrc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isrc"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "provider_track_id": {
+            "title": "Provider Track Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_track_id",
+          "uri",
+          "title",
+          "artist"
+        ],
+        "title": "CandidateView",
+        "type": "object"
+      },
       "ChallengeShape": {
         "description": "The three UI shapes every auth flow collapses into.",
         "enum": [
@@ -481,6 +617,17 @@
         ],
         "title": "ChallengeShape",
         "type": "string"
+      },
+      "ConfirmGenerationDraft": {
+        "properties": {
+          "acknowledge_warnings": {
+            "default": false,
+            "title": "Acknowledge Warnings",
+            "type": "boolean"
+          }
+        },
+        "title": "ConfirmGenerationDraft",
+        "type": "object"
       },
       "ConnectionTestView": {
         "properties": {
@@ -556,6 +703,33 @@
           "selection"
         ],
         "title": "CreateExport",
+        "type": "object"
+      },
+      "CreateGenerationDraft": {
+        "properties": {
+          "generation": {
+            "$ref": "#/components/schemas/GenerationSpec"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          },
+          "use_personalization": {
+            "default": false,
+            "title": "Use Personalization",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_provider",
+          "target_account_id",
+          "generation"
+        ],
+        "title": "CreateGenerationDraft",
         "type": "object"
       },
       "CreateHistoryExport": {
@@ -753,6 +927,141 @@
         "title": "Credit",
         "type": "object"
       },
+      "DraftItemView": {
+        "properties": {
+          "candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/GeneratedTrackIntent"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "resolved",
+              "needs_review",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "intent",
+          "status"
+        ],
+        "title": "DraftItemView",
+        "type": "object"
+      },
+      "DraftView": {
+        "properties": {
+          "confirmed_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Job Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DraftItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "model_backend": {
+            "$ref": "#/components/schemas/GeneratorBackend"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "playlist": {
+            "$ref": "#/components/schemas/Playlist"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "target_provider",
+          "target_account_id",
+          "name",
+          "model_backend",
+          "items",
+          "playlist"
+        ],
+        "title": "DraftView",
+        "type": "object"
+      },
       "DuplicateCandidateView": {
         "properties": {
           "normalized_name": {
@@ -813,6 +1122,15 @@
         ],
         "title": "DuplicateCandidateView",
         "type": "object"
+      },
+      "ExplicitPreference": {
+        "enum": [
+          "allow",
+          "exclude",
+          "only"
+        ],
+        "title": "ExplicitPreference",
+        "type": "string"
       },
       "ExportFormat": {
         "enum": [
@@ -897,6 +1215,266 @@
           "target_supported"
         ],
         "title": "FollowedArtistsView",
+        "type": "object"
+      },
+      "GeneratedTrackIntent": {
+        "additionalProperties": false,
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Artist",
+            "type": "string"
+          },
+          "explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "release_year": {
+            "anyOf": [
+              {
+                "maximum": 2200.0,
+                "minimum": 1800.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Year"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "artist"
+        ],
+        "title": "GeneratedTrackIntent",
+        "type": "object"
+      },
+      "GenerationSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "controls": {
+            "$ref": "#/components/schemas/GeneratorControls"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "GenerationSpec",
+        "type": "object"
+      },
+      "GeneratorBackend": {
+        "enum": [
+          "openai_compatible",
+          "copilot_sdk"
+        ],
+        "title": "GeneratorBackend",
+        "type": "string"
+      },
+      "GeneratorConfigView": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "backend": {
+            "$ref": "#/components/schemas/GeneratorBackend"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GeneratorLimitsView"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "backend",
+          "model",
+          "message",
+          "limits"
+        ],
+        "title": "GeneratorConfigView",
+        "type": "object"
+      },
+      "GeneratorControls": {
+        "additionalProperties": false,
+        "properties": {
+          "discovery": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Discovery",
+            "type": "integer"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "maximum": 600.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "energy": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy"
+          },
+          "eras": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Eras",
+            "type": "array"
+          },
+          "explicit": {
+            "$ref": "#/components/schemas/ExplicitPreference",
+            "default": "allow"
+          },
+          "familiarity": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Familiarity",
+            "type": "integer"
+          },
+          "genres": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Genres",
+            "type": "array"
+          },
+          "moods": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Moods",
+            "type": "array"
+          },
+          "seed_artists": {
+            "items": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Seed Artists",
+            "type": "array"
+          },
+          "seed_tracks": {
+            "items": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Seed Tracks",
+            "type": "array"
+          },
+          "track_count": {
+            "default": 20,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Track Count",
+            "type": "integer"
+          }
+        },
+        "title": "GeneratorControls",
+        "type": "object"
+      },
+      "GeneratorLimitsView": {
+        "properties": {
+          "max_output_chars": {
+            "title": "Max Output Chars",
+            "type": "integer"
+          },
+          "max_prompt_chars": {
+            "title": "Max Prompt Chars",
+            "type": "integer"
+          },
+          "max_tracks": {
+            "title": "Max Tracks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_prompt_chars",
+          "max_output_chars",
+          "max_tracks"
+        ],
+        "title": "GeneratorLimitsView",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2834,6 +3412,68 @@
         "title": "PortableFormat",
         "type": "string"
       },
+      "PreferenceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "source_track_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Source Track Count",
+            "type": "integer"
+          },
+          "top_artists": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Top Artists",
+            "type": "array"
+          },
+          "top_genres": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Top Genres",
+            "type": "array"
+          }
+        },
+        "title": "PreferenceSummary",
+        "type": "object"
+      },
+      "PreferenceUpdate": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "PreferenceUpdate",
+        "type": "object"
+      },
+      "PreferenceView": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PreferenceSummary"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "PreferenceView",
+        "type": "object"
+      },
       "ProviderView": {
         "properties": {
           "auth_kind": {
@@ -2994,6 +3634,24 @@
           "target_account_id"
         ],
         "title": "RecipientImport",
+        "type": "object"
+      },
+      "ReorderDraftItems": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "ReorderDraftItems",
         "type": "object"
       },
       "ReviewItem": {
@@ -5152,6 +5810,57 @@
         "title": "Track",
         "type": "object"
       },
+      "TrackSearchRequest": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Artist",
+            "type": "string"
+          },
+          "limit": {
+            "default": 5,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_provider",
+          "target_account_id",
+          "title",
+          "artist"
+        ],
+        "title": "TrackSearchRequest",
+        "type": "object"
+      },
       "TrackSelection": {
         "properties": {
           "position": {
@@ -5201,6 +5910,64 @@
           "reason"
         ],
         "title": "UnsupportedOrganizerItem",
+        "type": "object"
+      },
+      "UpdateDraft": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "UpdateDraft",
+        "type": "object"
+      },
+      "UpdateDraftItem": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "replace"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "UpdateDraftItem",
         "type": "object"
       },
       "UpdateShare": {
@@ -5818,6 +6585,583 @@
         "summary": "Create History Export",
         "tags": [
           "exports"
+        ]
+      }
+    },
+    "/api/generator/config": {
+      "get": {
+        "operationId": "get_generator_config_api_generator_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratorConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Generator Config",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/drafts": {
+      "post": {
+        "operationId": "create_draft_api_generator_drafts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGenerationDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Draft",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/drafts/{draft_id}": {
+      "delete": {
+        "operationId": "delete_draft_api_generator_drafts__draft_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Draft",
+        "tags": [
+          "generator"
+        ]
+      },
+      "get": {
+        "operationId": "get_draft_api_generator_drafts__draft_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Draft",
+        "tags": [
+          "generator"
+        ]
+      },
+      "patch": {
+        "operationId": "update_draft_api_generator_drafts__draft_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Draft",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/drafts/{draft_id}/confirm": {
+      "post": {
+        "operationId": "confirm_draft_api_generator_drafts__draft_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmGenerationDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Draft",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/drafts/{draft_id}/items": {
+      "post": {
+        "operationId": "add_draft_item_api_generator_drafts__draft_id__items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddDraftItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Draft Item",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/drafts/{draft_id}/items/{item_id}": {
+      "delete": {
+        "operationId": "delete_draft_item_api_generator_drafts__draft_id__items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Draft Item",
+        "tags": [
+          "generator"
+        ]
+      },
+      "patch": {
+        "operationId": "update_draft_item_api_generator_drafts__draft_id__items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDraftItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Draft Item",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/drafts/{draft_id}/reorder": {
+      "post": {
+        "operationId": "reorder_draft_items_api_generator_drafts__draft_id__reorder_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderDraftItems"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Draft Items",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/preferences": {
+      "delete": {
+        "operationId": "delete_preferences_api_generator_preferences_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Preferences",
+        "tags": [
+          "generator"
+        ]
+      },
+      "get": {
+        "operationId": "get_preferences_api_generator_preferences_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Preferences",
+        "tags": [
+          "generator"
+        ]
+      },
+      "put": {
+        "operationId": "update_preferences_api_generator_preferences_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Preferences",
+        "tags": [
+          "generator"
+        ]
+      }
+    },
+    "/api/generator/search": {
+      "post": {
+        "operationId": "search_target_tracks_api_generator_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CandidateView"
+                  },
+                  "title": "Response Search Target Tracks Api Generator Search Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Target Tracks",
+        "tags": [
+          "generator"
         ]
       }
     },

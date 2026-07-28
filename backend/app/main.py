@@ -13,6 +13,7 @@ from app import __version__
 from app.api import (
     auth,
     exports,
+    generator,
     imports,
     library,
     migrations,
@@ -53,6 +54,7 @@ app.include_router(playlists.router)
 app.include_router(imports.router)
 app.include_router(library.router)
 app.include_router(migrations.router)
+app.include_router(generator.router)
 app.include_router(snapshots.router)
 app.include_router(syncs.router)
 app.include_router(organizer.router)

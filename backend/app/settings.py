@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.imports.models import ImportLimits
@@ -21,6 +21,11 @@ from app.imports.models import ImportLimits
 class DeploymentMode(StrEnum):
     SELF_HOST = "self_host"
     HOSTED = "hosted"
+
+
+class GeneratorBackend(StrEnum):
+    OPENAI_COMPATIBLE = "openai_compatible"
+    COPILOT_SDK = "copilot_sdk"
 
 
 class Settings(BaseSettings):
@@ -83,6 +88,18 @@ class Settings(BaseSettings):
     migration_history_retention_days: int = Field(default=90, ge=0)
     migration_history_cleanup_batch_size: int = Field(default=100, ge=1, le=10_000)
     migration_report_batch_size: int = Field(default=250, ge=1, le=5_000)
+
+    # Playlist generation. Disabled until an administrator configures a model.
+    generator_backend: GeneratorBackend = GeneratorBackend.OPENAI_COMPATIBLE
+    generator_openai_base_url: str = ""
+    generator_openai_api_key: SecretStr = SecretStr("")
+    generator_copilot_github_token: SecretStr = SecretStr("")
+    generator_model: str = ""
+    generator_timeout_s: float = Field(default=60.0, ge=1.0, le=600.0)
+    generator_max_prompt_chars: int = Field(default=2_000, ge=100, le=2_000)
+    generator_max_output_chars: int = Field(default=32_000, ge=1_000, le=128_000)
+    generator_max_output_tokens: int = Field(default=4_096, ge=256, le=16_384)
+    generator_max_tracks: int = Field(default=25, ge=1, le=50)
 
     # Organizer jobs use conservative per-account pacing and bounded in-worker retries.
     organizer_worker_job_timeout_s: int = 3600
