@@ -10,7 +10,7 @@ registered.
 
 ## Develop
 ```bash
-npm install
+npm ci
 npm run dev        # http://localhost:5173 (proxies /api + /health to :8000)
 npm run typecheck
 npm run build

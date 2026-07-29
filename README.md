@@ -1,5 +1,7 @@
 # Open Playlist Engine
 
+[![CI](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml)
+
 Any-to-any music **playlist and library migration, local-first generation, and
 portable export** — move
 playlists, liked tracks, saved albums, and followed/favorite artists between
@@ -86,17 +88,23 @@ Then set `OPE_GENERATOR_OPENAI_BASE_URL=http://ollama:11434/v1` and
 ```bash
 # Backend
 cd backend && python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-alembic upgrade head
+python -m pip install -e ".[dev]"
+python -m alembic upgrade head
 uvicorn app.main:app --reload --no-access-log  # :8000
 arq app.jobs.worker.WorkerSettings     # background worker
-pytest && ruff check .
+python -m pip check
+python -m ruff check .
+python -m pytest
 
 # Frontend (separate shell)
-cd frontend && npm install
+cd frontend && npm ci
 npm run dev                            # :5173, proxies /api to :8000
+npm run typecheck
 npm run build
 ```
+
+See [`docs/CI.md`](docs/CI.md) for the required checks and their exact local
+equivalents.
 
 ## Configuration
 

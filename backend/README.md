@@ -26,18 +26,19 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 
 ## Develop
 ```bash
-pip install -e ".[dev]"
-alembic upgrade head
+python -m pip install -e ".[dev]"
+python -m alembic upgrade head
 uvicorn app.main:app --reload --no-access-log # http://localhost:8000
 arq app.jobs.worker.WorkerSettings # background worker
-pytest
-ruff check .
+python -m pip check
+python -m pytest
+python -m ruff check .
 ```
 
 ## Database
 ```bash
 alembic revision --autogenerate -m "init"   # generate from app/db/models.py
-alembic upgrade head
+python -m alembic upgrade head
 ```
 
 ## Adding a provider
