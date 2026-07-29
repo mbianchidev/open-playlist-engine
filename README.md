@@ -128,7 +128,7 @@ backend. Required checks and exact local commands are listed in
 |---|---|
 | [`backend/`](backend/README.md) | FastAPI API, provider adapters, matching, jobs, and database code |
 | [`frontend/`](frontend/README.md) | React SPA and generated OpenAPI client |
-| `openapi/` | Vendored Open Playlist specification and generated API contract |
+| [`openapi/`](openapi/open-playlist.yaml) | Vendored Open Playlist specification and generated API contract also available [here](https://mbianchidev.github.io/open-playlist/api.html) in a website format |
 | [`docs/`](docs/README.md) | Architecture, setup, feature guides, and ADRs |
 
 The frontend and backend are hard-separated: the frontend communicates only through
