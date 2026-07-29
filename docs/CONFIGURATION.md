@@ -8,8 +8,9 @@ cp .env.example .env
 ```
 
 Keep `.env` local. It can contain provider secrets, private keys, model credentials,
-and tokens. [`.env.example`](../.env.example) is the canonical list of settings and
-defaults.
+and tokens. [`.env.example`](../.env.example) is the primary template for
+operator-facing settings and defaults; infrastructure connection defaults also live
+in [`backend/app/settings.py`](../backend/app/settings.py).
 
 ## Base settings
 
@@ -86,5 +87,5 @@ default timeout.
 - Portable exports default to 100 playlists per download and do not impose a track
   limit.
 
-Review [`.env.example`](../.env.example) before changing limits; it records every
-available variable and the expected units.
+Review [`.env.example`](../.env.example) before changing limits; it records the
+operator-facing limits and their expected units.
