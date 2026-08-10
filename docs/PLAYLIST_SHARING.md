@@ -128,7 +128,7 @@ recipient page can finish progress and review.
 
 Public imports have hard per-share concurrent and daily track caps in addition to
 the normal migration warnings. Relevant settings are documented in
-[`.env.example`](../.env.example).
+[`.env.example`](https://github.com/mbianchidev/open-playlist-engine/blob/main/.env.example).
 
 ## Limits and artwork
 

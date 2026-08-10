@@ -128,7 +128,7 @@ screen:
 - Generated playlists require resolved provider tracks and an explicit
   confirmation before any write.
 
-See the [design reference](DESIGN.md#12-security--privacy) for the complete threat
+See the [design reference](DESIGN.md#12-security-privacy) for the complete threat
 model and implementation constraints.
 
 ## Frontend and backend stay separate
