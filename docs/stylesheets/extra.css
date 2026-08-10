@@ -104,6 +104,11 @@ body.homepage > .container > .row > [role="main"] {
   max-width: 100%;
 }
 
+body:not(.homepage) [role="main"] {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(19rem, 0.85fr);
@@ -463,9 +468,11 @@ pre code {
 }
 
 table {
-  display: table;
+  display: block;
   width: 100%;
+  max-width: 100%;
   margin-block: 1.5rem;
+  overflow-x: auto;
 }
 
 th {
