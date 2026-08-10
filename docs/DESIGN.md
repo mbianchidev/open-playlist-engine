@@ -10,7 +10,7 @@ review ("rubber-duck") pass — the notable revisions are called out as **[rev]*
 
 ---
 
-## 1. What this is
+## 1. What this is { #section-1-what-this-is }
 
 `open-playlist` (the existing repo) is **spec-only**: an OpenAPI contract + docs
 defining a universal, provider-agnostic `Playlist`/`Track` format with an
@@ -70,7 +70,7 @@ draft before a `source_kind="generated"` migration job can write anything.
 
 ---
 
-## 2. Phased flow
+## 2. Phased flow { #section-2-phased-flow }
 
 Generalized from the original Spotify→YouTube framing to any source/target.
 **[rev]** the pipeline is explicitly ordered **import → match → review → write**
@@ -214,7 +214,7 @@ auto-pause the rule, and inverse endpoint rules are rejected to prevent feedback
 
 ---
 
-## 3. Architecture
+## 3. Architecture { #section-3-architecture }
 
 ### Hub-and-spoke (O(N), not O(N²))
 Every provider is a spoke; the universal Open Playlist format is the hub. Migration
@@ -256,7 +256,7 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
 
 ---
 
-## 4. Tech stack
+## 4. Tech stack { #section-4-tech-stack }
 
 - **Backend**: Python 3.12, **FastAPI**, SQLAlchemy 2 (async) + Alembic, **arq**
   (async jobs on Valkey), Pydantic v2 mirroring the Open Playlist schema.
@@ -289,7 +289,7 @@ retain a short retry grace before scheduled cleanup.
 
 ---
 
-## 5. Provider plugin contract
+## 5. Provider plugin contract { #section-5-provider-plugin-contract }
 
 A provider implements `ProviderAdapter` (`app/core/adapter.py`), declares a
 `CapabilityDescriptor`, and registers itself.
@@ -361,7 +361,7 @@ in CI**.
 
 ---
 
-## 6. Auth abstraction
+## 6. Auth abstraction { #section-6-auth-abstraction }
 
 Providers differ wildly; we collapse them into a few strategy kinds, each with one
 lifecycle, so the frontend needs only **three** generic "connect" UIs.
@@ -408,7 +408,7 @@ tokens; redact in errors; PKCE + `state`; minimal scopes per capability.
 
 ---
 
-## 7. Capability matrix — **[rev]** descriptors, not booleans
+## 7. Capability matrix — **[rev]** descriptors, not booleans { #section-7-capability-matrix }
 
 Adapters advertise a structured `CapabilityDescriptor`, because the UI and the
 scheduler need **constraints**, not just "can write":
@@ -444,7 +444,7 @@ unavailable.
 
 ---
 
-## 8. Identity / evidence graph — **[rev]**
+## 8. Identity / evidence graph — **[rev]** { #section-8-identity-evidence-graph }
 
 A provider-agnostic track identity map that grows with every migration — but
 modeled as an **evidence/candidate graph keyed by an internal `track_identity`
@@ -485,7 +485,7 @@ graph as an open dataset is deferred pending legal review.
 
 ---
 
-## 9. Migration job, idempotency & progress
+## 9. Migration job, idempotency & progress { #section-9-migration-job }
 
 - `migration_job` + entity-typed `job_item` rows for tracks, albums, and artists
   (status: pending/matched/needs_review/written/skipped/failed). Runs on arq.
@@ -529,7 +529,7 @@ graph as an open dataset is deferred pending legal review.
 
 ---
 
-## 10. Data model summary
+## 10. Data model summary { #section-10-data-model-summary }
 
 | Table | Purpose | Scope |
 |---|---|---|
@@ -549,7 +549,7 @@ graph as an open dataset is deferred pending legal review.
 
 ---
 
-## 11. Repo layout (actual)
+## 11. Repo layout (actual) { #section-11-repo-layout }
 
 ```
 open-playlist-engine/
@@ -574,7 +574,7 @@ generated OpenAPI client.
 
 ---
 
-## 12. Security & privacy
+## 12. Security & privacy { #section-12-security-privacy }
 
 - Encrypt provider credentials at rest via `KeyProvider`; never log/redact tokens.
 - Never persist or log raw generator prompts. Model calls receive only the prompt,
@@ -597,7 +597,7 @@ generated OpenAPI client.
 
 ---
 
-## 13. Risks & mitigations
+## 13. Risks & mitigations { #section-13-risks-mitigations }
 
 | Risk | Mitigation |
 |---|---|
@@ -617,7 +617,7 @@ generated OpenAPI client.
 
 ---
 
-## 14. MVP build order
+## 14. MVP build order { #section-14-mvp-build-order }
 
 1. **Backend**: Spotify OAuth (PKCE) + import → Open Playlist. (Phases 0–1)
 2. **Frontend**: connect Spotify + selection tree. (Phase 2)
@@ -629,7 +629,7 @@ generated OpenAPI client.
 
 ---
 
-## 15. Decisions log
+## 15. Decisions log { #section-15-decisions-log }
 
 - ✅ Reference implementation of the `open-playlist` spec; reuse `Playlist`/`Track`.
 - ✅ Any-to-any via hub-and-spoke (O(N) adapters).
@@ -649,13 +649,13 @@ generated OpenAPI client.
 - ✅ Self-hosted OpenAI-compatible playlist generation with optional Copilot SDK,
   provider-resolved editable drafts, and confirmation-gated durable writes.
 
-## 16. Open questions
+## 16. Open questions { #section-16-open-questions }
 
 - Sharing the global graph as an open dataset — needs legal review.
 - Provider priority after Spotify + YT Music (Tidal looks lowest-friction).
 - When to split into two repos (if ever) — current hard separation keeps it cheap.
 
-## 17. Frontend visual language
+## 17. Frontend visual language { #section-17-frontend-visual-language }
 
 The frontend is a focused migration workspace rather than a generic dashboard.
 Its visual signature is the source-to-target route: provider identities are
@@ -681,7 +681,7 @@ The implementation keeps the existing API behavior and accessible tab model.
 `frontend/src/index.css` retains the component/state selector vocabulary, while
 `frontend/src/theme.css` supplies tokens and the current visual treatment.
 
-## 18. Local library snapshots
+## 18. Local library snapshots { #section-18-local-library-snapshots }
 
 Snapshot profiles persist a set of connected provider accounts and selected current
 library collections (standard playlists and native liked-track collections).

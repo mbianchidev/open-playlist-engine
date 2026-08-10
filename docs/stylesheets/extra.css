@@ -94,6 +94,16 @@ body {
   font-weight: 700;
 }
 
+body.homepage > .container > .row > .col-md-3 {
+  display: none;
+}
+
+body.homepage > .container > .row > [role="main"] {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(19rem, 0.85fr);
@@ -462,22 +472,81 @@ th {
   background: #f3f0f7;
 }
 
-@media (prefers-color-scheme: dark) {
-  body[data-bs-theme="dark"] {
-    background: var(--ope-bg);
-    color: var(--ope-ink);
-  }
+html[data-bs-theme="dark"] body {
+  background: var(--ope-bg);
+  color: var(--ope-ink);
+}
 
-  body[data-bs-theme="dark"] .col-md-9 h1,
-  body[data-bs-theme="dark"] .col-md-9 h2,
-  body[data-bs-theme="dark"] .col-md-9 h3 {
-    color: var(--ope-ink);
-  }
+html[data-bs-theme="dark"] .col-md-9 h1,
+html[data-bs-theme="dark"] .col-md-9 h2,
+html[data-bs-theme="dark"] .col-md-9 h3 {
+  color: var(--ope-ink);
+}
 
-  body[data-bs-theme="dark"] .col-md-9 p,
-  body[data-bs-theme="dark"] .col-md-9 li {
-    color: var(--ope-ink-soft);
-  }
+html[data-bs-theme="dark"] .col-md-9 p,
+html[data-bs-theme="dark"] .col-md-9 li {
+  color: var(--ope-ink-soft);
+}
+
+html[data-bs-theme="dark"] .col-md-9 a {
+  color: #c0b6ff;
+}
+
+html[data-bs-theme="dark"] .col-md-9 a:hover {
+  color: #ded8ff;
+}
+
+html[data-bs-theme="dark"] .bs-sidebar .nav > li > a {
+  color: var(--ope-muted);
+}
+
+html[data-bs-theme="dark"] .bs-sidebar .nav > li > a:hover,
+html[data-bs-theme="dark"] .bs-sidebar .nav > .active > a {
+  color: var(--ope-ink);
+}
+
+html[data-bs-theme="dark"] .value-strip {
+  border-color: var(--ope-border);
+  background: var(--ope-surface);
+}
+
+html[data-bs-theme="dark"] .value-strip p,
+html[data-bs-theme="dark"] .pipeline,
+html[data-bs-theme="dark"] .pipeline > div,
+html[data-bs-theme="dark"] .feature-ledger,
+html[data-bs-theme="dark"] .feature-ledger > div {
+  border-color: var(--ope-border);
+}
+
+html[data-bs-theme="dark"] .value-strip strong {
+  color: var(--ope-ink);
+}
+
+html[data-bs-theme="dark"] .value-strip span {
+  color: var(--ope-muted);
+}
+
+html[data-bs-theme="dark"] .pipeline h3 {
+  color: var(--ope-accent);
+}
+
+html[data-bs-theme="dark"] .docs-directory {
+  border-color: var(--ope-border);
+  background: var(--ope-border);
+}
+
+html[data-bs-theme="dark"] .docs-directory > div,
+html[data-bs-theme="dark"] .admonition {
+  border-color: var(--ope-border);
+  background: var(--ope-surface);
+}
+
+html[data-bs-theme="dark"] .admonition-title {
+  color: var(--ope-accent) !important;
+}
+
+html[data-bs-theme="dark"] th {
+  background: var(--ope-surface-strong);
 }
 
 @media (max-width: 900px) {

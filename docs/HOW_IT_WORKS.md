@@ -56,7 +56,7 @@ unsupported operation before a user starts it.
 
 ## A migration from request to result
 
-### 1. Import and select
+### 1. Import and select { #migration-import }
 
 A source can be a connected provider, a bounded local playlist file, a supported
 public playlist URL, pasted text, a local snapshot, or an approved generator
@@ -67,28 +67,28 @@ Local files, URLs, and pasted text use expiring, owner-scoped import snapshots.
 Once queued, the worker reads the exact normalized snapshot that the user
 reviewed; later source changes cannot alter that job.
 
-### 2. Preflight
+### 2. Preflight { #migration-preflight }
 
 The API resolves account ownership and target capabilities again on the server.
 It counts selected entities, detects risky same-name targets, and returns explicit
 warnings for operations outside conservative defaults. The browser can proceed
 only after the user acknowledges those warnings.
 
-### 3. Match
+### 3. Match { #migration-match }
 
 The worker searches the target through its adapter. `MatchService` combines
 strong identifiers such as provider IDs and ISRCs with normalized metadata and
 previously accepted evidence. Matching policy is centralized, so adapters cannot
 quietly lower the confidence threshold.
 
-### 4. Review
+### 4. Review { #migration-review }
 
 High-confidence items can continue automatically. Low-confidence or ambiguous
 items become `needs_review`. A user can accept the suggestion, supply a supported
 replacement identifier, or skip the item. Accepted decisions enrich the private
 evidence graph for later work.
 
-### 5. Write and report
+### 5. Write and report { #migration-write }
 
 Confirmed items are written through the target adapter. A persisted operation
 ledger makes retries idempotent, and duplicate checks avoid repeating work on
@@ -128,7 +128,7 @@ screen:
 - Generated playlists require resolved provider tracks and an explicit
   confirmation before any write.
 
-See the [design reference](DESIGN.md#12-security-privacy) for the complete threat
+See the [design reference](DESIGN.md#section-12-security-privacy) for the complete threat
 model and implementation constraints.
 
 ## Frontend and backend stay separate
@@ -158,5 +158,5 @@ uses the same model, matching, review, job, and history services as every other
 spoke.
 
 Continue with the detailed
-[provider plugin contract](DESIGN.md#5-provider-plugin-contract) or the
+[provider plugin contract](DESIGN.md#section-5-provider-plugin-contract) or the
 [provider connection guide](CONNECTING_PROVIDERS.md).

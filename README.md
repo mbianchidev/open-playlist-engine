@@ -151,7 +151,7 @@ or the categorized [`docs/` source index](docs/README.md). Start with:
 Implement `ProviderAdapter` in `backend/app/providers/<name>/adapter.py`, declare a
 `CapabilityDescriptor`, register it, and pass the conformance suite in
 `backend/tests/conformance/`. See the
-[provider plugin contract](docs/DESIGN.md#5-provider-plugin-contract) and
+[provider plugin contract](docs/DESIGN.md#section-5-provider-plugin-contract) and
 [`backend/README.md`](backend/README.md).
 
 ## License

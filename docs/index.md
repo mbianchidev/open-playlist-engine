@@ -52,7 +52,7 @@ provider becomes another spoke and can interoperate with every existing spoke.
 <div class="pipeline" markdown="1">
 <div markdown="1">
 
-### 01 · Import
+### 01 · Import { #pipeline-import }
 
 Read a connected library, local playlist file, public URL, pasted list, snapshot,
 or approved generator draft into a provider-neutral model.
@@ -60,7 +60,7 @@ or approved generator draft into a provider-neutral model.
 </div>
 <div markdown="1">
 
-### 02 · Match
+### 02 · Match { #pipeline-match }
 
 Resolve tracks and library entities using provider identifiers, ISRCs, text
 evidence, and prior accepted decisions.
@@ -68,7 +68,7 @@ evidence, and prior accepted decisions.
 </div>
 <div markdown="1">
 
-### 03 · Review
+### 03 · Review { #pipeline-review }
 
 Pause low-confidence results for approval, correction, or skipping. Nothing
 uncertain is silently written.
@@ -76,7 +76,7 @@ uncertain is silently written.
 </div>
 <div markdown="1">
 
-### 04 · Write
+### 04 · Write { #pipeline-write }
 
 Queue durable, idempotent provider operations and stream item-level progress back
 to the browser.
@@ -97,7 +97,7 @@ Migrate playlists, liked tracks, saved albums, and followed or favorite artists
 where provider capabilities allow. Partial reruns and duplicate checks protect
 work already completed.
 
-[Migration architecture](DESIGN.md#2-phased-flow)
+[Migration architecture](DESIGN.md#section-2-phased-flow)
 
 </div>
 <div markdown="1">
