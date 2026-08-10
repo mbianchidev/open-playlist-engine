@@ -1,10 +1,12 @@
 # Open Playlist Engine
 
 [![CI](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml)
+[![Documentation](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/pages.yml/badge.svg)](https://mbianchidev.github.io/open-playlist-engine/)
 
 Self-hosted, any-to-any music **playlist and library migration, local-first
 generation, and portable export**.
 
+[Website](https://mbianchidev.github.io/open-playlist-engine/) ·
 [Overview](#overview) · [Features](#features) ·
 [Supported providers](#supported-providers) · [Quick start](#quick-start) ·
 [Documentation](#documentation) · [Development](#development)
@@ -128,7 +130,7 @@ backend. Required checks and exact local commands are listed in
 |---|---|
 | [`backend/`](backend/README.md) | FastAPI API, provider adapters, matching, jobs, and database code |
 | [`frontend/`](frontend/README.md) | React SPA and generated OpenAPI client |
-| [`openapi/`](openapi/open-playlist.yaml) | Vendored Open Playlist specification and generated API contract also available [here](https://mbianchidev.github.io/open-playlist/api.html) in a website format |
+| [`openapi/`](openapi/open-playlist.yaml) | Vendored Open Playlist specification and generated engine contract; the standard's API reference remains on the [Open Playlist website](https://mbianchidev.github.io/open-playlist/api.html) |
 | [`docs/`](docs/README.md) | Architecture, setup, feature guides, and ADRs |
 
 The frontend and backend are hard-separated: the frontend communicates only through
@@ -136,7 +138,8 @@ the backend's generated OpenAPI contract.
 
 ## Documentation
 
-Browse the categorized [`docs/` index](docs/README.md). Start with:
+Browse the rendered [documentation website](https://mbianchidev.github.io/open-playlist-engine/)
+or the categorized [`docs/` source index](docs/README.md). Start with:
 
 - [Configuration](docs/CONFIGURATION.md)
 - [Connecting providers](docs/CONNECTING_PROVIDERS.md)
