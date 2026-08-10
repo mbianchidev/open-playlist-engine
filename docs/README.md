@@ -1,5 +1,9 @@
 # Documentation
 
+Read these guides on the
+[Open Playlist Engine documentation website](https://mbianchidev.github.io/open-playlist-engine/)
+or browse their Markdown sources below.
+
 Use this index to find setup, architecture, and feature-specific guides. For the
 project overview and quick start, return to the [root README](../README.md).
 
@@ -13,6 +17,8 @@ project overview and quick start, return to the [root README](../README.md).
 
 ## Architecture
 
+- [How Open Playlist Engine works](HOW_IT_WORKS.md) — concise system tour from
+  browser request through matching, review, and durable provider writes.
 - [Design](DESIGN.md) — product flow, hub-and-spoke architecture, provider contract,
   data model, and security boundaries.
 - [ADR 0001](adr/0001-architecture-decisions.md) — initial architecture decisions.

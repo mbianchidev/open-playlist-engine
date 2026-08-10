@@ -1,8 +1,9 @@
 # Continuous integration
 
-The [`CI`](../.github/workflows/ci.yml) workflow runs for pull requests, pushes to
-`main`, and manual dispatches. Pull-request runs cancel older runs for the same
-branch.
+The
+[`CI`](https://github.com/mbianchidev/open-playlist-engine/blob/main/.github/workflows/ci.yml)
+workflow runs for pull requests, pushes to `main`, and manual dispatches.
+Pull-request runs cancel older runs for the same branch.
 
 | Required check | Coverage |
 |---|---|
