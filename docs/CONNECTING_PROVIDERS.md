@@ -11,28 +11,29 @@ session tokens.
 3. Use any app name and description, for example `Open Playlist Engine Local`.
 4. Set **Redirect URI** exactly to:
 
-   ```text
-   http://127.0.0.1:8000/api/auth/spotify/callback
-   ```
+    ```text
+    http://127.0.0.1:8000/api/auth/spotify/callback
+    ```
 
-   Spotify rejects `localhost`; use the explicit loopback address.
+    Spotify rejects `localhost`; use the explicit loopback address.
+
 5. Select the required APIs/products if Spotify asks. The app uses the Web API.
 6. Save the app, then open **Settings**.
 7. Copy **Client ID** and **Client secret** into the repo-root `.env`:
 
-   ```env
-   OPE_SPOTIFY_CLIENT_ID=your_client_id
-   OPE_SPOTIFY_CLIENT_SECRET=your_client_secret
-   OPE_SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/api/auth/spotify/callback
-   ```
+    ```env
+    OPE_SPOTIFY_CLIENT_ID=your_client_id
+    OPE_SPOTIFY_CLIENT_SECRET=your_client_secret
+    OPE_SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/api/auth/spotify/callback
+    ```
 
 8. If the Spotify app is still in development mode, add your Spotify account email
-   under **User Management**.
+    under **User Management**.
 9. Restart the backend and worker:
 
-   ```bash
-   docker compose up -d --force-recreate backend worker
-   ```
+    ```bash
+    docker compose up -d --force-recreate backend worker
+    ```
 
 10. In the UI, choose Spotify as **From** or **To**, click **Connect Spotify**, and approve
     the requested scopes.
@@ -85,44 +86,45 @@ Tidal uses the official TIDAL Web API with OAuth Authorization Code + PKCE.
 2. Create an app for local development.
 3. Set **Redirect URI** exactly to:
 
-   ```text
-   http://127.0.0.1:8000/api/auth/tidal/callback
-   ```
+    ```text
+    http://127.0.0.1:8000/api/auth/tidal/callback
+    ```
 
 4. Request these third-party scopes:
 
-   ```text
-   collection.read
-   collection.write
-   playlists.read
-   playlists.write
-   search.read
-   user.read
-   ```
+    ```text
+    collection.read
+    collection.write
+    playlists.read
+    playlists.write
+    search.read
+    user.read
+    ```
 
-   Do not request the internal-only `r_usr` or `w_usr` scopes for third-party apps.
+    Do not request the internal-only `r_usr` or `w_usr` scopes for third-party apps.
+
 5. Copy the client ID and, if issued, the client secret into the repo-root `.env`:
 
-   ```env
-   OPE_TIDAL_CLIENT_ID=your_client_id
-   OPE_TIDAL_CLIENT_SECRET=your_client_secret
-   OPE_TIDAL_REDIRECT_URI=http://127.0.0.1:8000/api/auth/tidal/callback
-   ```
+    ```env
+    OPE_TIDAL_CLIENT_ID=your_client_id
+    OPE_TIDAL_CLIENT_SECRET=your_client_secret
+    OPE_TIDAL_REDIRECT_URI=http://127.0.0.1:8000/api/auth/tidal/callback
+    ```
 
-   `OPE_TIDAL_CLIENT_SECRET` is optional for PKCE sign-in, but set it when
-   available. The adapter uses client credentials for catalog ISRC lookups and
-   batched track metadata hydration. Without a secret it falls back to text search
-   for target matching and scoped single-track detail requests when reading
-   playlists.
+    `OPE_TIDAL_CLIENT_SECRET` is optional for PKCE sign-in, but set it when
+    available. The adapter uses client credentials for catalog ISRC lookups and
+    batched track metadata hydration. Without a secret it falls back to text search
+    for target matching and scoped single-track detail requests when reading
+    playlists.
 
 6. Restart the backend and worker:
 
-   ```bash
-   docker compose up -d --force-recreate backend worker
-   ```
+    ```bash
+    docker compose up -d --force-recreate backend worker
+    ```
 
 7. In the UI, choose Tidal as **From** or **To**, click **Connect Tidal**, and
-   approve the requested scopes in the popup.
+    approve the requested scopes in the popup.
 
 Tidal playlist writes create `UNLISTED` playlists by default unless a migration
 explicitly asks for a public playlist. The adapter writes tracks in batches of 50,
@@ -149,30 +151,30 @@ An active Apple Developer Program membership and Apple Music subscription are
 required.
 
 1. Create a MusicKit identifier and private key by following Apple's
-   [Media identifier and private key guide](https://developer.apple.com/help/account/capabilities/create-a-media-identifier-and-private-key/).
+    [Media identifier and private key guide](https://developer.apple.com/help/account/capabilities/create-a-media-identifier-and-private-key/).
 2. Download the `.p8` key once and record its 10-character Key ID.
 3. Find your 10-character Team ID in the Apple Developer membership page.
 4. Configure the repo-root `.env`:
 
-   ```env
-   OPE_APPLE_MUSIC_TEAM_ID=YOURTEAMID
-   OPE_APPLE_MUSIC_KEY_ID=YOURKEYID
-   OPE_APPLE_MUSIC_PRIVATE_KEY_PATH=/absolute/path/to/AuthKey_YOURKEYID.p8
-   OPE_APPLE_MUSIC_TOKEN_TTL_S=86400
-   ```
+    ```env
+    OPE_APPLE_MUSIC_TEAM_ID=YOURTEAMID
+    OPE_APPLE_MUSIC_KEY_ID=YOURKEYID
+    OPE_APPLE_MUSIC_PRIVATE_KEY_PATH=/absolute/path/to/AuthKey_YOURKEYID.p8
+    OPE_APPLE_MUSIC_TOKEN_TTL_S=86400
+    ```
 
-   The key path must be readable by both the backend and worker. For Docker,
-   either mount the key at the same container path or store an escaped PEM value:
+    The key path must be readable by both the backend and worker. For Docker,
+    either mount the key at the same container path or store an escaped PEM value:
 
-   ```env
-   OPE_APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-   ```
+    ```env
+    OPE_APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+    ```
 
 5. Restart the backend and worker.
 6. Choose Apple Music as **From** or **To**, click **Connect Apple Music**, then
-   click **Authorize with Apple Music** in the connection panel.
+    click **Authorize with Apple Music** in the connection panel.
 7. Sign in to Apple and approve library access. The browser receives a Music User
-   Token and sends it to the backend, where it is stored encrypted.
+    Token and sends it to the backend, where it is stored encrypted.
 8. Use **Test connection** before migrating.
 
 Apple library tracks use user-specific IDs, while migration writes require catalog
@@ -198,29 +200,29 @@ The app requests YouTube Data API plus Google userinfo email scope so reconnects
 can reuse the same YouTube Music account row by email when Google returns it.
 
 1. Open <https://console.cloud.google.com/apis/library/youtube.googleapis.com>
-   and enable the **YouTube Data API v3** for your Google Cloud project.
+    and enable the **YouTube Data API v3** for your Google Cloud project.
 2. Open <https://console.cloud.google.com/auth/clients>.
 3. Create an **OAuth client ID** with application type **TVs and Limited Input
-   devices**.
+    devices**.
 4. Copy the client ID and client secret into the repo-root `.env`:
 
-   ```env
-   OPE_YTMUSIC_CLIENT_ID=your_client_id
-   OPE_YTMUSIC_CLIENT_SECRET=your_client_secret
-   ```
+    ```env
+    OPE_YTMUSIC_CLIENT_ID=your_client_id
+    OPE_YTMUSIC_CLIENT_SECRET=your_client_secret
+    ```
 
-   The device-code prompt should include these scopes:
-   `https://www.googleapis.com/auth/youtube` and
-   `https://www.googleapis.com/auth/userinfo.email`.
+    The device-code prompt should include these scopes:
+    `https://www.googleapis.com/auth/youtube` and
+    `https://www.googleapis.com/auth/userinfo.email`.
 
 5. Restart the backend and worker:
 
-   ```bash
-   docker compose up -d --force-recreate backend worker
-   ```
+    ```bash
+    docker compose up -d --force-recreate backend worker
+    ```
 
 6. In the UI, choose YouTube Music as **From** or **To**, click **Connect YouTube Music**,
-   open the verification URL, and enter the displayed code.
+    open the verification URL, and enter the displayed code.
 
 YouTube Music **Liked Songs** is backed by the native `LM` playlist. Writing into
 it uses YouTube Music's like action rather than creating a normal playlist.
@@ -280,46 +282,47 @@ guided fallback appears without changing `.env`.
 2. Open DevTools with `Cmd+Option+I` on macOS or `Ctrl+Shift+I` on Windows/Linux.
 3. Go to **Network**.
 4. In YouTube Music, run a search or open a playlist so `music.youtube.com`
-   requests appear.
+    requests appear.
 5. Click a `POST` request whose URL starts with one of these:
 
-   ```text
-   https://music.youtube.com/youtubei/v1/browse
-   https://music.youtube.com/youtubei/v1/music/get_search_suggestions
-   https://music.youtube.com/youtubei/v1/search
-   ```
+    ```text
+    https://music.youtube.com/youtubei/v1/browse
+    https://music.youtube.com/youtubei/v1/music/get_search_suggestions
+    https://music.youtube.com/youtubei/v1/search
+    ```
 
-   Do not use `jnn-pa.googleapis.com` or other telemetry requests.
+    Do not use `jnn-pa.googleapis.com` or other telemetry requests.
+
 6. In **Headers**, copy only the request-header block starting at:
 
-   ```text
-   authorization
-   ```
+    ```text
+    authorization
+    ```
 
-   and ending after:
+    and ending after:
 
-   ```text
-   x-youtube-client-version
-   <version value>
-   ```
+    ```text
+    x-youtube-client-version
+    <version value>
+    ```
 
-   The pasted text must include these entries:
+    The pasted text must include these entries:
 
-   ```text
-   authorization
-   ...
-   cookie
-   ...
-   x-goog-authuser
-   0
-   ```
+    ```text
+    authorization
+    ...
+    cookie
+    ...
+    x-goog-authuser
+    0
+    ```
 
 7. Paste that block into **YouTube Music request headers** in the app and click
-   **Connect YouTube Music**.
+    **Connect YouTube Music**.
 8. Click **Test connection** before migrating. Header-paste credentials can expire
-   with the browser session; reconnect if the test fails. Header-paste sessions do
-   not expose the Google account email, so account matching falls back to local
-   YouTube Music session identity.
+    with the browser session; reconnect if the test fails. Header-paste sessions do
+    not expose the Google account email, so account matching falls back to local
+    YouTube Music session identity.
 
 Do not paste response headers (`alt-svc`, `server`, `date`, etc.), pseudo headers
 (`:authority`, `:method`, etc.), or the request body.

@@ -1,7 +1,7 @@
 site_name: Open Playlist Engine
 site_description: Self-hosted playlist migration, generation, backup, and export
 site_url: https://mbianchidev.github.io/open-playlist-engine/
-repo_name: mbianchidev/open-playlist-engine
+repo_name: GitHub
 repo_url: https://github.com/mbianchidev/open-playlist-engine
 edit_uri: edit/main/docs/
 docs_dir: docs
@@ -28,27 +28,26 @@ theme:
 
 nav:
   - Home: index.md
-  - How it works: HOW_IT_WORKS.md
   - Get started:
+      - How it works: HOW_IT_WORKS.md
       - Configuration: CONFIGURATION.md
       - Connect providers: CONNECTING_PROVIDERS.md
-  - Import and export:
+  - Import & export:
       - Local playlist files: LOCAL_FILE_IMPORTS.md
       - Public URLs and pasted text: IMPORT_SOURCES.md
       - Portable exports: EXPORTING_PLAYLISTS.md
-  - Library workflows:
+  - Workflows:
       - Playlist generator: PLAYLIST_GENERATOR.md
       - Library snapshots: SNAPSHOTS.md
       - Scheduled synchronization: SYNCHRONIZATION.md
       - Playlist Organizer: PLAYLIST_ORGANIZER.md
       - Migration history: MIGRATION_HISTORY.md
       - Playlist sharing: PLAYLIST_SHARING.md
-  - Architecture:
+  - Reference:
       - Design reference: DESIGN.md
       - Architecture decisions:
           - Initial architecture: adr/0001-architecture-decisions.md
           - Adapter fixture testing: adr/0002-adapter-fixture-testing.md
-  - Development:
       - Continuous integration: CI.md
 
 markdown_extensions:
@@ -56,6 +55,7 @@ markdown_extensions:
   - attr_list
   - def_list
   - md_in_html
+  - pymdownx.superfences
   - tables
   - toc:
       permalink: true
@@ -65,5 +65,8 @@ plugins:
 
 extra_css:
   - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/copy-code.js
 
 copyright: Open Playlist Engine is available under the MIT License.
