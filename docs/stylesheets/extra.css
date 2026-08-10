@@ -609,7 +609,7 @@ code {
 pre code,
 pre code.hljs {
   display: block;
-  padding: 1rem 5rem 1rem 1rem;
+  padding: 1rem 3.5rem 1rem 1rem;
   background: transparent;
   color: var(--ope-code-ink);
   font-size: 0.8rem;
@@ -621,8 +621,11 @@ pre code.hljs {
   top: 0.55rem;
   right: 0.55rem;
   z-index: 1;
-  min-width: 3.65rem;
-  padding: 0.35rem 0.55rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  place-items: center;
   border: 1px solid var(--ope-code-border);
   border-radius: 0.45rem;
   background: var(--ope-surface-strong);
@@ -630,6 +633,16 @@ pre code.hljs {
   font: 700 0.7rem/1.2 Avenir, "Avenir Next", "Trebuchet MS", ui-sans-serif,
     sans-serif;
   cursor: pointer;
+}
+
+.copy-code-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .copy-code-button:hover {
