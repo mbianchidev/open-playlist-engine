@@ -18,7 +18,7 @@ services:
       retries: 10
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9-alpine
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
@@ -27,7 +27,7 @@ services:
       retries: 10
 
   ollama:
-    image: ollama/ollama:0.32.0
+    image: ollama/ollama:0.33.3
     profiles: ["generator"]
     ports:
       - "11434:11434"
