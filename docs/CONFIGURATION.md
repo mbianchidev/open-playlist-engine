@@ -94,3 +94,7 @@ Review
 [`.env.example`](https://github.com/mbianchidev/open-playlist-engine/blob/main/.env.example)
 before changing limits; it records the
 operator-facing limits and their expected units.
+
+Existing Docker deployments upgrading from PostgreSQL 17 must follow the
+[PostgreSQL 18 upgrade procedure](POSTGRES_UPGRADE.md) before starting the new
+Compose stack.

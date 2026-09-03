@@ -2,16 +2,17 @@ name: open-playlist-engine
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Major upgrades require pg_upgrade and may change the image's volume layout.
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ope
       POSTGRES_PASSWORD: ope
       POSTGRES_DB: ope
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata18:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ope"]
+      test: ["CMD-SHELL", "psql -U ope -d ope -c 'SELECT 1' >/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -84,6 +85,6 @@ services:
         condition: service_started
 
 volumes:
-  pgdata:
+  pgdata18:
   snapshots:
   ollama:

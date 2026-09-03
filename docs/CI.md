@@ -8,9 +8,9 @@ Pull-request runs cancel older runs for the same branch.
 | Required check | Coverage |
 |---|---|
 | `Backend` | Python 3.12 editable dev install, `pip check`, Ruff, the full pytest suite, and generated FastAPI OpenAPI drift |
-| `Database migrations` | A single Alembic head and `alembic upgrade head` against a clean Postgres 17 database |
+| `Database migrations` | A single Alembic head and `alembic upgrade head` against a clean Postgres 18 database |
 | `Frontend` | Node.js 22, deterministic `npm ci`, moderate-or-higher npm advisories, generated TypeScript API drift, explicit type-checking, and the production build |
-| `Containers` | Compose validation, a no-cache image build, Postgres/Valkey/backend/worker/frontend startup, and backend plus nginx-proxied health checks |
+| `Containers` | PostgreSQL 17-to-18 volume migration, Compose validation, a no-cache image build, full stack startup, and backend plus nginx-proxied health checks |
 
 The jobs use fixture-backed tests and empty provider configuration. No provider
 credentials or repository secrets are required.
@@ -56,7 +56,12 @@ npm run typecheck
 npm run build
 ```
 
-The container check uses the same Postgres 17 migration path as production:
+The container check exercises the PostgreSQL 17-to-18 dump/restore path before
+starting the application on PostgreSQL 18:
+
+Future Postgres major versions remain manual upgrades because storage formats and
+volume layouts can change. Dependabot keeps Compose on the supported major while
+still proposing minor and patch updates.
 
 ```bash
 cp .env.example .env
