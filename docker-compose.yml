@@ -12,7 +12,7 @@ services:
     volumes:
       - pgdata18:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ope -d ope"]
+      test: ["CMD-SHELL", "psql -U ope -d ope -c 'SELECT 1' >/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -82,7 +82,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ope -d ope_ci"
+          --health-cmd "psql -U ope -d ope_ci -c 'SELECT 1' >/dev/null"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -198,9 +198,10 @@ jobs:
             postgres:17-alpine >/dev/null
 
           for attempt in {1..30}; do
-            if docker exec "$seed_container" pg_isready -U ope -d ope >/dev/null 2>&1; then
-              break
-            fi
+              if docker exec "$seed_container" \
+                psql -U ope -d ope -c "SELECT 1;" >/dev/null 2>&1; then
+                break
+              fi
             if [ "$attempt" -eq 30 ]; then
               docker logs "$seed_container"
               exit 1

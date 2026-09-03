@@ -48,7 +48,11 @@ wait_for_postgres() {
   local state
 
   for ((attempt = 1; attempt <= wait_seconds; attempt++)); do
-    if docker exec "$container" pg_isready --username ope --dbname ope >/dev/null 2>&1; then
+    if docker exec "$container" psql \
+      --no-psqlrc \
+      --username ope \
+      --dbname ope \
+      --command "SELECT 1;" >/dev/null 2>&1; then
       return
     fi
 
