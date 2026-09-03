@@ -19,6 +19,7 @@ without moving or streaming audio. It can:
 - migrate playlists, liked tracks, saved albums, and followed or favorite artists;
 - import local playlist files, public playlist URLs, and pasted track lists;
 - generate editable playlists through an administrator-configured model;
+- view each logical playlist across connected providers;
 - export, share, snapshot, synchronize, and organize playlists.
 
 It is the first reference implementation of the
@@ -48,6 +49,7 @@ human review before anything is written. See
 | Capability | What it provides | Guide |
 |---|---|---|
 | Playlist migration | Track selection, matching, review, duplicate protection, and live progress | [Design](docs/DESIGN.md) |
+| Unified playlists | Provider-neutral playlist and song coverage with keep-everywhere sync | [Unified playlists](docs/UNIFIED_PLAYLISTS.md) |
 | Local file imports | TXT, CSV, M3U/M3U8, PLS, WPL, XSPF, XML, and JSON sources | [Local imports](docs/LOCAL_FILE_IMPORTS.md) |
 | URL and text imports | Bounded public playlist URLs and pasted track lists | [Import sources](docs/IMPORT_SOURCES.md) |
 | Portable exports | CSV, TXT, M3U8, XSPF, JSON, and multi-playlist ZIP downloads | [Exports](docs/EXPORTING_PLAYLISTS.md) |

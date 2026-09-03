@@ -50,6 +50,7 @@ import type {
   SyncRuleView,
   SyncRunView,
   UpdateSyncRuleBody,
+  UnifiedPlaylistLibraryView,
 } from "./types";
 
 export class ApiError extends Error {
@@ -176,6 +177,11 @@ export async function getPlaylist(
 ): Promise<Playlist> {
   const params = playlistParams(provider, accountId, context);
   return json<Playlist>(await fetch(`/api/playlists/${encodeURIComponent(playlistId)}?${params}`));
+}
+
+export async function getUnifiedPlaylists(refresh = false): Promise<UnifiedPlaylistLibraryView> {
+  const suffix = refresh ? "?refresh=true" : "";
+  return json<UnifiedPlaylistLibraryView>(await fetch(`/api/unified-playlists${suffix}`));
 }
 
 export async function uploadPlaylistFile(file: File): Promise<LocalImportPreview> {

@@ -209,6 +209,81 @@ async def test_create_sync_from_completed_migration_persists_initial_checkpoint(
     assert view.enabled is True
 
 
+async def test_create_sync_rule_is_idempotent_for_automatic_setup(
+    session,
+    monkeypatch,
+) -> None:
+    await _completed_migration(session)
+    adapters = _adapters()
+    monkeypatch.setattr(syncs, "get", adapters.__getitem__)
+    monkeypatch.setattr(syncs, "load_fresh_credential", _fake_credential)
+    body = syncs.CreateSyncRule(
+        migration_job_id="manual-job",
+        mode="add_only",
+        cadence_minutes=60,
+        timezone="UTC",
+    )
+
+    first = await syncs.create_sync_rule(
+        body,
+        session=session,
+        user_id="local",
+        allow_existing=True,
+    )
+    second = await syncs.create_sync_rule(
+        body,
+        session=session,
+        user_id="local",
+        allow_existing=True,
+    )
+
+    assert second.id == first.id
+
+
+async def test_create_sync_from_empty_migration_uses_persisted_target_playlist(
+    session,
+    monkeypatch,
+) -> None:
+    job = orm.MigrationJob(
+        id="empty-job",
+        user_id="local",
+        source_provider="source",
+        target_provider="target",
+        source_account_id="source-account",
+        target_account_id="target-account",
+        selection={
+            "playlist_ids": ["source-playlist"],
+            "tracks": {},
+            "target_playlist_ids": {"source-playlist": "target-playlist"},
+        },
+        status="done",
+        origin="manual",
+    )
+    session.add(job)
+    await session.commit()
+    adapters = {
+        "source": _Adapter(
+            "source",
+            {"source-playlist": Playlist(id="source-playlist", name="Empty", tracks=[])},
+        ),
+        "target": _Adapter(
+            "target",
+            {"target-playlist": Playlist(id="target-playlist", name="Empty", tracks=[])},
+        ),
+    }
+    monkeypatch.setattr(syncs, "get", adapters.__getitem__)
+    monkeypatch.setattr(syncs, "load_fresh_credential", _fake_credential)
+
+    view = await syncs.create_sync_rule(
+        syncs.CreateSyncRule(migration_job_id=job.id),
+        session=session,
+        user_id="local",
+        allow_existing=True,
+    )
+
+    assert view.target_playlist_id == "target-playlist"
+
+
 async def test_create_mirror_sync_rejects_target_without_mirror_support(
     session,
     monkeypatch,

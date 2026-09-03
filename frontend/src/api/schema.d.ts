@@ -1246,6 +1246,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/unified-playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Unified Playlists */
+        get: operations["list_unified_playlists_api_unified_playlists_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1506,6 +1523,25 @@ export interface components {
             provider: string;
             /** Status */
             status: string;
+        };
+        /** ContinuousSyncIntent */
+        ContinuousSyncIntent: {
+            /**
+             * Cadence Minutes
+             * @default 60
+             */
+            cadence_minutes: number;
+            /**
+             * Mode
+             * @default add_only
+             * @enum {string}
+             */
+            mode: "add_only" | "mirror";
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
         };
         /** CreateExport */
         CreateExport: {
@@ -2565,6 +2601,7 @@ export interface components {
         };
         /** Selection */
         Selection: {
+            continuous_sync?: components["schemas"]["ContinuousSyncIntent"] | null;
             /** Followed Artist Ids */
             followed_artist_ids?: string[];
             /** Playlist Ids */
@@ -3310,6 +3347,152 @@ export interface components {
             position: number;
             /** Source Item Id */
             source_item_id?: string | null;
+        };
+        /** UnifiedPlaylist */
+        UnifiedPlaylist: {
+            /**
+             * Alignment
+             * @enum {string}
+             */
+            alignment: "single_provider" | "aligned" | "drifted";
+            /** Canonical Member Key */
+            canonical_member_key: string;
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["PlaylistKind"];
+            /** Members */
+            members: components["schemas"]["UnifiedPlaylistMember"][];
+            /** Name */
+            name: string;
+            /** Photo */
+            photo?: string | null;
+            /** Sync Attempts */
+            sync_attempts?: components["schemas"]["UnifiedSyncAttempt"][];
+            /** Sync Links */
+            sync_links?: components["schemas"]["UnifiedSyncLink"][];
+            /** Sync Rule Ids */
+            sync_rule_ids?: string[];
+            /** Tracks */
+            tracks: components["schemas"]["UnifiedTrack"][];
+        };
+        /** UnifiedPlaylistLibrary */
+        UnifiedPlaylistLibrary: {
+            /** Connected Provider Count */
+            connected_provider_count: number;
+            /** Playlists */
+            playlists?: components["schemas"]["UnifiedPlaylist"][];
+            /** Scanned Account Count */
+            scanned_account_count: number;
+            /** Warnings */
+            warnings?: components["schemas"]["UnifiedPlaylistWarning"][];
+        };
+        /** UnifiedPlaylistMember */
+        UnifiedPlaylistMember: {
+            /** Account Id */
+            account_id: string;
+            /** Account Label */
+            account_label: string;
+            /** Key */
+            key: string;
+            kind: components["schemas"]["PlaylistKind"];
+            /** Playlist Id */
+            playlist_id: string;
+            /** Playlist Name */
+            playlist_name: string;
+            /** Provider */
+            provider: string;
+            /** Track Count */
+            track_count: number;
+        };
+        /** UnifiedPlaylistWarning */
+        UnifiedPlaylistWarning: {
+            /** Account Id */
+            account_id: string;
+            /** Message */
+            message: string;
+            /** Playlist Id */
+            playlist_id?: string | null;
+            /** Provider */
+            provider: string;
+            /**
+             * Reconnect Required
+             * @default false
+             */
+            reconnect_required: boolean;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "account" | "playlist";
+        };
+        /** UnifiedSyncAttempt */
+        UnifiedSyncAttempt: {
+            /** Error */
+            error?: string | null;
+            /** Migration Job Id */
+            migration_job_id: string;
+            /** Source Member Key */
+            source_member_key: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "active" | "failed";
+            /** Sync Rule Id */
+            sync_rule_id?: string | null;
+            /** Target Account Id */
+            target_account_id: string;
+            /** Target Provider */
+            target_provider: string;
+        };
+        /** UnifiedSyncLink */
+        UnifiedSyncLink: {
+            /** Enabled */
+            enabled: boolean;
+            /** Rule Id */
+            rule_id: string;
+            /** Source Member Key */
+            source_member_key: string;
+            /** Status */
+            status: string;
+            /** Target Member Key */
+            target_member_key: string;
+        };
+        /** UnifiedTrack */
+        UnifiedTrack: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /** Artwork Uri */
+            artwork_uri?: string | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Isrc */
+            isrc?: string | null;
+            /** Key */
+            key: string;
+            /** Sources */
+            sources?: components["schemas"]["UnifiedTrackSource"][];
+            /** Title */
+            title: string;
+        };
+        /** UnifiedTrackSource */
+        UnifiedTrackSource: {
+            /** Account Id */
+            account_id: string;
+            /** Account Label */
+            account_label: string;
+            /** Playlist Id */
+            playlist_id: string;
+            /** Position */
+            position?: number | null;
+            /** Provider */
+            provider: string;
+            /** Uri */
+            uri?: string | null;
         };
         /** UnsupportedOrganizerItem */
         UnsupportedOrganizerItem: {
@@ -6276,6 +6459,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SyncRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_unified_playlists_api_unified_playlists_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedPlaylistLibrary"];
                 };
             };
             /** @description Validation Error */

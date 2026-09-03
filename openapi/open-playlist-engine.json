@@ -679,6 +679,32 @@
         "title": "ConnectionView",
         "type": "object"
       },
+      "ContinuousSyncIntent": {
+        "properties": {
+          "cadence_minutes": {
+            "default": 60,
+            "minimum": 1.0,
+            "title": "Cadence Minutes",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "add_only",
+            "enum": [
+              "add_only",
+              "mirror"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "title": "ContinuousSyncIntent",
+        "type": "object"
+      },
       "CreateExport": {
         "properties": {
           "format": {
@@ -3736,6 +3762,16 @@
       },
       "Selection": {
         "properties": {
+          "continuous_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContinuousSyncIntent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "followed_artist_ids": {
             "items": {
               "type": "string"
@@ -5883,6 +5919,446 @@
           "position"
         ],
         "title": "TrackSelection",
+        "type": "object"
+      },
+      "UnifiedPlaylist": {
+        "properties": {
+          "alignment": {
+            "enum": [
+              "single_provider",
+              "aligned",
+              "drifted"
+            ],
+            "title": "Alignment",
+            "type": "string"
+          },
+          "canonical_member_key": {
+            "title": "Canonical Member Key",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlaylistKind"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedPlaylistMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo"
+          },
+          "sync_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedSyncAttempt"
+            },
+            "title": "Sync Attempts",
+            "type": "array"
+          },
+          "sync_links": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedSyncLink"
+            },
+            "title": "Sync Links",
+            "type": "array"
+          },
+          "sync_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sync Rule Ids",
+            "type": "array"
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedTrack"
+            },
+            "title": "Tracks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "alignment",
+          "canonical_member_key",
+          "members",
+          "tracks"
+        ],
+        "title": "UnifiedPlaylist",
+        "type": "object"
+      },
+      "UnifiedPlaylistLibrary": {
+        "properties": {
+          "connected_provider_count": {
+            "title": "Connected Provider Count",
+            "type": "integer"
+          },
+          "playlists": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedPlaylist"
+            },
+            "title": "Playlists",
+            "type": "array"
+          },
+          "scanned_account_count": {
+            "title": "Scanned Account Count",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedPlaylistWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scanned_account_count",
+          "connected_provider_count"
+        ],
+        "title": "UnifiedPlaylistLibrary",
+        "type": "object"
+      },
+      "UnifiedPlaylistMember": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "account_label": {
+            "title": "Account Label",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlaylistKind"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_name": {
+            "title": "Playlist Name",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "track_count": {
+            "title": "Track Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "provider",
+          "account_id",
+          "account_label",
+          "playlist_id",
+          "playlist_name",
+          "track_count",
+          "kind"
+        ],
+        "title": "UnifiedPlaylistMember",
+        "type": "object"
+      },
+      "UnifiedPlaylistWarning": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playlist Id"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reconnect_required": {
+            "default": false,
+            "title": "Reconnect Required",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "account",
+              "playlist"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "provider",
+          "account_id",
+          "message"
+        ],
+        "title": "UnifiedPlaylistWarning",
+        "type": "object"
+      },
+      "UnifiedSyncAttempt": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "migration_job_id": {
+            "title": "Migration Job Id",
+            "type": "string"
+          },
+          "source_member_key": {
+            "title": "Source Member Key",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "active",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "sync_rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Rule Id"
+          },
+          "target_account_id": {
+            "title": "Target Account Id",
+            "type": "string"
+          },
+          "target_provider": {
+            "title": "Target Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "migration_job_id",
+          "source_member_key",
+          "target_provider",
+          "target_account_id",
+          "status"
+        ],
+        "title": "UnifiedSyncAttempt",
+        "type": "object"
+      },
+      "UnifiedSyncLink": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "source_member_key": {
+            "title": "Source Member Key",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_member_key": {
+            "title": "Target Member Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "source_member_key",
+          "target_member_key",
+          "enabled",
+          "status"
+        ],
+        "title": "UnifiedSyncLink",
+        "type": "object"
+      },
+      "UnifiedTrack": {
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "title": "Artist",
+            "type": "string"
+          },
+          "artwork_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artwork Uri"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "isrc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isrc"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedTrackSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "artist"
+        ],
+        "title": "UnifiedTrack",
+        "type": "object"
+      },
+      "UnifiedTrackSource": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "account_label": {
+            "title": "Account Label",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uri"
+          }
+        },
+        "required": [
+          "provider",
+          "account_id",
+          "account_label",
+          "playlist_id"
+        ],
+        "title": "UnifiedTrackSource",
         "type": "object"
       },
       "UnsupportedOrganizerItem": {
@@ -10675,6 +11151,49 @@
         "summary": "Run Sync Now",
         "tags": [
           "syncs"
+        ]
+      }
+    },
+    "/api/unified-playlists": {
+      "get": {
+        "operationId": "list_unified_playlists_api_unified_playlists_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedPlaylistLibrary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Unified Playlists",
+        "tags": [
+          "unified playlists"
         ]
       }
     },

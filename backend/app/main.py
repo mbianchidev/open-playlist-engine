@@ -24,6 +24,7 @@ from app.api import (
     shares,
     snapshots,
     syncs,
+    unified_playlists,
 )
 from app.core.logging import configure_share_token_redaction
 from app.settings import get_settings
@@ -57,6 +58,7 @@ app.include_router(migrations.router)
 app.include_router(generator.router)
 app.include_router(snapshots.router)
 app.include_router(syncs.router)
+app.include_router(unified_playlists.router)
 app.include_router(organizer.router)
 app.include_router(exports.router)
 app.include_router(shares.router)

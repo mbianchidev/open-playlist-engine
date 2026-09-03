@@ -273,6 +273,11 @@ export interface CreateMigrationBody {
     tracks: Record<string, string[]>;
     saved_album_ids: string[];
     followed_artist_ids: string[];
+    continuous_sync?: {
+      mode: SyncMode;
+      cadence_minutes: number;
+      timezone: string;
+    } | null;
   };
   acknowledge_warnings?: boolean;
 }
@@ -296,6 +301,30 @@ export interface CreateExportBody {
 }
 
 export type SyncMode = "add_only" | "mirror";
+export type UnifiedPlaylistMemberView = ApiSchema<"UnifiedPlaylistMember">;
+export type UnifiedTrackSourceView = ApiSchema<"UnifiedTrackSource">;
+export type UnifiedTrackView = Omit<ApiSchema<"UnifiedTrack">, "sources"> & {
+  sources: UnifiedTrackSourceView[];
+};
+export type UnifiedSyncLinkView = ApiSchema<"UnifiedSyncLink">;
+export type UnifiedSyncAttemptView = ApiSchema<"UnifiedSyncAttempt">;
+export type UnifiedPlaylistView = Omit<
+  ApiSchema<"UnifiedPlaylist">,
+  "members" | "sync_attempts" | "sync_links" | "tracks"
+> & {
+  members: UnifiedPlaylistMemberView[];
+  sync_attempts: UnifiedSyncAttemptView[];
+  sync_links: UnifiedSyncLinkView[];
+  tracks: UnifiedTrackView[];
+};
+export type UnifiedPlaylistWarningView = ApiSchema<"UnifiedPlaylistWarning">;
+export type UnifiedPlaylistLibraryView = Omit<
+  ApiSchema<"UnifiedPlaylistLibrary">,
+  "playlists" | "warnings"
+> & {
+  playlists: UnifiedPlaylistView[];
+  warnings: UnifiedPlaylistWarningView[];
+};
 
 export interface CreateSyncRuleBody {
   migration_job_id: string;

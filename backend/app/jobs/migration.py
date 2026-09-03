@@ -72,6 +72,7 @@ from app.imports.service import (
     mark_import_failed,
 )
 from app.imports.source import MigrationSource, open_migration_source, open_snapshot_source
+from app.jobs.continuous_sync import ensure_continuous_sync
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -285,6 +286,12 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
                 playlist_id
             ),
         )
+        current_selection = dict(job.selection or {})
+        target_playlist_ids = dict(current_selection.get("target_playlist_ids") or {})
+        target_playlist_ids[playlist_id] = target_playlist_id
+        selection = {**current_selection, "target_playlist_ids": target_playlist_ids}
+        job.selection = selection
+        await session.commit()
         logger.info(
             "migration job_id=%s using target playlist source_playlist_id=%s "
             "target_playlist_id=%s",
@@ -466,6 +473,7 @@ async def _run(session: AsyncSession, job: orm.MigrationJob) -> None:
             job_id=job.id,
         )
     await session.commit()
+    await ensure_continuous_sync(session, job)
     logger.info("migration job_id=%s reached %s", job.id, Phase.DONE)
 
 
