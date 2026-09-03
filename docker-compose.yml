@@ -2,6 +2,7 @@ name: open-playlist-engine
 
 services:
   postgres:
+    # Major upgrades require pg_upgrade and may change the image's volume layout.
     image: postgres:17-alpine
     restart: unless-stopped
     environment:

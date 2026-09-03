@@ -58,6 +58,10 @@ npm run build
 
 The container check uses the same Postgres 17 migration path as production:
 
+Postgres major versions are upgraded manually because they require `pg_upgrade`;
+Postgres 18 also changed the official image's volume layout. Dependabot therefore
+keeps Compose on the supported major while still proposing minor and patch updates.
+
 ```bash
 cp .env.example .env
 docker compose config --quiet
