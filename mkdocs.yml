@@ -29,6 +29,7 @@ theme:
 nav:
   - Home: index.md
   - Get started:
+      - Product principles: PRODUCT.md
       - How it works: HOW_IT_WORKS.md
       - Configuration: CONFIGURATION.md
       - Connect providers: CONNECTING_PROVIDERS.md

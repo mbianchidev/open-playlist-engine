@@ -145,6 +145,7 @@ or the categorized [`docs/` source index](docs/README.md). Start with:
 
 - [Configuration](docs/CONFIGURATION.md)
 - [Connecting providers](docs/CONNECTING_PROVIDERS.md)
+- [Product purpose and design principles](docs/PRODUCT.md)
 - [Architecture and provider contract](docs/DESIGN.md)
 - [Continuous integration](docs/CI.md)
 
