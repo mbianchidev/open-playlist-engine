@@ -6,6 +6,7 @@ import {
   Check,
   CircleGauge,
   Disc3,
+  LibraryBig,
   ListChecks,
   ListMusic,
   Music2,
@@ -66,6 +67,7 @@ import ProgressBoard from "./components/ProgressBoard";
 import SnapshotPanel from "./components/SnapshotPanel";
 import ShareManager from "./components/ShareManager";
 import SyncPanel from "./components/SyncPanel";
+import UnifiedPlaylistLibrary from "./components/UnifiedPlaylistLibrary";
 import { providerLabel } from "./utils/providers";
 
 const LOCAL_FILE_PROVIDER = "local_file";
@@ -82,7 +84,7 @@ function isImportSource(provider: string | null): boolean {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("migration");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("library");
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [accounts, setAccounts] = useState<AccountView[]>([]);
   const [playlists, setPlaylists] = useState<PlaylistRef[]>([]);
@@ -128,6 +130,7 @@ export default function App() {
   const libraryLoadId = useRef(0);
   const configuredAppleToken = useRef<string | null>(null);
   const migrationTabRef = useRef<HTMLButtonElement>(null);
+  const libraryTabRef = useRef<HTMLButtonElement>(null);
   const generatorTabRef = useRef<HTMLButtonElement>(null);
   const snapshotsTabRef = useRef<HTMLButtonElement>(null);
   const syncTabRef = useRef<HTMLButtonElement>(null);
@@ -1394,6 +1397,7 @@ export default function App() {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const tabs: WorkspaceTab[] = [
+      "library",
       "migration",
       "generator",
       "snapshots",
@@ -1413,6 +1417,7 @@ export default function App() {
             ] ?? "migration");
     setActiveTab(nextTab);
     const tabRefs = {
+      library: libraryTabRef,
       migration: migrationTabRef,
       generator: generatorTabRef,
       snapshots: snapshotsTabRef,
@@ -1464,6 +1469,24 @@ export default function App() {
         aria-label="Open Playlist Engine workspace"
         onKeyDown={handleTabKeyDown}
       >
+        <button
+          ref={libraryTabRef}
+          id="library-tab"
+          className="workspace-tab"
+          type="button"
+          role="tab"
+          aria-label="Unified library"
+          aria-selected={activeTab === "library"}
+          aria-controls="library-panel"
+          tabIndex={activeTab === "library" ? 0 : -1}
+          onClick={() => setActiveTab("library")}
+        >
+          <span>
+            <LibraryBig aria-hidden="true" />
+            Library
+          </span>
+          <small>Every provider, one view</small>
+        </button>
         <button
           ref={migrationTabRef}
           id="migration-tab"
@@ -1592,7 +1615,21 @@ export default function App() {
         </button>
       </div>
 
-      {activeTab === "migration" ? (
+      {activeTab === "library" ? (
+        <div
+          id="library-panel"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="library-tab"
+        >
+          <UnifiedPlaylistLibrary
+            providers={providers}
+            accounts={accounts}
+            onOpenConnections={openMigrationConnections}
+            onMigrationChanged={handleMigrationChanged}
+          />
+        </div>
+      ) : activeTab === "migration" ? (
         <div
           id="migration-panel"
           className="workspace-panel"
@@ -2371,6 +2408,7 @@ interface DeviceChallenge {
 }
 
 type WorkspaceTab =
+  | "library"
   | "migration"
   | "generator"
   | "snapshots"

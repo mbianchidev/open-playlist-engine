@@ -56,6 +56,11 @@ resolve the owner's local accounts.
 Persistent one-way sync rules reuse migration jobs for new-track matching and writes,
 store source/target checkpoints, catch up missed schedules in the self-hosted worker,
 and expose add-only plus capability-gated mirror controls.
+A unified Library workspace scans every connected account, groups explicit sync
+relationships and overlapping same-name provider copies into logical playlists, and
+shows per-song provider availability. A chosen canonical copy can fan out normal
+full-playlist migrations to every writable connected account; each successful or
+review-completed migration then creates the existing durable sync rule.
 A built-in source-only local-file provider parses TXT, CSV, M3U/M3U8, PLS, WPL,
 XSPF, XML, and JSON into playlist models before the same match/review/write
 pipeline begins; local imports do not expose album or artist entities.

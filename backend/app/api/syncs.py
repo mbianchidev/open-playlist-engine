@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -13,7 +12,7 @@ from arq.connections import RedisSettings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +33,7 @@ from app.db.repositories import (
     CredentialNotFound,
     load_fresh_credential,
 )
+from app.db.sync_graph import lock_sync_graph, pending_continuous_syncs
 from app.jobs.sync import SyncAlreadyRunning, create_queued_run, run_sync
 from app.settings import get_settings
 
@@ -116,6 +116,16 @@ async def create_sync(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_id: CurrentUserId,
 ) -> SyncRuleView:
+    return await create_sync_rule(body, session=session, user_id=user_id)
+
+
+async def create_sync_rule(
+    body: CreateSyncRule,
+    *,
+    session: AsyncSession,
+    user_id: str,
+    allow_existing: bool = False,
+) -> SyncRuleView:
     _validate_schedule(body.cadence_minutes, body.timezone)
     job = await session.scalar(
         select(orm.MigrationJob).where(
@@ -156,7 +166,24 @@ async def create_sync(
         job.target_account_id,
         target_playlist_id,
     )
-    await _lock_rule_graph(session, user_id)
+    await lock_sync_graph(session, user_id)
+    existing = await _endpoint_rule(
+        session,
+        user_id=user_id,
+        source_provider=job.source_provider,
+        source_account_id=job.source_account_id,
+        source_playlist_id=playlist_id,
+        target_provider=job.target_provider,
+        target_account_id=job.target_account_id,
+        target_playlist_id=target_playlist_id,
+    )
+    if existing is not None:
+        if allow_existing:
+            return _rule_view(existing)
+        raise HTTPException(
+            status_code=409,
+            detail="a sync rule already exists for these playlist endpoints",
+        )
     await _ensure_no_feedback_loop(
         session,
         user_id=user_id,
@@ -255,21 +282,34 @@ async def create_sync(
         status="idle",
         next_run_at=next_run_after(now, cadence_minutes=body.cadence_minutes),
     )
-    session.add(rule)
-    await session.flush()
-    session.add(
-        orm.SyncCheckpoint(
-            rule_id=rule.id,
-            source_snapshot=source_snapshot,
-            target_snapshot=target_snapshot,
-            mappings=mappings,
-            unresolved=[],
-        )
-    )
     try:
+        session.add(rule)
+        await session.flush()
+        session.add(
+            orm.SyncCheckpoint(
+                rule_id=rule.id,
+                source_snapshot=source_snapshot,
+                target_snapshot=target_snapshot,
+                mappings=mappings,
+                unresolved=[],
+            )
+        )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
+        if allow_existing:
+            existing = await _endpoint_rule(
+                session,
+                user_id=user_id,
+                source_provider=job.source_provider,
+                source_account_id=job.source_account_id,
+                source_playlist_id=playlist_id,
+                target_provider=job.target_provider,
+                target_account_id=job.target_account_id,
+                target_playlist_id=target_playlist_id,
+            )
+            if existing is not None:
+                return _rule_view(existing)
         raise HTTPException(
             status_code=409,
             detail="a sync rule already exists for these playlist endpoints",
@@ -356,7 +396,7 @@ async def resume_sync(
         raise HTTPException(status_code=404, detail="sync rule not found")
     await _ensure_not_active(session, rule.id)
     await _ensure_no_unresolved_review(session, rule.id)
-    await _lock_rule_graph(session, user_id)
+    await lock_sync_graph(session, user_id)
     await _ensure_no_feedback_loop(
         session,
         user_id=user_id,
@@ -540,6 +580,13 @@ async def _target_playlist_id(
 ) -> str:
     target_ids = {item.target_playlist_id for item in items if item.target_playlist_id}
     if not target_ids:
+        selection = job.selection if isinstance(job.selection, dict) else {}
+        persisted_target_id = (selection.get("target_playlist_ids") or {}).get(
+            _full_playlist_id(job)
+        )
+        if persisted_target_id:
+            target_ids.add(str(persisted_target_id))
+    if not target_ids:
         ledger_id = await session.scalar(
             select(orm.OperationLedger.observed_target_id)
             .where(
@@ -669,6 +716,18 @@ async def _ensure_no_feedback_loop(
     target_playlist_id: str,
     exclude_rule_id: str | None = None,
 ) -> None:
+    candidate_source = (source_provider, source_account_id, source_playlist_id)
+    candidate_target = (target_provider, target_account_id, target_playlist_id)
+    pending_edges = await pending_continuous_syncs(session, user_id=user_id)
+    if any(
+        edge.source == candidate_target
+        and edge.target_account == (candidate_source[0], candidate_source[1])
+        for edge in pending_edges
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="sync rule would create a feedback loop",
+        )
     stmt = select(
         orm.SyncRule.id,
         orm.SyncRule.source_provider,
@@ -682,12 +741,29 @@ async def _ensure_no_feedback_loop(
         stmt = stmt.where(orm.SyncRule.id != exclude_rule_id)
     rows = (await session.execute(stmt)).all()
     adjacency: dict[tuple[str, str, str], set[tuple[str, str, str]]] = {}
+    account_adjacency: dict[tuple[str, str], set[tuple[str, str]]] = {}
     for row in rows:
         source = (row.source_provider, row.source_account_id, row.source_playlist_id)
         target = (row.target_provider, row.target_account_id, row.target_playlist_id)
         adjacency.setdefault(source, set()).add(target)
-    candidate_source = (source_provider, source_account_id, source_playlist_id)
-    candidate_target = (target_provider, target_account_id, target_playlist_id)
+        account_adjacency.setdefault(source[:2], set()).add(target[:2])
+    for edge in pending_edges:
+        account_adjacency.setdefault(edge.source[:2], set()).add(edge.target_account)
+
+    pending_accounts = [candidate_target[:2]]
+    visited_accounts: set[tuple[str, str]] = set()
+    while pending_accounts:
+        account = pending_accounts.pop()
+        if account == candidate_source[:2]:
+            raise HTTPException(
+                status_code=409,
+                detail="sync rule would create a feedback loop",
+            )
+        if account in visited_accounts:
+            continue
+        visited_accounts.add(account)
+        pending_accounts.extend(account_adjacency.get(account, ()))
+
     pending = [candidate_target]
     visited: set[tuple[str, str, str]] = set()
     while pending:
@@ -701,18 +777,6 @@ async def _ensure_no_feedback_loop(
             continue
         visited.add(endpoint)
         pending.extend(adjacency.get(endpoint, ()))
-
-
-async def _lock_rule_graph(session: AsyncSession, user_id: str) -> None:
-    bind = session.get_bind()
-    if bind is None or bind.dialect.name != "postgresql":
-        return
-    digest = hashlib.blake2b(
-        f"open-playlist-engine:sync-graph:{user_id}".encode(),
-        digest_size=8,
-    ).digest()
-    key = int.from_bytes(digest, byteorder="big", signed=True)
-    await session.execute(select(func.pg_advisory_xact_lock(key)))
 
 
 async def _ensure_no_unresolved_review(
@@ -752,6 +816,30 @@ async def _owned_rule(
     if for_update:
         stmt = stmt.with_for_update()
     return await session.scalar(stmt)
+
+
+async def _endpoint_rule(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    source_provider: str,
+    source_account_id: str,
+    source_playlist_id: str,
+    target_provider: str,
+    target_account_id: str,
+    target_playlist_id: str,
+) -> orm.SyncRule | None:
+    return await session.scalar(
+        select(orm.SyncRule).where(
+            orm.SyncRule.user_id == user_id,
+            orm.SyncRule.source_provider == source_provider,
+            orm.SyncRule.source_account_id == source_account_id,
+            orm.SyncRule.source_playlist_id == source_playlist_id,
+            orm.SyncRule.target_provider == target_provider,
+            orm.SyncRule.target_account_id == target_account_id,
+            orm.SyncRule.target_playlist_id == target_playlist_id,
+        )
+    )
 
 
 async def _enqueue_or_inline(

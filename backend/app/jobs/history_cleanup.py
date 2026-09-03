@@ -68,6 +68,7 @@ async def cleanup_expired_migration_details(ctx: dict) -> int:
             ).scalars()
         )
         for job in expired_jobs:
+            await _expire_continuous_sync_review(session, job)
             job.result_summary = await collect_job_result_summary(session, job)
             await session.execute(
                 delete(orm.OperationLedger).where(orm.OperationLedger.job_id == job.id)
@@ -80,6 +81,27 @@ async def cleanup_expired_migration_details(ctx: dict) -> int:
     if expired_jobs:
         logger.info("purged item-level migration history jobs=%s", len(expired_jobs))
     return len(expired_jobs)
+
+
+async def _expire_continuous_sync_review(
+    session,
+    job: orm.MigrationJob,
+) -> None:
+    selection = dict(job.selection or {})
+    raw_intent = selection.get("continuous_sync")
+    if not isinstance(raw_intent, dict):
+        return
+    if raw_intent.get("status") in {"active", "failed"}:
+        return
+    intent = dict(raw_intent)
+    intent.update(
+        status="failed",
+        sync_rule_id=None,
+        error="migration review expired",
+    )
+    selection["continuous_sync"] = intent
+    job.selection = selection
+    await session.flush()
 
 
 def _sync_review_not_pending():

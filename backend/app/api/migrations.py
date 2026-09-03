@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
@@ -75,6 +76,7 @@ from app.db.repositories import (
     load_credential,
     load_fresh_credential,
 )
+from app.db.sync_graph import lock_sync_graph, pending_continuous_syncs
 from app.imports import IMPORT_RECORD_PROVIDERS
 from app.imports.service import (
     LocalImportExpired,
@@ -83,6 +85,7 @@ from app.imports.service import (
     queue_import,
 )
 from app.imports.source import MigrationSource, open_migration_source, open_snapshot_source
+from app.jobs.continuous_sync import ensure_continuous_sync
 from app.jobs.migration import commit_job_counts, run_migration
 from app.jobs.queue import enqueue_or_inline
 from app.jobs.sync import finalize_sync_review, review_finalization_ready
@@ -93,12 +96,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/migrations", tags=["migrations"])
 
 
+class ContinuousSyncIntent(BaseModel):
+    mode: Literal["add_only", "mirror"] = "add_only"
+    cadence_minutes: int = Field(default=60, ge=1)
+    timezone: str = "UTC"
+
+    @model_validator(mode="after")
+    def validate_schedule(self) -> ContinuousSyncIntent:
+        settings = get_settings()
+        if not (
+            settings.sync_min_cadence_minutes
+            <= self.cadence_minutes
+            <= settings.sync_max_cadence_minutes
+        ):
+            raise ValueError(
+                "cadence_minutes must be between "
+                f"{settings.sync_min_cadence_minutes} and "
+                f"{settings.sync_max_cadence_minutes}"
+            )
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA name") from exc
+        return self
+
+
 class Selection(BaseModel):
     playlist_ids: list[str] = Field(default_factory=list)
     # optional per-playlist track filtering: {playlist_id: [track_ids]}
     tracks: dict[str, list[str]] = Field(default_factory=dict)
     saved_album_ids: list[str] = Field(default_factory=list)
     followed_artist_ids: list[str] = Field(default_factory=list)
+    continuous_sync: ContinuousSyncIntent | None = None
 
     def has_items(self) -> bool:
         return bool(self.playlist_ids or self.saved_album_ids or self.followed_artist_ids)
@@ -122,6 +151,14 @@ class CreateMigration(BaseModel):
             raise ValueError(
                 "provide either source_provider/source_account_id or source_snapshot_id"
             )
+        if self.selection.continuous_sync and (
+            not live
+            or len(self.selection.playlist_ids) != 1
+            or any(self.selection.tracks.values())
+            or self.selection.saved_album_ids
+            or self.selection.followed_artist_ids
+        ):
+            raise ValueError("continuous sync requires one full provider playlist")
         return self
 
 
@@ -1117,6 +1154,7 @@ async def create_migration(
 ) -> JobView:
     if not body.selection.has_items():
         raise HTTPException(status_code=400, detail="Select at least one item to migrate")
+    await _ensure_no_continuous_sync_feedback(session, body, user_id=user_id)
     try:
         preflight = await _validated_preflight(session, body, user_id=user_id)
     except KeyError as exc:
@@ -1148,6 +1186,9 @@ async def create_migration(
             ).model_dump(),
         )
 
+    if body.selection.continuous_sync is not None:
+        await lock_sync_graph(session, user_id)
+        await _ensure_no_continuous_sync_feedback(session, body, user_id=user_id)
     job = orm.MigrationJob(
         user_id=user_id,
         source_kind=preflight.source.kind,
@@ -1187,6 +1228,7 @@ async def preflight_migration(
 ) -> MigrationWarningsView:
     if not body.selection.has_items():
         raise HTTPException(status_code=400, detail="Select at least one item to migrate")
+    await _ensure_no_continuous_sync_feedback(session, body, user_id=user_id)
     try:
         preflight = await _validated_preflight(session, body, user_id=user_id)
         await session.commit()
@@ -1212,6 +1254,90 @@ async def preflight_migration(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (LocalImportNotFound, LocalImportExpired, LocalImportStateError) as exc:
         raise _local_import_http_error(exc) from exc
+
+
+async def _ensure_no_continuous_sync_feedback(
+    session: AsyncSession,
+    body: CreateMigration,
+    *,
+    user_id: str,
+) -> None:
+    if body.selection.continuous_sync is None:
+        return
+    source = (
+        body.source_provider or "",
+        body.source_account_id or "",
+        body.selection.playlist_ids[0],
+    )
+    rows = (
+        await session.execute(
+            select(
+                orm.SyncRule.source_provider,
+                orm.SyncRule.source_account_id,
+                orm.SyncRule.source_playlist_id,
+                orm.SyncRule.target_provider,
+                orm.SyncRule.target_account_id,
+                orm.SyncRule.target_playlist_id,
+            ).where(orm.SyncRule.user_id == user_id)
+        )
+    ).all()
+    adjacency: dict[tuple[str, str, str], set[tuple[str, str, str]]] = {}
+    for row in rows:
+        current = (row.source_provider, row.source_account_id, row.source_playlist_id)
+        target = (row.target_provider, row.target_account_id, row.target_playlist_id)
+        adjacency.setdefault(current, set()).add(target)
+
+    pending_edges = await pending_continuous_syncs(session, user_id=user_id)
+    target_account = (body.target_provider, body.target_account_id)
+    if any(
+        edge.source == source and edge.target_account == target_account
+        for edge in pending_edges
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="continuous sync setup is already pending for this target account",
+        )
+
+    account_adjacency: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for row in rows:
+        account_adjacency.setdefault(
+            (row.source_provider, row.source_account_id),
+            set(),
+        ).add((row.target_provider, row.target_account_id))
+    for edge in pending_edges:
+        account_adjacency.setdefault(edge.source[:2], set()).add(edge.target_account)
+
+    pending_accounts = [target_account]
+    visited_accounts: set[tuple[str, str]] = set()
+    while pending_accounts:
+        account = pending_accounts.pop()
+        if account == source[:2]:
+            raise HTTPException(
+                status_code=409,
+                detail="continuous sync would create a feedback loop",
+            )
+        if account in visited_accounts:
+            continue
+        visited_accounts.add(account)
+        pending_accounts.extend(account_adjacency.get(account, ()))
+
+    pending = [
+        endpoint
+        for endpoint in adjacency
+        if endpoint[:2] == (body.target_provider, body.target_account_id)
+    ]
+    visited: set[tuple[str, str, str]] = set()
+    while pending:
+        endpoint = pending.pop()
+        if endpoint == source:
+            raise HTTPException(
+                status_code=409,
+                detail="continuous sync would create a feedback loop",
+            )
+        if endpoint in visited:
+            continue
+        visited.add(endpoint)
+        pending.extend(adjacency.get(endpoint, ()))
 
 
 async def _validated_preflight(
@@ -1304,6 +1430,14 @@ async def _preflight(
             body.selection,
         )
     _validate_target_capabilities(target, target_cred, selected, body.selection)
+    if body.selection.continuous_sync is not None:
+        from app.api.syncs import _ensure_mirror_available, _validate_schedule
+
+        intent = body.selection.continuous_sync
+        _validate_schedule(intent.cadence_minutes, intent.timezone)
+        if intent.mode == "mirror":
+            playlist = selected[body.selection.playlist_ids[0]]
+            _ensure_mirror_available(target, playlist.kind)
     total_tracks = sum(len(playlist.tracks) for playlist in selected.values())
     summary = MigrationSelectionSummary(
         playlists=len(body.selection.playlist_ids),
@@ -2106,7 +2240,7 @@ async def _maybe_finalize_sync_review(
     session: AsyncSession,
     job: orm.MigrationJob,
 ) -> None:
-    if job.origin != "sync" or not job.sync_run_id:
+    if job.origin not in {"manual", "sync"}:
         return
     items = list(
         (
@@ -2116,6 +2250,11 @@ async def _maybe_finalize_sync_review(
         ).scalars()
     )
     if not review_finalization_ready(items):
+        return
+    if job.origin == "manual":
+        await ensure_continuous_sync(session, job)
+        return
+    if not job.sync_run_id:
         return
     await enqueue_or_inline(
         background_tasks,

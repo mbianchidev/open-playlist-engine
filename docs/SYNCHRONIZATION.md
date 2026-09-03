@@ -4,6 +4,10 @@ Open Playlist Engine can persist a one-way relationship from a source playlist t
 target playlist and run it inside the existing self-hosted worker. Rules, checkpoints,
 credentials and execution history stay on the instance.
 
+The **Library** workspace can create these relationships across every connected
+writable account at once. The selected provider copy remains the source of truth; see
+[Unified playlists](UNIFIED_PLAYLISTS.md).
+
 ## Create and manage a rule
 
 1. Complete a migration for one full playlist.

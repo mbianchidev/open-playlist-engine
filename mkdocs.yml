@@ -37,6 +37,7 @@ nav:
       - Public URLs and pasted text: IMPORT_SOURCES.md
       - Portable exports: EXPORTING_PLAYLISTS.md
   - Workflows:
+      - Unified playlists: UNIFIED_PLAYLISTS.md
       - Playlist generator: PLAYLIST_GENERATOR.md
       - Library snapshots: SNAPSHOTS.md
       - Scheduled synchronization: SYNCHRONIZATION.md

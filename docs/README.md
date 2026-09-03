@@ -36,6 +36,8 @@ project overview and quick start, return to the [root README](../README.md).
 
 ## Library workflows
 
+- [Unified playlists](UNIFIED_PLAYLISTS.md) — cross-provider playlist identity, song
+  coverage, alignment, and keep-everywhere synchronization.
 - [Playlist generator](PLAYLIST_GENERATOR.md) — local model setup, controls, privacy,
   review, and confirmation.
 - [Local library snapshots](SNAPSHOTS.md) — storage, verification, retention,
