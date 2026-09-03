@@ -9,6 +9,8 @@ project overview and quick start, return to the [root README](../README.md).
 
 ## Getting started
 
+- [Product purpose and design principles](PRODUCT.md) — audience, goals, brand
+  personality, interface principles, and accessibility targets.
 - [Configuration](CONFIGURATION.md) — environment variables, deployment modes, and
   operational relationships.
 - [Connecting providers](CONNECTING_PROVIDERS.md) — Spotify, Tidal, Apple Music, and
