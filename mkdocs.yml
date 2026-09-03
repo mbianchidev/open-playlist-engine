@@ -50,6 +50,7 @@ nav:
       - Architecture decisions:
           - Initial architecture: adr/0001-architecture-decisions.md
           - Adapter fixture testing: adr/0002-adapter-fixture-testing.md
+      - PostgreSQL 18 upgrade: POSTGRES_UPGRADE.md
       - Continuous integration: CI.md
 
 markdown_extensions:

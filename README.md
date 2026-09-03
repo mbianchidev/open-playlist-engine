@@ -77,6 +77,10 @@ For app registration, callback URLs, scopes, and connection behavior, see
 
 Docker Compose starts Postgres, Valkey, the API, worker, and frontend:
 
+Existing Docker deployments using PostgreSQL 17 must complete the
+[PostgreSQL 18 data migration](docs/POSTGRES_UPGRADE.md) before starting this
+version.
+
 ```bash
 cp .env.example .env
 # Edit .env: replace OPE_SECRET_KEY and add credentials for the providers you use.

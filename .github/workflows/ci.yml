@@ -74,7 +74,7 @@ jobs:
       OPE_DATABASE_URL: postgresql+psycopg://ope:ope@localhost:5432/ope_ci
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: ope
           POSTGRES_PASSWORD: ope
@@ -173,6 +173,53 @@ jobs:
 
       - name: Prepare Compose environment
         run: cp .env.example .env
+
+      - name: Test Postgres 17 to 18 volume migration
+        env:
+          COMPOSE_PROJECT_NAME: ope-migration-ci
+        run: |
+          source_volume="${COMPOSE_PROJECT_NAME}_pgdata"
+          seed_container="${COMPOSE_PROJECT_NAME}-postgres17-seed"
+
+          cleanup() {
+            docker rm --force "$seed_container" >/dev/null 2>&1 || true
+            docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+            docker volume rm "$source_volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run \
+            --detach \
+            --name "$seed_container" \
+            --env POSTGRES_USER=ope \
+            --env POSTGRES_PASSWORD=ope \
+            --env POSTGRES_DB=ope \
+            --volume "${source_volume}:/var/lib/postgresql/data" \
+            postgres:17-alpine >/dev/null
+
+          for attempt in {1..30}; do
+            if docker exec "$seed_container" pg_isready -U ope -d ope >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs "$seed_container"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          docker exec "$seed_container" psql -U ope -d ope -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE migration_probe (id integer PRIMARY KEY, value text NOT NULL);
+             INSERT INTO migration_probe VALUES (1, 'preserved');"
+          docker rm --force "$seed_container" >/dev/null
+
+          ./scripts/migrate-postgres-17-to-18.sh
+
+          test "$(
+            docker compose exec -T postgres \
+              psql -U ope -d ope -Atc "SELECT value FROM migration_probe WHERE id = 1;"
+          )" = "preserved"
+          docker volume inspect "$source_volume" >/dev/null
 
       - name: Validate Compose configuration
         run: docker compose config --quiet
