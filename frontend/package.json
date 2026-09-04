@@ -11,16 +11,16 @@
     "gen:api": "npx --yes openapi-typescript@7.13.0 ../openapi/open-playlist-engine.json -o src/api/schema.d.ts"
   },
   "dependencies": {
-    "lucide-react": "^1.24.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "lucide-react": "^1.38.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "react-icons": "^5.7.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^6.0.2",
-    "typescript": "^5.7.2",
-    "vite": "^8.0.16"
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   }
 }
