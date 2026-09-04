@@ -148,7 +148,40 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Audit frontend dependencies
-        run: npm audit --audit-level=moderate
+        run: |
+          audit_report="$(mktemp)"
+          trap 'rm -f "$audit_report"' EXIT
+
+          for attempt in 1 2 3; do
+            if npm audit \
+              --audit-level=moderate \
+              --fetch-retries=0 \
+              --fetch-timeout=30000 \
+              --json >"$audit_report"; then
+              cat "$audit_report"
+              exit 0
+            else
+              status=$?
+            fi
+
+            cat "$audit_report"
+            if ! AUDIT_REPORT="$audit_report" node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const report = JSON.parse(readFileSync(process.env.AUDIT_REPORT, "utf8"));
+          process.exit(report.error ? 0 : 1);
+          NODE
+            then
+              exit "$status"
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+
+            echo "::warning::npm audit registry request failed; retrying in 15 seconds"
+            sleep 15
+          done
 
       - name: Check generated TypeScript API schema
         run: |
