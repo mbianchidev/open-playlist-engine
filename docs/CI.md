@@ -9,7 +9,7 @@ Pull-request runs cancel older runs for the same branch.
 |---|---|
 | `Backend` | Python 3.12 editable dev install, `pip check`, Ruff, the full pytest suite, and generated FastAPI OpenAPI drift |
 | `Database migrations` | A single Alembic head and `alembic upgrade head` against a clean Postgres 18 database |
-| `Frontend` | Node.js 22, deterministic `npm ci`, moderate-or-higher npm advisories, generated TypeScript API drift, explicit type-checking, and the production build |
+| `Frontend` | Node.js 26, deterministic `npm ci`, moderate-or-higher npm advisories, generated TypeScript API drift, explicit type-checking, and the production build |
 | `Containers` | PostgreSQL 17-to-18 volume migration, Compose validation, a no-cache image build, full stack startup, and backend plus nginx-proxied health checks |
 
 The jobs use fixture-backed tests and empty provider configuration. No provider
