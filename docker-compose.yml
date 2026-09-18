@@ -27,7 +27,7 @@ services:
       retries: 10
 
   ollama:
-    image: ollama/ollama:0.34.0
+    image: ollama/ollama:0.34.2
     profiles: ["generator"]
     ports:
       - "11434:11434"
