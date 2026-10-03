@@ -11,7 +11,7 @@
     "gen:api": "npx --yes openapi-typescript@7.13.0 ../openapi/open-playlist-engine.json -o src/api/schema.d.ts"
   },
   "dependencies": {
-    "lucide-react": "^1.47.0",
+    "lucide-react": "^1.48.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-icons": "^5.7.0"
@@ -21,6 +21,6 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.1"
   }
 }
