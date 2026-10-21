@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/mbianchidev/open-playlist-engine/security/advisories/new
+    about: Do not disclose suspected vulnerabilities in public issues.
+  - name: Setup and usage documentation
+    url: https://mbianchidev.github.io/open-playlist-engine/
+    about: Check configuration and provider connection guides before reporting a problem.

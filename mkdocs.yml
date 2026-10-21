@@ -52,6 +52,12 @@ nav:
           - Adapter fixture testing: adr/0002-adapter-fixture-testing.md
       - PostgreSQL 18 upgrade: POSTGRES_UPGRADE.md
       - Continuous integration: CI.md
+  - Contributing:
+      - Development: DEVELOPMENT.md
+      - Contributor guide: https://github.com/mbianchidev/open-playlist-engine/blob/main/CONTRIBUTING.md
+      - Accessibility: https://github.com/mbianchidev/open-playlist-engine/blob/main/ACCESSIBILITY.md
+      - Code of Conduct: https://github.com/mbianchidev/open-playlist-engine/blob/main/CODE_OF_CONDUCT.md
+      - Security policy: https://github.com/mbianchidev/open-playlist-engine/blob/main/SECURITY.md
 
 markdown_extensions:
   - admonition

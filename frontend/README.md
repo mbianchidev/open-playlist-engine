@@ -9,6 +9,10 @@ The interface uses Lucide for product controls and Simple Icons through
 registered.
 
 ## Develop
+
+Use the [development guide](../docs/DEVELOPMENT.md) for API/worker configuration
+and [accessibility guidance](../ACCESSIBILITY.md) for keyboard/responsive checks.
+
 ```bash
 npm ci
 npm run dev        # http://localhost:5173 (proxies /api + /health to :8000)

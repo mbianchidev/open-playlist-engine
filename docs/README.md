@@ -17,6 +17,16 @@ project overview and quick start, return to the [root README](../README.md).
   YouTube Music setup.
 - [Continuous integration](CI.md) — required checks and their local equivalents.
 
+## Contributors
+
+- [Development](DEVELOPMENT.md): native infrastructure, API/worker/frontend setup,
+  debugging, tests, repository layout, provider extensions and builds.
+- [Contributing](../CONTRIBUTING.md): reports, proposals and pull requests.
+- [Agent guidance](../AGENTS.md): repository-specific commands and safety rules.
+- [Accessibility](../ACCESSIBILITY.md): contribution targets and verification.
+- [Code of Conduct](../CODE_OF_CONDUCT.md): community expectations and reporting.
+- [Security policy](../SECURITY.md): supported versions and private disclosure.
+
 ## Architecture
 
 - [How Open Playlist Engine works](HOW_IT_WORKS.md) — concise system tour from

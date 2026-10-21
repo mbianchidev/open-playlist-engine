@@ -25,6 +25,11 @@ Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
   `/generator`, owner `/shares`, and isolated `/public/shares`).
 
 ## Develop
+
+Follow [native development setup](../docs/DEVELOPMENT.md#native-development) first
+for the database/queue, working-directory `.env`, virtual environment and separate
+worker shell. The commands below assume that setup is complete.
+
 ```bash
 python -m pip install -e ".[dev]"
 python -m alembic upgrade head
