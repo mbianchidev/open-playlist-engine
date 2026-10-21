@@ -1,30 +1,27 @@
+<img src="docs/assets/mark.svg" alt="Open Playlist Engine logo" width="64" height="64">
+
 # Open Playlist Engine
 
 [![CI](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml)
 [![Documentation](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/pages.yml/badge.svg)](https://mbianchidev.github.io/open-playlist-engine/)
 
-A self-hosted web app for **music playlist and library migration, local-first
-playlist generation, and portable export** across Spotify, Tidal, YouTube Music,
-and Apple Music. Move music-library metadata, not audio files, through one
-provider-neutral workflow.
-
 [Website](https://mbianchidev.github.io/open-playlist-engine/) ·
-[Overview](#overview) · [Features](#features) ·
-[Supported providers](#supported-providers) · [Quick start](#quick-start) ·
-[Usage](#usage) · [Configuration](#configuration) ·
-[Limitations](#limitations) · [Documentation](#documentation) ·
-[Development](#development)
+[Documentation](docs/README.md) ·
+[Issues](https://github.com/mbianchidev/open-playlist-engine/issues) ·
+[Releases](https://github.com/mbianchidev/open-playlist-engine/releases)
+
+![Library workspace showing an expanded playlist, provider copies, sync controls, and song availability across Spotify, Tidal, and YouTube Music.](docs/assets/app-library.png)
+
+*The current Library workspace, captured from the running app with synthetic
+accounts and tracks. No real provider credentials or personal library data are shown.*
 
 ## Overview
 
-Open Playlist Engine moves music-library metadata between supported providers
-without moving or streaming audio. It can:
-
-- migrate playlists, liked tracks, saved albums, and followed or favorite artists;
-- import local playlist files, public playlist URLs, and pasted track lists;
-- generate editable playlists through an administrator-configured model;
-- view each logical playlist across connected providers;
-- export, share, snapshot, synchronize, and organize playlists.
+Open Playlist Engine is a self-hosted web app for music listeners who want to
+**move, generate, back up, and organize playlists without being tied to one
+provider**. Migrate playlists and supported music-library collections across
+Spotify, Tidal, YouTube Music, and Apple Music, review uncertain matches, and keep
+portable exports on your own instance. It moves music-library metadata, not audio.
 
 It is the first reference implementation of the
 [`open-playlist`](https://github.com/mbianchidev/open-playlist) universal
@@ -37,51 +34,14 @@ and a target.
 > capabilities to disable unsupported operations. Hosted multi-user authentication
 > is not implemented.
 
-## How it works
+## Contents
 
-```text
-provider, file, URL, or text ─▶ [ Open Playlist hub ] ─▶ target provider
-                                      │
-                                      └───────────────▶ local export
-```
-
-Migrations follow a durable **import → match → review → write** pipeline. Matching
-uses provider identifiers and an evidence graph; low-confidence results require
-human review before anything is written. See
-[`docs/DESIGN.md`](docs/DESIGN.md) for the architecture and trust boundaries.
-
-## Features
-
-| Capability | What it provides | Guide |
-|---|---|---|
-| Playlist migration | Track selection, matching, review, duplicate protection, and live progress | [Design](docs/DESIGN.md) |
-| Unified playlists | Provider-neutral playlist and song coverage with keep-everywhere sync | [Unified playlists](docs/UNIFIED_PLAYLISTS.md) |
-| Local file imports | TXT, CSV, M3U/M3U8, PLS, WPL, XSPF, XML, and JSON sources | [Local imports](docs/LOCAL_FILE_IMPORTS.md) |
-| URL and text imports | Bounded public playlist URLs and pasted track lists | [Import sources](docs/IMPORT_SOURCES.md) |
-| Portable exports | CSV, TXT, M3U8, XSPF, JSON, and multi-playlist ZIP downloads | [Exports](docs/EXPORTING_PLAYLISTS.md) |
-| Playlist generator | Private editable drafts resolved to real provider tracks before writing | [Generator](docs/PLAYLIST_GENERATOR.md) |
-| Library snapshots | Versioned, metadata-only local backups, verification, diff, and restore | [Snapshots](docs/SNAPSHOTS.md) |
-| Scheduled sync | Persistent add-only and capability-gated mirror rules | [Synchronization](docs/SYNCHRONIZATION.md) |
-| Playlist Organizer | Capability-gated library cleanup with preflight and durable retries | [Organizer](docs/PLAYLIST_ORGANIZER.md) |
-| History and reports | Reopenable migrations, statistics, and streamed CSV/JSON reports | [Migration history](docs/MIGRATION_HISTORY.md) |
-| Playlist sharing | Opt-in immutable snapshots with isolated recipient credentials | [Sharing](docs/PLAYLIST_SHARING.md) |
-
-## Supported providers
-
-| Provider | Playlists | Native liked tracks | Saved albums | Followed/favorite artists |
-|---|---|---|---|---|
-| Spotify | Read/write | Read/write | Read/write | Read/write as follows |
-| Tidal | Read/write | Read/write | Read/write | Read/write as favorites |
-| YouTube Music | Read/write | Read/write | Unsupported | Unsupported |
-| Apple Music | Read/create/add | Unsupported | Unsupported | Unsupported |
-
-Exact source, target, authentication, and Organizer capabilities are provider-driven.
-For app registration, callback URLs, scopes, and connection behavior, see
-[`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
-
-Spotify and Tidal use official OAuth APIs. YouTube Music uses the unofficial,
-experimental `ytmusicapi` integration. Apple Music uses the official MusicKit
-developer-token and user-token flow and is currently beta.
+[Quick start](#quick-start) · [Why Open Playlist Engine](#why-open-playlist-engine) ·
+[How it works](#how-it-works) · [Usage](#usage) ·
+[Configuration](#configuration) · [Features](#features) ·
+[Supported providers](#supported-providers) · [Limitations](#limitations) ·
+[Documentation](#documentation) · [AI policy](#ai-policy) ·
+[Contributing](#contributing) · [Security](#security) · [License](#license)
 
 ## Quick start
 
@@ -152,6 +112,31 @@ availability, not provider credentials or the worker. If startup fails, inspect
 Stop the stack with `docker compose down`. Database and snapshot volumes survive
 normal shutdown; `docker compose down --volumes` deletes them.
 
+## Why Open Playlist Engine
+
+- **Keep control:** self-host provider credentials, migration history, and
+  metadata-only backups.
+- **Use one workflow:** move between providers or import files, public URLs, and
+  pasted track lists without learning a different migration tool for each pair.
+- **Review the evidence:** inspect uncertain matches and per-item results instead
+  of assuming every catalog match is correct.
+- **Keep an exit path:** export playlists without connecting a target provider.
+
+## How it works
+
+```text
+provider, file, URL, or text ─▶ [ Open Playlist hub ] ─▶ target provider
+                                      │
+                                      └───────────────▶ local export
+```
+
+Migrations follow a durable **import → match → review → write** pipeline. Matching
+uses provider identifiers and an evidence graph; low-confidence results require
+human review before those items are written. A FastAPI API and ARQ worker manage
+jobs in PostgreSQL and Valkey, while the React frontend uses the generated API
+contract. See the [system tour](docs/HOW_IT_WORKS.md) and
+[design guide](docs/DESIGN.md) for the architecture and trust boundaries.
+
 ## Usage
 
 1. Open **Migration**, choose **From** and **To**, and connect the required provider
@@ -171,7 +156,7 @@ normal shutdown; `docker compose down --volumes` deletes them.
 The default **Library** workspace groups logical playlists across connected
 providers. **Snapshots** stores metadata-only backups locally; **Sync** manages
 recurring one-way rules; **Organizer** exposes only the cleanup actions each
-provider supports. Follow the linked feature guides above for their safety and
+provider supports. See the [feature guides](#features) for their safety and
 recovery behavior.
 
 ## Configuration
@@ -202,7 +187,40 @@ SDK backend are covered in the [generator guide](docs/PLAYLIST_GENERATOR.md).
 Using a remote model endpoint or Copilot sends generation context to that service;
 local-first does not mean offline.
 
-## Limitations
+## Features
+
+| Capability | What it provides | Guide |
+|---|---|---|
+| Playlist migration | Track selection, matching, review, duplicate protection, and live progress | [Design](docs/DESIGN.md) |
+| Unified playlists | Provider-neutral playlist and song coverage with keep-everywhere sync | [Unified playlists](docs/UNIFIED_PLAYLISTS.md) |
+| Local file imports | TXT, CSV, M3U/M3U8, PLS, WPL, XSPF, XML, and JSON sources | [Local imports](docs/LOCAL_FILE_IMPORTS.md) |
+| URL and text imports | Bounded public playlist URLs and pasted track lists | [Import sources](docs/IMPORT_SOURCES.md) |
+| Portable exports | CSV, TXT, M3U8, XSPF, JSON, and multi-playlist ZIP downloads | [Exports](docs/EXPORTING_PLAYLISTS.md) |
+| Playlist generator | Private editable drafts resolved to real provider tracks before writing | [Generator](docs/PLAYLIST_GENERATOR.md) |
+| Library snapshots | Versioned, metadata-only local backups, verification, diff, and restore | [Snapshots](docs/SNAPSHOTS.md) |
+| Scheduled sync | Persistent add-only and capability-gated mirror rules | [Synchronization](docs/SYNCHRONIZATION.md) |
+| Playlist Organizer | Capability-gated library cleanup with preflight and durable retries | [Organizer](docs/PLAYLIST_ORGANIZER.md) |
+| History and reports | Reopenable migrations, statistics, and streamed CSV/JSON reports | [Migration history](docs/MIGRATION_HISTORY.md) |
+| Playlist sharing | Opt-in immutable snapshots with isolated recipient credentials | [Sharing](docs/PLAYLIST_SHARING.md) |
+
+### Supported providers
+
+| Provider | Playlists | Native liked tracks | Saved albums | Followed/favorite artists |
+|---|---|---|---|---|
+| Spotify | Read/write | Read/write | Read/write | Read/write as follows |
+| Tidal | Read/write | Read/write | Read/write | Read/write as favorites |
+| YouTube Music | Read/write | Read/write | Unsupported | Unsupported |
+| Apple Music | Read/create/add | Unsupported | Unsupported | Unsupported |
+
+Exact source, target, authentication, and Organizer capabilities are provider-driven.
+For app registration, callback URLs, scopes, and connection behavior, see
+[`docs/CONNECTING_PROVIDERS.md`](docs/CONNECTING_PROVIDERS.md).
+
+Spotify and Tidal use official OAuth APIs. YouTube Music uses the unofficial,
+experimental `ytmusicapi` integration. Apple Music uses the official MusicKit
+developer-token and user-token flow and is currently beta.
+
+### Limitations
 
 - This app migrates metadata, not music files, DRM, subscriptions, or audio.
   Catalog availability, account permissions, scopes, and provider rate limits can
@@ -221,7 +239,34 @@ local-first does not mean offline.
 - Scheduled sync is one-way. Mirror mode currently targets standard Spotify
   playlists only; liked-track collections remain add-only.
 
-## Development
+## Documentation
+
+Browse the rendered [documentation website](https://mbianchidev.github.io/open-playlist-engine/)
+or the categorized [`docs/` source index](docs/README.md). Start with:
+
+- [Configuration](docs/CONFIGURATION.md)
+- [Connecting providers](docs/CONNECTING_PROVIDERS.md)
+- [Product purpose and design principles](docs/PRODUCT.md)
+- [Architecture and provider contract](docs/DESIGN.md)
+- [Continuous integration](docs/CI.md)
+
+## AI policy
+
+You are responsible for everything you contribute, including AI-assisted code,
+documentation, and assets. Review and test your contribution. You must be able to
+explain what the code does and why it is needed.
+
+## Contributing
+
+Bug reports and focused pull requests are welcome. Use
+[issues](https://github.com/mbianchidev/open-playlist-engine/issues) for reproducible
+problems or feature proposals, and the [private reporting channel](#security) for
+suspected vulnerabilities. Follow the existing provider capabilities and generated
+API contract, use mocked provider data in tests, and run the relevant
+[CI checks](docs/CI.md) before submitting changes. The
+[product principles](docs/PRODUCT.md) include the current accessibility targets.
+
+### Development
 
 For native development, use Python 3.12+ and Node.js 26 with npm. CI uses Python
 3.12 and Node.js 26; the backend container uses Python 3.14.
@@ -231,7 +276,7 @@ Run PostgreSQL 18 and Valkey 9 separately, reachable from the backend. Set
 [`backend/app/settings.py`](backend/app/settings.py). The bundled Compose services
 do not publish database/cache ports to the host.
 
-### Backend
+#### Backend
 
 Backend settings load `.env` from the current working directory. Create
 `backend/.env` from the root template, configure the same secrets/provider settings
@@ -261,7 +306,7 @@ cd backend
 arq app.jobs.worker.WorkerSettings
 ```
 
-### Frontend
+#### Frontend
 
 From the repository root in a separate shell:
 
@@ -275,7 +320,7 @@ The development frontend runs at <http://localhost:5173> and proxies `/api` to t
 backend. Required checks and exact local commands are listed in
 [`docs/CI.md`](docs/CI.md).
 
-## Repository layout
+### Repository layout
 
 | Path | Contents |
 |---|---|
@@ -287,32 +332,20 @@ backend. Required checks and exact local commands are listed in
 The frontend and backend are hard-separated: the frontend communicates only through
 the backend's generated OpenAPI contract.
 
-## Documentation
-
-Browse the rendered [documentation website](https://mbianchidev.github.io/open-playlist-engine/)
-or the categorized [`docs/` source index](docs/README.md). Start with:
-
-- [Configuration](docs/CONFIGURATION.md)
-- [Connecting providers](docs/CONNECTING_PROVIDERS.md)
-- [Product purpose and design principles](docs/PRODUCT.md)
-- [Architecture and provider contract](docs/DESIGN.md)
-- [Continuous integration](docs/CI.md)
-
-## Contributing
-
-Bug reports and focused pull requests are welcome. Use
-[issues](https://github.com/mbianchidev/open-playlist-engine/issues) for reproducible
-problems or feature proposals. Follow the existing provider capabilities and
-generated API contract, use mocked provider data in tests, and run the relevant
-[CI checks](docs/CI.md) before submitting changes.
-
-## Adding a provider
+### Adding a provider
 
 Implement `ProviderAdapter` in `backend/app/providers/<name>/adapter.py`, declare a
 `CapabilityDescriptor`, register it, and pass the conformance suite in
 `backend/tests/conformance/`. See the
 [provider plugin contract in the design guide](docs/DESIGN.md) and
 [`backend/README.md`](backend/README.md).
+
+## Security
+
+GitHub [private vulnerability reporting](https://github.com/mbianchidev/open-playlist-engine/security/advisories/new)
+is enabled for this repository. Report suspected vulnerabilities privately rather
+than in public issues, and do not include live credentials or personal library data.
+The repository does not yet publish a security support or disclosure policy.
 
 ## License
 
