@@ -258,95 +258,30 @@ explain what the code does and why it is needed.
 
 ## Contributing
 
-Bug reports and focused pull requests are welcome. Use
-[issues](https://github.com/mbianchidev/open-playlist-engine/issues) for reproducible
-problems or feature proposals, and the [private reporting channel](#security) for
-suspected vulnerabilities. Follow the existing provider capabilities and generated
-API contract, use mocked provider data in tests, and run the relevant
-[CI checks](docs/CI.md) before submitting changes. The
-[product principles](docs/PRODUCT.md) include the current accessibility targets.
+Bug reports, focused pull requests, and accessibility improvements are welcome.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the issue/PR process and
+[AGENTS.md](AGENTS.md) before using a coding agent.
 
-### Development
+The [development guide](docs/DEVELOPMENT.md) covers native setup, API/worker
+configuration, the repository layout, provider extensions, and local builds.
+The [CI guide](docs/CI.md) lists the required checks. Use synthetic data only and
+follow the [AI policy](#ai-policy), [Code of Conduct](CODE_OF_CONDUCT.md), and
+[accessibility guidance](ACCESSIBILITY.md).
 
-For native development, use Python 3.12+ and Node.js 26 with npm. CI uses Python
-3.12 and Node.js 26; the backend container uses Python 3.14.
-
-Run PostgreSQL 18 and Valkey 9 separately, reachable from the backend. Set
-`OPE_DATABASE_URL` and `OPE_VALKEY_URL` if they differ from the local defaults in
-[`backend/app/settings.py`](backend/app/settings.py). The bundled Compose services
-do not publish database/cache ports to the host.
-
-#### Backend
-
-Backend settings load `.env` from the current working directory. Create
-`backend/.env` from the root template, configure the same secrets/provider settings
-as above, and set `OPE_FRONTEND_URL=http://localhost:5173` for Vite development:
-
-```bash
-cd backend
-cp ../.env.example .env
-```
-
-After editing `backend/.env`, run:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e ".[dev]"
-python -m alembic upgrade head
-uvicorn app.main:app --reload --no-access-log
-```
-
-In another shell, start from the repository root and use the same working
-directory and virtual environment as the API:
-
-```bash
-cd backend
-. .venv/bin/activate
-arq app.jobs.worker.WorkerSettings
-```
-
-#### Frontend
-
-From the repository root in a separate shell:
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-The development frontend runs at <http://localhost:5173> and proxies `/api` to the
-backend. Required checks and exact local commands are listed in
-[`docs/CI.md`](docs/CI.md).
-
-### Repository layout
-
-| Path | Contents |
-|---|---|
-| [`backend/`](backend/README.md) | FastAPI API, provider adapters, matching, jobs, and database code |
-| [`frontend/`](frontend/README.md) | React SPA and generated OpenAPI client |
-| [`openapi/`](openapi/open-playlist.yaml) | Vendored Open Playlist specification and generated engine contract; the standard's API reference remains on the [Open Playlist website](https://mbianchidev.github.io/open-playlist/api.html) |
-| [`docs/`](docs/README.md) | Architecture, setup, feature guides, and ADRs |
-
-The frontend and backend are hard-separated: the frontend communicates only through
-the backend's generated OpenAPI contract.
-
-### Adding a provider
-
-Implement `ProviderAdapter` in `backend/app/providers/<name>/adapter.py`, declare a
-`CapabilityDescriptor`, register it, and pass the conformance suite in
-`backend/tests/conformance/`. See the
-[provider plugin contract in the design guide](docs/DESIGN.md) and
-[`backend/README.md`](backend/README.md).
+Use the [issue chooser](https://github.com/mbianchidev/open-playlist-engine/issues/new/choose)
+for bugs and proposals; suspected vulnerabilities belong in the private channel
+below.
 
 ## Security
 
-GitHub [private vulnerability reporting](https://github.com/mbianchidev/open-playlist-engine/security/advisories/new)
-is enabled for this repository. Report suspected vulnerabilities privately rather
-than in public issues, and do not include live credentials or personal library data.
-The repository does not yet publish a security support or disclosure policy.
+Read [SECURITY.md](SECURITY.md) for supported versions, private reporting and
+coordinated disclosure. GitHub
+[private vulnerability reporting](https://github.com/mbianchidev/open-playlist-engine/security/advisories/new)
+is enabled. Do not post live credentials or personal library data in reports.
 
 ## License
 
 [MIT](LICENSE)
+
+The [Code of Conduct](CODE_OF_CONDUCT.md#attribution) retains the Contributor
+Covenant's CC BY-SA 4.0 attribution and license.

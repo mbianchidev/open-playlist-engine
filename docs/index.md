@@ -179,6 +179,17 @@ The application is available at `http://localhost:8080`. Start with
 </div>
 </div>
 
+## Contribute
+
+Start with the [development guide](DEVELOPMENT.md) and
+[contributor guide](https://github.com/mbianchidev/open-playlist-engine/blob/main/CONTRIBUTING.md).
+Follow the
+[accessibility guidance](https://github.com/mbianchidev/open-playlist-engine/blob/main/ACCESSIBILITY.md)
+and [Code of Conduct](https://github.com/mbianchidev/open-playlist-engine/blob/main/CODE_OF_CONDUCT.md).
+Report vulnerabilities through the
+[security policy](https://github.com/mbianchidev/open-playlist-engine/blob/main/SECURITY.md),
+not public issues.
+
 <section class="standard-callout" markdown="1">
 
 ## Engine here. Standard there.

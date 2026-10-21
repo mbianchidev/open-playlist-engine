@@ -185,14 +185,20 @@ h3 {
 
 .workspace-tabs {
   display: inline-grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  width: min(100%, 62rem);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 58rem);
   margin-top: 1.5rem;
   padding: 0.25rem;
   border-color: var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-raised);
   box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 721px) {
+  .workspace-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .snapshot-workspace {
@@ -2441,10 +2447,6 @@ textarea {
     display: none;
   }
 
-  .workspace-tabs {
-    width: 100%;
-  }
-
   .snapshot-profile-grid,
   .snapshot-collection-picker,
   .snapshot-restore-collections {
@@ -2707,11 +2709,6 @@ textarea {
 }
 
 /* Public sharing and owner session */
-  .workspace-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    width: min(100%, 49rem);
-  }
-
   .owner-gate,
   .public-share-loading,
   .public-share-unavailable {
@@ -3390,10 +3387,6 @@ textarea {
   }
 
   @media (max-width: 720px) {
-    .workspace-tabs {
-      width: 100%;
-    }
-
     .workspace-tab small {
       display: none;
     }
@@ -3488,10 +3481,6 @@ textarea {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-.workspace-tabs {
-  width: min(100%, 58rem);
 }
 
 .unified-library {
