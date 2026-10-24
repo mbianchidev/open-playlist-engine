@@ -22,13 +22,15 @@ permissions:
 
 concurrency:
   group: pages-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip-docs
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

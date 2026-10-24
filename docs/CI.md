@@ -25,6 +25,35 @@ processes directly, allowing graceful cleanup without waiting for the shell's
 stop timeout. The container check still builds without cache and retains its
 full smoke test.
 
+## Documentation and Pages
+
+The
+[`Documentation`](https://github.com/mbianchidev/open-playlist-engine/blob/main/.github/workflows/pages.yml)
+workflow validates changes to `docs/`, `mkdocs.yml`, `requirements-docs.txt`, and
+its own workflow file. It installs the pinned documentation requirements and
+runs a clean `python -m mkdocs build --strict`, then checks that neither OpenAPI
+contract is included in the site. API generation and drift checks remain in
+`CI`; the documentation build does not generate or publish those contracts.
+
+The build uses a dedicated pip download cache at `.cache/pip-docs` in the build
+workspace so unrelated preloaded packages are not restored and saved with the
+documentation dependencies. The existing `setup-python` cache still keys on
+the runner platform, Python version, and `requirements-docs.txt`. Both cache hits
+and misses run the same dependency installation and strict build; installed
+environments and built sites are not cached.
+
+Pull requests only build and validate, and newer runs cancel obsolete builds
+for the same PR. Pushes to `main` and manual dispatches upload the checked site
+as the run's `github-pages` artifact for the dependent deployment job. The
+existing `github-pages` environment restricts deployment to `main`. Running
+push/manual workflows finish before a newer run for the same ref starts; only
+the newest pending run is retained.
+
+For recovery, re-run a known-good deployment job while its artifact is available
+(the Pages artifact retention is one day), or manually dispatch the workflow on
+`main` to rebuild and deploy its current documentation. Do not dispatch a
+deployment just to measure build performance.
+
 ## Local equivalents
 
 Backend:
