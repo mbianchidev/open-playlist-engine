@@ -9,11 +9,21 @@ Pull-request runs cancel older runs for the same branch.
 |---|---|
 | `Backend` | Python 3.12 editable dev install, `pip check`, Ruff, the full pytest suite, and generated FastAPI OpenAPI drift |
 | `Database migrations` | A single Alembic head and `alembic upgrade head` against a clean Postgres 18 database |
-| `Frontend` | Node.js 26, deterministic `npm ci`, moderate-or-higher npm advisories, generated TypeScript API drift, explicit type-checking, and the production build |
+| `Frontend` | Node.js 26, deterministic `npm ci`, moderate-or-higher npm advisories, generated TypeScript API drift, and the production build including TypeScript checking |
 | `Containers` | PostgreSQL 17-to-18 volume migration, Compose validation, a no-cache image build, full stack startup, and backend plus nginx-proxied health checks |
 
 The jobs use fixture-backed tests and empty provider configuration. No provider
 credentials or repository secrets are required.
+
+The Tidal rate-limit test records and checks retry delays instead of waiting in
+real time; production retry timing is unchanged. The frontend's `npm run build`
+already runs `tsc --noEmit`, so CI does not run the same type-check twice.
+
+After database migrations, Compose replaces the API and worker startup shells
+with their application processes using `exec`. Shutdown signals reach those
+processes directly, allowing graceful cleanup without waiting for the shell's
+stop timeout. The container check still builds without cache and retains its
+full smoke test.
 
 ## Local equivalents
 

@@ -188,9 +188,6 @@ jobs:
           npm run gen:api
           git diff --exit-code -- src/api/schema.d.ts
 
-      - name: Type-check frontend
-        run: npm run typecheck
-
       - name: Build frontend
         run: npm run build
 

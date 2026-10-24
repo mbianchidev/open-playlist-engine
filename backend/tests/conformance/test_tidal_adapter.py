@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import AsyncMock, call
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -82,12 +83,15 @@ async def test_401_maps_to_auth_expired() -> None:
         [r async for r in adapter.iter_playlists(_cred())]
 
 
-async def test_429_maps_to_rate_limited_with_retry_after() -> None:
+async def test_429_maps_to_rate_limited_with_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleep = AsyncMock()
+    monkeypatch.setattr("app.providers.tidal.adapter.asyncio.sleep", sleep)
     adapter = _adapter_returning(429, headers={"Retry-After": "12"})
     with pytest.raises(RateLimited) as excinfo:
         await adapter.search_tracks(_cred(), Track(title="x", artist="y"))
     assert excinfo.value.retry_after_s == 12.0
     assert str(excinfo.value) == "tidal rate limited; retry after 12 seconds"
+    assert sleep.await_args_list == [call(12.0), call(12.0)]
 
 
 async def test_read_hydrates_shallow_items_and_preserves_positions() -> None:
