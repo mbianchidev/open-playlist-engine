@@ -263,8 +263,8 @@ through a pluggable `KeyProvider` (env-derived Fernet now; KMS later). Examples:
 
 ## 4. Tech stack { #section-4-tech-stack }
 
-- **Backend**: Python 3.12, **FastAPI**, SQLAlchemy 2 (async) + Alembic, **arq**
-  (async jobs on Valkey), Pydantic v2 mirroring the Open Playlist schema.
+- **Backend**: Python 3.15 (minimum 3.12), **FastAPI**, SQLAlchemy 2 (async) +
+  Alembic, **arq** (async jobs on Valkey), Pydantic v2 mirroring the Open Playlist schema.
 - **Frontend**: **Vite + React + TypeScript**, typed client generated from the
   backend OpenAPI, **SSE** for progress.
 - **Data**: **Postgres** (accounts, encrypted credentials, jobs, identity graph),

@@ -7,13 +7,14 @@ Pull-request runs cancel older runs for the same branch.
 
 | Required check | Coverage |
 |---|---|
-| `Backend` | Python 3.12 editable dev install, `pip check`, Ruff, the full pytest suite, and generated FastAPI OpenAPI drift |
-| `Database migrations` | A single Alembic head and `alembic upgrade head` against a clean Postgres 18 database |
+| `Backend` | Python 3.15 editable dev install, `pip check`, Ruff, the full pytest suite, and generated FastAPI OpenAPI drift |
+| `Database migrations` | Python 3.15, a single Alembic head and `alembic upgrade head` against a clean Postgres 18 database |
 | `Frontend` | Node.js 26, deterministic `npm ci`, moderate-or-higher npm advisories, generated TypeScript API drift, and the production build including TypeScript checking |
 | `Containers` | PostgreSQL 17-to-18 volume migration, Compose validation, a no-cache image build, full stack startup, and backend plus nginx-proxied health checks |
 
 The jobs use fixture-backed tests and empty provider configuration. No provider
-credentials or repository secrets are required.
+credentials or repository secrets are required. The backend/worker image also
+uses Python 3.15; the package minimum and Ruff syntax target remain Python 3.12.
 
 The Tidal rate-limit test records and checks retry delays instead of waiting in
 real time; production retry timing is unchanged. The frontend's `npm run build`
@@ -30,10 +31,10 @@ full smoke test.
 The
 [`Documentation`](https://github.com/mbianchidev/open-playlist-engine/blob/main/.github/workflows/pages.yml)
 workflow validates changes to `docs/`, `mkdocs.yml`, `requirements-docs.txt`, and
-its own workflow file. It installs the pinned documentation requirements and
-runs a clean `python -m mkdocs build --strict`, then checks that neither OpenAPI
-contract is included in the site. API generation and drift checks remain in
-`CI`; the documentation build does not generate or publish those contracts.
+its own workflow file. It installs the pinned documentation requirements on
+Python 3.15 and runs a clean `python -m mkdocs build --strict`, then checks that
+neither OpenAPI contract is included in the site. API generation and drift checks
+remain in `CI`; the documentation build does not generate or publish those contracts.
 
 The build uses a dedicated pip download cache at `.cache/pip-docs` in the build
 workspace so unrelated preloaded packages are not restored and saved with the
@@ -60,7 +61,7 @@ Backend:
 
 ```bash
 cd backend
-python -m venv .venv
+python3.15 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
