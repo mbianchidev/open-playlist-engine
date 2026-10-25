@@ -22,9 +22,10 @@ changing code. More-specific nested instructions take precedence for their paths
 
 ## Setup and quality gates
 
-Use Python 3.12+ and Node.js 26. Native execution also needs PostgreSQL 18 and
-Valkey 9. Follow [local setup](docs/DEVELOPMENT.md#native-development) for the
-backend working-directory `.env`, virtual environment and worker.
+Use Python 3.15 and Node.js 26. The backend minimum remains Python 3.12.
+Native execution also needs PostgreSQL 18 and Valkey 9. Follow
+[local setup](docs/DEVELOPMENT.md#native-development) for the backend
+working-directory `.env`, virtual environment and worker.
 
 Backend commands, from `backend/` with its virtual environment active:
 

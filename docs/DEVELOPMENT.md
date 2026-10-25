@@ -14,8 +14,9 @@ For the complete container stack, follow the
 It supplies the API, worker, frontend, PostgreSQL and Valkey. Rebuild with
 `docker compose build --no-cache` after changing source or dependencies.
 
-Native development uses Python 3.12+ and Node.js 26 with npm. CI tests Python 3.12
-and Node.js 26; the backend image uses Python 3.14. A modern browser and
+Native development, CI and the backend/worker image use Python 3.15. The backend
+package retains Python 3.12 as its minimum supported version and Ruff syntax
+target. The frontend uses Node.js 26 with npm. A modern browser and
 PostgreSQL 18/Valkey 9 are required for end-to-end execution.
 
 ## Native development
@@ -75,7 +76,7 @@ OPE_FRONTEND_URL=http://localhost:5173
 Then, from `backend/`:
 
 ```bash
-python3 -m venv .venv
+python3.15 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e ".[dev]"
 python -m alembic upgrade head
@@ -151,7 +152,7 @@ as described in the CI guide.
 For documentation changes, use a virtual environment from the repository root:
 
 ```bash
-python3 -m venv .venv
+python3.15 -m venv .venv
 . .venv/bin/activate
 python -m pip install --requirement requirements-docs.txt
 python -m mkdocs build --strict

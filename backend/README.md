@@ -1,6 +1,6 @@
 # Backend — Open Playlist Engine
 
-Python 3.12 · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
+Python 3.15 (minimum 3.12) · FastAPI · SQLAlchemy 2 (async) · arq · Postgres · Valkey.
 
 ## Layout
 - `app/core/` — provider-agnostic hub: Open Playlist models, capabilities, plugin

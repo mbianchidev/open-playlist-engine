@@ -20,9 +20,9 @@ repository's architecture, development, testing, and safety guidance.
 
 ## Development and checks
 
-The [development guide](docs/DEVELOPMENT.md) covers Python 3.12+, Node.js 26,
-PostgreSQL 18, Valkey 9, local configuration, API/worker startup, and the repository
-layout. The [CI guide](docs/CI.md) lists exact validation commands.
+The [development guide](docs/DEVELOPMENT.md) covers Python 3.15 (backend minimum
+3.12), Node.js 26, PostgreSQL 18, Valkey 9, local configuration, API/worker startup,
+and the repository layout. The [CI guide](docs/CI.md) lists exact validation commands.
 
 Use a fork and a feature branch for your changes. Keep the API and frontend
 separate: the FastAPI contract and generated TypeScript schema are the boundary,
