@@ -78,4 +78,4 @@ extra_css:
 extra_javascript:
   - javascripts/copy-code.js
 
-copyright: Open Playlist Engine is available under the MIT License.
+copyright: 'Open Playlist Engine is available under the MIT License. Part of <a href="https://music.synctune.it">Synctune Music</a>.'

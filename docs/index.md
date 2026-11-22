@@ -192,13 +192,13 @@ not public issues.
 
 <section class="standard-callout" markdown="1">
 
-## Engine here. Standard there.
+## Built on the Open Playlist standard
 
-This website documents the **Open Playlist Engine implementation**—its runtime,
-workflows, safety model, and operations. The canonical format and API reference
-remain on the [Open Playlist standard website](https://open-playlist.synctune.it/).
+Open Playlist Engine reads and writes the Open Playlist format and implements
+its API. The format, data model and API reference are published on the
+Open Playlist website.
 
-[Open the standard website](https://open-playlist.synctune.it/){ .button .button-primary }
+[Open the Open Playlist website](https://open-playlist.synctune.it/){ .button .button-primary }
 [View the engine on GitHub](https://github.com/mbianchidev/open-playlist-engine){ .button .button-secondary }
 
 </section>
