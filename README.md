@@ -3,9 +3,9 @@
 # Open Playlist Engine
 
 [![CI](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/ci.yml)
-[![Documentation](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/pages.yml/badge.svg)](https://mbianchidev.github.io/open-playlist-engine/)
+[![Documentation](https://github.com/mbianchidev/open-playlist-engine/actions/workflows/pages.yml/badge.svg)](https://op-engine.synctune.it/)
 
-[Website](https://mbianchidev.github.io/open-playlist-engine/) ·
+[Website](https://op-engine.synctune.it/) ·
 [Documentation](docs/README.md) ·
 [Issues](https://github.com/mbianchidev/open-playlist-engine/issues) ·
 [Releases](https://github.com/mbianchidev/open-playlist-engine/releases)
@@ -241,7 +241,7 @@ developer-token and user-token flow and is currently beta.
 
 ## Documentation
 
-Browse the rendered [documentation website](https://mbianchidev.github.io/open-playlist-engine/)
+Browse the rendered [documentation website](https://op-engine.synctune.it/)
 or the categorized [`docs/` source index](docs/README.md). Start with:
 
 - [Configuration](docs/CONFIGURATION.md)

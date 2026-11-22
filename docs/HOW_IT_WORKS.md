@@ -1,7 +1,7 @@
 # How Open Playlist Engine works
 
 Open Playlist Engine is the concrete, self-hosted implementation of the
-[Open Playlist standard](https://mbianchidev.github.io/open-playlist/). The
+[Open Playlist standard](https://open-playlist.synctune.it/). The
 standard defines provider-neutral music entities. This project supplies the
 provider adapters, matching system, durable jobs, safety boundaries, and user
 interface needed to use those entities with real libraries.
