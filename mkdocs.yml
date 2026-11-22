@@ -1,6 +1,6 @@
 site_name: Open Playlist Engine
 site_description: Self-hosted playlist migration, generation, backup, and export
-site_url: https://mbianchidev.github.io/open-playlist-engine/
+site_url: https://op-engine.synctune.it/
 repo_name: GitHub
 repo_url: https://github.com/mbianchidev/open-playlist-engine
 edit_uri: edit/main/docs/

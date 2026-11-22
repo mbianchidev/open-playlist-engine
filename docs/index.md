@@ -10,7 +10,7 @@ backing up, and exporting music-library metadata. Connect a source and a target;
 the engine handles provider differences while keeping every match visible.
 
 [See how the engine works](HOW_IT_WORKS.md){ .button .button-primary }
-[Explore the Open Playlist standard](https://mbianchidev.github.io/open-playlist/){ .button .button-secondary }
+[Explore the Open Playlist standard](https://open-playlist.synctune.it/){ .button .button-secondary }
 
 </div>
 
@@ -46,7 +46,7 @@ the engine handles provider differences while keeping every match visible.
 
 Provider-to-provider converters grow one integration for every pair. Open Playlist
 Engine instead maps each provider to the
-[Open Playlist standard](https://mbianchidev.github.io/open-playlist/). A new
+[Open Playlist standard](https://open-playlist.synctune.it/). A new
 provider becomes another spoke and can interoperate with every existing spoke.
 
 <div class="pipeline" markdown="1">
@@ -196,9 +196,9 @@ not public issues.
 
 This website documents the **Open Playlist Engine implementation**—its runtime,
 workflows, safety model, and operations. The canonical format and API reference
-remain on the [Open Playlist standard website](https://mbianchidev.github.io/open-playlist/).
+remain on the [Open Playlist standard website](https://open-playlist.synctune.it/).
 
-[Open the standard website](https://mbianchidev.github.io/open-playlist/){ .button .button-primary }
+[Open the standard website](https://open-playlist.synctune.it/){ .button .button-primary }
 [View the engine on GitHub](https://github.com/mbianchidev/open-playlist-engine){ .button .button-secondary }
 
 </section>

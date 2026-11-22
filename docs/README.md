@@ -1,7 +1,7 @@
 # Documentation
 
 Read these guides on the
-[Open Playlist Engine documentation website](https://mbianchidev.github.io/open-playlist-engine/)
+[Open Playlist Engine documentation website](https://op-engine.synctune.it/)
 or browse their Markdown sources below.
 
 Use this index to find setup, architecture, and feature-specific guides. For the
